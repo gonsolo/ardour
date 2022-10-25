@@ -1379,7 +1379,8 @@ PluginInsert::automate_and_run (BufferSet& bufs, samplepos_t start, samplepos_t 
 	while (nframes) {
 
 		samplecnt_t cnt = min (timepos_t (start).distance (next_event.when).samples(), (samplecnt_t) nframes);
-		assert (cnt > 0);
+		//assert (cnt > 0);
+		if (cnt < 0) cnt = 0;
 
 		connect_and_run (bufs, start, start + cnt * speed, speed, cnt, offset, true);
 
