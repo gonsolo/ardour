@@ -145,3 +145,5 @@ tags
 
 # misc custom files git should ignore
 /local
+/.cache
+/compile_commands.json
