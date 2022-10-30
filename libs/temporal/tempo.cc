@@ -622,11 +622,12 @@ Temporal::BBT_Time
 TempoMetric::bbt_at (timepos_t const & pos) const
 {
 	if (pos.is_beats()) {
+                cout << "is beats" << endl;
 		return bbt_at (pos.beats());
 	}
 
 	superclock_t sc = pos.superclocks();
-
+        cout << "  sc: " << sc << endl;
 	const Beats dq = _tempo->quarters_at_superclock (sc) - _meter->beats();
 
 	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("qn @ %1 = %2, meter @ %3 , delta %4\n", sc, _tempo->quarters_at_superclock (sc), _meter->beats(), dq));
@@ -635,13 +636,23 @@ TempoMetric::bbt_at (timepos_t const & pos) const
 	   the current meter, which we'll call "grid"
 	*/
 
+        cout << "  dg.get_beats(): " << dq.get_beats() << endl;
+        cout << "  _meter->note_value(): " << _meter->note_value() << endl;
+
 	const int64_t note_value_count = int_div_round (dq.get_beats() * _meter->note_value(), int64_t (4));
+        assert( note_value_count > 0);
 
 	/* now construct a BBT_Offset using the count in grid units */
+
+        cout << "  note_value_count: " << note_value_count << endl;
+        cout << "  ticks: " << dq.get_ticks() << endl;
 
 	const BBT_Offset bbt_offset (0, note_value_count, dq.get_ticks());
 
 	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("BBT offset from meter @ %1: %2\n", _meter->bbt(), bbt_offset));
+        cout << "  _meter->bbt(): " << _meter->bbt() << endl;
+        cout << "  bbt_offset: " << bbt_offset << endl;
+	cout << "  add: " <<  _meter->bbt_add (_meter->bbt(), bbt_offset) << endl;
 	return _meter->bbt_add (_meter->bbt(), bbt_offset);
 }
 
@@ -1883,6 +1894,8 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, u
 
 	BBT_Time bbt = metric.bbt_at (timepos_t::from_superclock (start));
 
+        cout << "  bbt: " << bbt << endl;
+
 	DEBUG_TRACE (DEBUG::Grid, string_compose ("start %1 is %2\n", start, bbt));
 
 	if (bar_mod == 0) {
@@ -1908,6 +1921,8 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, u
 			/* recompute superclock position */
 
 			superclock_t new_start = metric.superclock_at (bbt);
+
+                        cout << "  new_start: " << new_start << endl;
 
 			DEBUG_TRACE (DEBUG::Grid, string_compose ("metric %1 says that %2 is at %3\n", metric, bbt, new_start));
 
