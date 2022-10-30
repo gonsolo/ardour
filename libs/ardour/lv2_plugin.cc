@@ -2646,8 +2646,6 @@ write_position(LV2_Atom_Forge*     forge,
 	                       (const uint8_t*)(atom + 1));
 }
 
-static mutex m;
-
 int
 LV2Plugin::connect_and_run(BufferSet& bufs,
 		samplepos_t start, samplepos_t end, double speed,
@@ -2667,17 +2665,9 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 	TempoMetric metric (tmap->metric_at (samples_to_superclock (start0, AudioEngine::instance()->sample_rate())));
 
 	TempoMapPoints tempo_map_points;
-
-        m.lock();
-        cout << "gonsolo start0: " << start0 << ", end: " << end << endl;
-	cout << " start0 superclock: " << samples_to_superclock (start0, AudioEngine::instance()->sample_rate()) << endl;
-	cout << " end    superclock: " << samples_to_superclock (end, AudioEngine::instance()->sample_rate()) << endl;
-
 	tmap->get_grid (tempo_map_points,
 	                samples_to_superclock (start0, AudioEngine::instance()->sample_rate()),
 	                samples_to_superclock (end, AudioEngine::instance()->sample_rate()), 0);
-
-        m.unlock();
 
 	if (_freewheel_control_port) {
 		*_freewheel_control_port = _session.engine().freewheeling() ? 1.f : 0.f;
