@@ -627,7 +627,21 @@ TempoMetric::bbt_at (timepos_t const & pos) const
 
 	superclock_t sc = pos.superclocks();
 
-	const Beats dq = _tempo->quarters_at_superclock (sc) - _meter->beats();
+	/* Use the later of the tempo or meter as the reference point to
+	 * compute the BBT distance. All map points are fully defined by all 3
+	 * time types, but we need the latest one to avoid incorrect
+	 * computations of quarter duration.
+	 */
+
+	const Point* reference_point;
+
+	if (_tempo->beats() < _meter->beats()) {
+		reference_point = _meter;
+	} else {
+		reference_point = _tempo;
+	}
+
+	const Beats dq = _tempo->quarters_at_superclock (sc) - reference_point->beats();
 
 	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("qn @ %1 = %2, meter @ %3 , delta %4\n", sc, _tempo->quarters_at_superclock (sc), _meter->beats(), dq));
 
@@ -641,8 +655,9 @@ TempoMetric::bbt_at (timepos_t const & pos) const
 
 	const BBT_Offset bbt_offset (0, note_value_count, dq.get_ticks());
 
-	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("BBT offset from meter @ %1: %2\n", _meter->bbt(), bbt_offset));
-	return _meter->bbt_add (_meter->bbt(), bbt_offset);
+	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("BBT offset from %3 @ %1: %2\n", (_tempo->beats() < _meter->beats() ?  _meter->bbt() : _tempo->bbt()), bbt_offset,
+	                                                 (_tempo->beats() < _meter->beats() ? "meter" : "tempo")));
+	return _meter->bbt_add (reference_point->bbt(), bbt_offset);
 }
 
 superclock_t
@@ -1782,8 +1797,8 @@ TempoMap::_get_tempo_and_meter (typename const_traits_t::tempo_point_type & tp,
 	 * and meter passed in.
 	 *
 	 * Then advance through all points, resetting either tempo and/or meter
-	 * until we find a point beyond (or equal to, if @param can_match is
-	 * true) the @param arg (end time)
+	 * until we find a point beyond (or equal to, if @p can_match is
+	 * true) the @p arg (end time)
 	 */
 
 	for (tp = tstart, mp = mstart, p = begini; p != endi; ++p) {
@@ -1837,7 +1852,7 @@ TempoMap::_get_tempo_and_meter (typename const_traits_t::tempo_point_type & tp,
 void
 TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, uint32_t bar_mod) const
 {
-	/* note: @param bar_mod is "bar modulo", and describes the N in "give
+	/* note: @p bar_mod is "bar modulo", and describes the N in "give
 	   me every Nth bar". If the caller wants every 4th bar, bar_mod ==
 	   4. If we want every point defined by the tempo note type (e.g. every
 	   quarter not, then bar_mod is zero.
@@ -1861,7 +1876,7 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, u
 	/* first task: get to the right starting point for the requested
 	 * grid. if bar_mod is zero, then we'll start on the next beat after
 	 * @param start. if bar_mod is non-zero, we'll start on the first bar
-	 * after @param start. This bar position may or may not be a part of the
+	 * after @p start. This bar position may or may not be a part of the
 	 * grid, depending on whether or not it is a multiple of bar_mod.
 	 *
 	 * final argument = true means "return the iterator corresponding the
@@ -1978,7 +1993,7 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, u
 			/* add point to grid, perhaps */
 
 			if (bar_mod != 0) {
-				if (bbt.is_bar() && (bar_mod == 1 || ((bbt.bars % bar_mod == 0)))) {
+				if (bbt.is_bar() && (bar_mod == 1 || ((bbt.bars % bar_mod == 1)))) {
 					ret.push_back (TempoMapPoint (*this, metric, start, beats, bbt));
 					DEBUG_TRACE (DEBUG::Grid, string_compose ("G %1\t       %2\n", metric, ret.back()));
 				} else {
@@ -2032,7 +2047,7 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t start, superclock_t end, u
 			 */
 
 			if (bar_mod != 0) {
-				if (p->bbt().is_bar() && (bar_mod == 1 || ((p->bbt().bars % bar_mod == 0)))) {
+				if (p->bbt().is_bar() && (bar_mod == 1 || ((p->bbt().bars % bar_mod == 1)))) {
 					ret.push_back (TempoMapPoint (*this, metric, p->sclock(), p->beats(), p->bbt()));
 					DEBUG_TRACE (DEBUG::Grid, string_compose ("G %1\t       %2\n", metric, ret.back()));
 				} else {
@@ -2568,12 +2583,12 @@ TempoMap::can_remove (MeterPoint const & m) const
 	return !is_initial (m);
 }
 
-/** returns the duration (using the domain of @param pos) of the supplied BBT time at a specified sample position in the tempo map.
+/** returns the duration (using the domain of @p pos) of the supplied BBT time at a specified sample position in the tempo map.
  * @param pos the frame position in the tempo map.
  * @param bbt the distance in BBT time from pos to calculate.
  * @param dir the rounding direction..
- * @return the timecnt_t that @param bbt represents when starting at @param pos, in
- * the time domain of @param pos
+ * @return the timecnt_t that @p bbt represents when starting at @p pos, in
+ * the time domain of @p pos
 */
 timecnt_t
 TempoMap::bbt_duration_at (timepos_t const & pos, BBT_Offset const & dur) const
@@ -3259,7 +3274,7 @@ TempoMap::twist_tempi (TempoPoint* ts, samplepos_t start_sample, samplepos_t end
 		double copy_sclock_ratio = 1.0;
 
 		if (next_to_next_t) {
-			next_sclock_ratio = (next_to_next_t->sclock() - old_next_sclock) / (old_next_to_next_sclock -  old_next_sclock);
+			next_sclock_ratio = (next_to_next_t->sclock() - old_next_sclock) / (double) (old_next_to_next_sclock -  old_next_sclock);
 			copy_sclock_ratio = ((old_tc_sclock - next_t->sclock()) / (double) (old_tc_sclock - old_next_sclock));
 		}
 

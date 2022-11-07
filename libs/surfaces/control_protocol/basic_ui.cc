@@ -44,7 +44,11 @@ using namespace Temporal;
 PBD::Signal2<void,std::string,std::string> BasicUI::AccessAction;
 
 BasicUI::BasicUI (Session& s)
-	: session (&s)
+	: session (&s),
+	_tbank_route_width (8),
+	_tbank_row_height (8),
+	_tbank_start_route (0),
+	_tbank_start_row (0)
 {
 }
 
@@ -163,29 +167,7 @@ BasicUI::add_marker (const std::string& markername)
 void
 BasicUI::remove_marker_at_playhead ()
 {
-	if (session) {
-		//set up for undo
-		XMLNode &before = session->locations()->get_state();
-		bool removed = false;
-
-		//find location(s) at this time
-		Locations::LocationList locs;
-		session->locations()->find_all_between (timepos_t (session->audible_sample()), timepos_t (session->audible_sample()+1), locs, Location::Flags(0));
-		for (Locations::LocationList::iterator i = locs.begin(); i != locs.end(); ++i) {
-			if ((*i)->is_mark()) {
-				session->locations()->remove (*i);
-				removed = true;
-			}
-		}
-
-		//store undo
-		if (removed) {
-			session->begin_reversible_command (_("remove marker"));
-			XMLNode &after = session->locations()->get_state();
-			session->add_command(new MementoCommand<Locations>(*(session->locations()), &before, &after));
-			session->commit_reversible_command ();
-		}
-	}
+	access_action("Common/remove-location-from-playhead");
 }
 
 void
@@ -423,30 +405,19 @@ BasicUI::save_state ()
 void
 BasicUI::prev_marker ()
 {
-	timepos_t pos = session->locations()->first_mark_before (timepos_t (session->transport_sample()));
-
-	if (pos >= 0) {
-		session->request_locate (pos.samples());
-	} else {
-		session->goto_start ();
-	}
+	access_action("Common/jump-backward-to-mark");
 }
 
 void
 BasicUI::next_marker ()
 {
-	timepos_t pos = session->locations()->first_mark_after (timepos_t (session->transport_sample()));
-
-	if (pos >= 0) {
-		session->request_locate (pos.samples());
-	} else {
-		session->goto_end();
-	}
+	access_action("Common/jump-forward-to-mark");
 }
 
 void
 BasicUI::set_transport_speed (double speed)
 {
+	session->request_roll (TRS_UI);
 	session->request_transport_speed (speed);
 }
 
@@ -472,6 +443,37 @@ void
 BasicUI::trigger_cue_row (int cue_idx)
 {
 	session->trigger_cue_row (cue_idx);
+}
+
+void
+BasicUI::tbank_set_size (int width, int height)
+{
+	_tbank_route_width = width;
+	_tbank_row_height = height;
+}
+
+void
+BasicUI::tbank_step_routes (int step_size)
+{
+	_tbank_start_route += step_size;
+	if (_tbank_start_route + _tbank_route_width > session->num_triggerboxes() ) {
+		_tbank_start_route=session->num_triggerboxes() - _tbank_route_width;
+	}
+	if (_tbank_start_route < 0) {
+		_tbank_start_route=0;
+	}
+}
+
+void
+BasicUI::tbank_step_rows (int step_size)
+{
+	_tbank_start_row += step_size;
+	if (_tbank_start_row + _tbank_row_height > TriggerBox::default_triggers_per_box ) {
+		_tbank_start_row=TriggerBox::default_triggers_per_box - _tbank_row_height;
+	}
+	if (_tbank_start_row < 0) {
+		_tbank_start_row=0;
+	}
 }
 
 void
@@ -563,10 +565,12 @@ BasicUI::jump_by_bars (int bars, LocateTransportDisposition ltd)
 	TempoMap::SharedPtr tmap (TempoMap::fetch());
 	Temporal::BBT_Time bbt (tmap->bbt_at (timepos_t (session->transport_sample())));
 
-	bbt.bars += bbt.bars;
+	bbt.bars += bars;
 	if (bbt.bars < 0) {
 		bbt.bars = 1;
 	}
+	bbt.beats = 1;
+	bbt.ticks = 0;
 
 	session->request_locate (tmap->sample_at (bbt), false, ltd);
 }
@@ -835,16 +839,51 @@ BasicUI::find_trigger (int x, int y)
 	return tp;
 }
 
+float
+BasicUI::trigger_progress_at (int x)
+{
+	boost::shared_ptr<TriggerBox> tb = session->triggerbox_at (_tbank_start_route + x);
+	if (tb) {
+		ARDOUR::TriggerPtr trigger = tb->currently_playing ();
+		if (trigger) {
+			return trigger->position_as_fraction ();
+		}
+	}
+	return -1;
+}
+
+BasicUI::TriggerDisplay
+BasicUI::trigger_display_at (int x, int y)
+{
+	TriggerDisplay disp;
+
+	boost::shared_ptr<TriggerBox> tb = session->triggerbox_at (_tbank_start_route + x);
+	if (tb) {
+		ARDOUR::TriggerPtr current = tb->currently_playing ();
+		TriggerPtr tp = tb->trigger (_tbank_start_row + y);
+		if (tp) {
+			if (!tp->region()) {
+				disp.state = -1;
+			} else if (tp == current) {
+				disp.state = 1;
+			} else {
+				disp.state = 0;
+			}
+		}
+	}
+	return disp;
+}
+
 void
 BasicUI::bang_trigger_at (int x, int y)
 {
-	session->bang_trigger_at (x, y);
+	session->bang_trigger_at (_tbank_start_route + x, _tbank_start_row + y);
 }
 
 void
 BasicUI::unbang_trigger_at (int x, int y)
 {
-	session->unbang_trigger_at (x, y);
+	session->unbang_trigger_at (_tbank_start_route + x, _tbank_start_row + y);
 }
 
 

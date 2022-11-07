@@ -2169,7 +2169,7 @@ ProcessorBox::object_drop (DnDVBox<ProcessorEntry>* source, ProcessorEntry* posi
 
 		/* Controllable and automation IDs should not be copied */
 		PBD::Stateful::ForceIDRegeneration force_ids;
-		proc->set_state (state, Stateful::loading_state_version);
+		proc->set_state (state, Stateful::current_state_version);
 		/* but retain the processor's ID (LV2 state save) */
 		boost::dynamic_pointer_cast<PluginInsert>(proc)->update_id (id);
 		return;
@@ -3669,7 +3669,7 @@ ProcessorBox::paste_processor_state (const XMLNodeList& nlist, boost::shared_ptr
 						_route, boost::shared_ptr<Route>(), Delivery::Aux);
 
 				PBD::Stateful::ForceIDRegeneration force_ids;
-				if (s->set_state (n, Stateful::loading_state_version)) {
+				if (s->set_state (n, Stateful::current_state_version)) {
 					delete s;
 					return;
 				}
@@ -3692,7 +3692,7 @@ ProcessorBox::paste_processor_state (const XMLNodeList& nlist, boost::shared_ptr
 
 				IOProcessor::prepare_for_reset (n, s->name());
 
-				if (s->set_state (n, Stateful::loading_state_version)) {
+				if (s->set_state (n, Stateful::current_state_version)) {
 					delete s;
 					return;
 				}
@@ -3706,7 +3706,7 @@ ProcessorBox::paste_processor_state (const XMLNodeList& nlist, boost::shared_ptr
 
 				IOProcessor::prepare_for_reset (n, r->name());
 
-				if (r->set_state (n, Stateful::loading_state_version)) {
+				if (r->set_state (n, Stateful::current_state_version)) {
 					delete r;
 					return;
 				}
@@ -3720,7 +3720,7 @@ ProcessorBox::paste_processor_state (const XMLNodeList& nlist, boost::shared_ptr
 
 				IOProcessor::prepare_for_reset (n, pi->name());
 
-				if (pi->set_state (n, Stateful::loading_state_version)) {
+				if (pi->set_state (n, Stateful::current_state_version)) {
 					return;
 				}
 
@@ -3934,7 +3934,7 @@ ProcessorBox::get_editor_window (boost::shared_ptr<Processor> processor, bool us
 
 	/* This method may or may not return a Window, but if it does not it
 	 * will modify the parent mixer strip appearance layout to allow
-	 * "editing" the @param processor that was passed in.
+	 * "editing" the @p processor that was passed in.
 	 *
 	 * So for example, if the processor is an Amp (gain), the parent strip
 	 * will be forced back into a model where the fader controls the main gain.
@@ -4689,7 +4689,7 @@ ProcessorWindowProxy::ProcessorWindowProxy (string const & name, ProcessorBox* b
 	if (pi) {
 		_unmap_connection = signal_unmap.connect (sigc::bind ([] (ProxyBase* self, PluginType type) {
 			ProcessorWindowProxy* me = dynamic_cast<ProcessorWindowProxy*> (self);
-			if (!me->is_custom) {
+			if (!me->is_custom || type == Lua) {
 				return;
 			}
 			switch (UIConfiguration::instance ().get_plugin_gui_behavior ()) {
@@ -4720,6 +4720,7 @@ void
 ProcessorWindowProxy::processor_going_away ()
 {
 	gui_connections.drop_connections ();
+	_unmap_connection.disconnect ();
 	delete _window;
 	_window = 0;
 	WM::Manager::instance().remove (this);
@@ -4777,7 +4778,9 @@ ProcessorWindowProxy::get (bool create)
 	if (_window && (is_custom != want_custom)) {
 		/* drop existing window - wrong type */
 		set_state_mask (Gtkmm2ext::WindowProxy::StateMask (state_mask () & ~WindowProxy::Size));
+		_unmap_connection.block ();
 		drop_window ();
+		_unmap_connection.unblock ();
 	}
 
 	if (!_window) {

@@ -788,7 +788,13 @@ ExportProfileManager::load_format_from_disk (std::string const& path)
 		return;
 	}
 
-	ExportFormatSpecPtr format = handler->add_format (*root);
+	ExportFormatSpecPtr format;
+	try {
+		format = handler->add_format (*root);
+	} catch (PBD::unknown_enumeration& e) {
+		error << string_compose (_("Cannot export format read from %1: %2"), path, e.what()) << endmsg;
+		return;
+	}
 
 	if (format->format_id () == ExportFormatBase::F_FFMPEG) {
 		std::string unused;
@@ -896,6 +902,13 @@ ExportProfileManager::get_warnings ()
 		/* Check channel config ports */
 		if (!channel_config->all_channels_have_ports ()) {
 			warnings->warnings.push_back (_("Some channels are empty"));
+		}
+	}
+
+	for (auto const& fm : formats) {
+		if (!fm->format) {
+			warnings->errors.push_back (_("Invalid export format selected!"));
+			return warnings;
 		}
 	}
 

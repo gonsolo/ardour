@@ -33,6 +33,7 @@
 #include "pbd/types_convert.h"
 #include "pbd/xml++.h"
 
+#include "ardour/audioregion.h"
 #include "ardour/debug.h"
 #include "ardour/filter.h"
 #include "ardour/playlist.h"
@@ -145,6 +146,8 @@ Region::make_property_quarks ()
 	DEBUG_TRACE (DEBUG::Properties, string_compose ("quark for tags = %1\n",	Properties::tags.property_id));
 	Properties::contents.property_id = g_quark_from_static_string (X_("contents"));
 	DEBUG_TRACE (DEBUG::Properties, string_compose ("quark for contents = %1\n",	Properties::contents.property_id));
+	Properties::time_domain.property_id = g_quark_from_static_string (X_("time_domain"));
+	DEBUG_TRACE (DEBUG::Properties, string_compose ("quark for time_domain = %1\n",	Properties::time_domain.property_id));
 }
 
 void
@@ -379,7 +382,7 @@ Region::Region (boost::shared_ptr<const Region> other, timecnt_t const & offset)
 	assert (_type == other->data_type());
 }
 
-/** Create a copy of @param other but with different sources. Used by filters */
+/** Create a copy of @p other but with different sources. Used by filters */
 Region::Region (boost::shared_ptr<const Region> other, const SourceList& srcs)
 	: SessionObject (other->session(), other->name())
 	, _type (srcs.front()->type())
@@ -1428,7 +1431,7 @@ Region::_set_state (const XMLNode& node, int version, PropertyChange& what_chang
 }
 
 PropertyList
-Region::derive_properties (bool with_times) const
+Region::derive_properties (bool with_times, bool with_envelope) const
 {
 	PropertyList plist (properties ());
 	plist.remove (Properties::automatic);
@@ -1436,6 +1439,9 @@ Region::derive_properties (bool with_times) const
 	plist.remove (Properties::left_of_split);
 	plist.remove (Properties::valid_transients);
 	plist.remove (Properties::whole_file);
+	if (!with_envelope) {
+		plist.remove (Properties::envelope);
+	}
 	if (!with_times) {
 		plist.remove (Properties::start);
 		plist.remove (Properties::length);
