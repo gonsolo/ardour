@@ -163,7 +163,7 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 			l = manage (new Label (string_compose ("%1", info.channels), ALIGN_START));
 			t->attach (*l, 1, 2, 2, 3);
 
-			l = manage (new Label (_("Sample rate:"), ALIGN_END));
+			l = manage (new Label (_("Sample Rate:"), ALIGN_END));
 			t->attach (*l, 0, 1, 3, 4);
 			l = manage (new Label (string_compose (_("%1 Hz"), info.samplerate), ALIGN_START));
 			t->attach (*l, 1, 2, 3, 4);
@@ -357,7 +357,7 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 				png_y0 += linesp;
 
 				IMGLABEL (lx0, _("Format:"), file_fmt);
-				IMGLABEL (lx1, _("Sample rate:"), string_compose (_("%1 Hz"), sample_rate));
+				IMGLABEL (lx1, _("Sample Rate:"), string_compose (_("%1 Hz"), sample_rate));
 				png_y0 += linesp;
 
 				if (_session) {
@@ -683,27 +683,15 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 
 			/* calc max status width */
 			int max_wx = 10;
-			layout->set_font_description (UIConfiguration::instance ().get_LargeFont ());
+			layout->set_font_description (UIConfiguration::instance ().get_ArdourLargeFont ());
 
-#if (defined PLATFORM_WINDOWS || defined __APPLE__)
-			layout->set_text ("X");
-#else
 			layout->set_text ("\u274C"); // cross mark
-#endif
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
-#ifdef PLATFORM_WINDOWS
-			layout->set_text ("\u2713"); // check mark
-#else
 			layout->set_text ("\U0001F509"); // speaker icon w/1 bar
-#endif
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
-#ifdef __APPLE__
-			layout->set_text ("\u2713"); // check mark
-#else
 			layout->set_text ("\u2714"); // heavy check mark
-#endif
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
 
@@ -773,32 +761,20 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 				layout->show_in_cairo_context (cr);
 				cr->move_to (xl + w + 5, yl);
 
-				layout->set_font_description (UIConfiguration::instance ().get_LargeFont ());
+				layout->set_font_description (UIConfiguration::instance ().get_ArdourLargeFont ());
 				cr->set_source_rgba (.9, .9, .9, 1.0);
 				if (lufs > pi->LUFS_range[0]
 						|| (pi->enable[0] && dbfs > pi->level[0])
 						|| (pi->enable[1] && dbtp > pi->level[1])
 					 ) {
 					cr->set_source_rgba (1, 0, .0, 1.0);
-#if (defined PLATFORM_WINDOWS || defined __APPLE__)
-					layout->set_text ("X");
-#else
 					layout->set_text ("\u274C"); // cross mark
-#endif
 				} else if (lufs < pi->LUFS_range[1]) {
 					cr->set_source_rgba (.6, .7, 0, 1.0);
-#ifdef PLATFORM_WINDOWS
-					layout->set_text ("\u2713"); // check mark
-#else
 					layout->set_text ("\U0001F509"); // speaker icon w/1 bar
-#endif
 				} else {
 					cr->set_source_rgba (.1, 1, .1, 1.0);
-#ifdef __APPLE__
-					layout->set_text ("\u2713"); // check mark
-#else
 					layout->set_text ("\u2714"); // heavy check mark
-#endif
 				}
 				int ww, hh;
 				layout->get_pixel_size (ww, hh);

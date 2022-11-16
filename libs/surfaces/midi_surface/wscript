@@ -15,19 +15,18 @@ def configure(conf):
 def build(bld):
     obj = bld(features = 'cxx cxxshlib')
     obj.source = '''
-            faderport.cc
-            gui.cc
-            faderport_interface.cc
-            operations.cc
+            midi_surface.cc
+            midi_byte_array.cc
     '''
     obj.export_includes = ['.']
-    obj.defines      = [ 'PACKAGE="ardour_faderport"' ]
+    obj.defines      = [ 'PACKAGE="ardour_midisurface"' ]
     obj.defines     += [ 'ARDOURSURFACE_DLL_EXPORTS' ]
-    obj.includes     = [ '.', '..', './faderport']
-    obj.name         = 'libardour_faderport'
-    obj.target       = 'ardour_faderport'
-    obj.uselib       = 'GTKMM GTK GDK XML OSX'
-    obj.use          = 'libardour libardour_cp libardour_midisurface libgtkmm2ext libpbd'
+    obj.defines     += [ 'VERSIONSTRING="' + bld.env['VERSION'] + '"' ]
+    obj.includes     = ['.', './midi_surface']
+    obj.name         = 'libardour_midisurface'
+    obj.target       = 'ardour_midisurface'
+    obj.uselib       = 'SIGCPP XML OSX'
+    obj.use          = 'libardour libardour_cp libpbd libevoral libmidipp libtemporal'
     obj.install_path = os.path.join(bld.env['LIBDIR'], 'surfaces')
 
 def shutdown():
