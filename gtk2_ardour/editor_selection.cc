@@ -1428,6 +1428,8 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 	bool have_active_fade_in = false;
 	bool have_active_fade_out = false;
 	bool have_transients = false;
+	bool have_inverted_polarity = false;
+	bool have_non_inverted_polarity = false;
 
 	for (list<RegionView*>::const_iterator i = rs.begin(); i != rs.end(); ++i) {
 
@@ -1509,6 +1511,12 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 			} else {
 				have_inactive_fade_out = true;
 			}
+
+			if (ar->scale_amplitude () < 0) {
+				have_inverted_polarity = true;
+			} else {
+				have_non_inverted_polarity = true;
+			}
 		}
 	}
 
@@ -1559,10 +1567,18 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 
 	if (have_audio) {
 
-		if (have_envelope_active && !have_envelope_inactive) {
-			Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-gain-envelope-active"))->set_active ();
+		if (have_envelope_active != have_envelope_inactive) {
+			Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-gain-envelope-active"))->set_active (have_envelope_active);
 		} else if (have_envelope_active && have_envelope_inactive) {
-			// Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-gain-envelope-active"))->set_inconsistent ();
+			// Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-gain-envelope-active"))->set_inconsistent (); // N/A
+			Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-gain-envelope-active"))->set_sensitive (false);
+		}
+
+		if (have_inverted_polarity != have_non_inverted_polarity) {
+			Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-polarity"))->set_active (have_inverted_polarity);
+		} else if (have_inverted_polarity && have_non_inverted_polarity) {
+			// Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-polarity"))->set_inconsistent (); // N/A
+			Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-polarity"))->set_sensitive (false);
 		}
 
 	} else {
@@ -1574,6 +1590,7 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 		_region_actions->get_action("pitch-shift-region")->set_sensitive (false);
 		_region_actions->get_action("strip-region-silence")->set_sensitive (false);
 		_region_actions->get_action("show-rhythm-ferret")->set_sensitive (false);
+		_region_actions->get_action("toggle-region-polarity")->set_sensitive (false);
 
 	}
 

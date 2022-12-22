@@ -381,6 +381,14 @@ ControlList::thin (double thinning_factor)
 		return;
 	}
 
+	/* compat. In the past the actual (internal) value was used
+	 * to compute the area. For gain the range is 0..2 (exp).
+	 * Since we cannot change automation-thinning-factor
+	 * in user's existing config, we simply re-normalize
+	 * the thinning factor.
+	 */
+	thinning_factor *= .7071;
+
 	assert (is_sorted ());
 
 	bool changed = false;
@@ -407,9 +415,13 @@ ControlList::thin (double thinning_factor)
 				const double pw  = prev->when.samples ();
 				const double cw  = cur->when.samples ();
 
-				double area = fabs ((ppw * (prev->value - cur->value)) +
-				                    (pw * (cur->value - prevprev->value)) +
-				                    (cw * (prevprev->value - prev->value)));
+				const float ppv = _desc.to_interface (prevprev->value);
+				const float cv  = _desc.to_interface (cur->value);
+				const float pv  = _desc.to_interface (prev->value);
+
+				double area = fabs ((ppw * (pv - cv)) +
+				                    (pw * (cv - ppv)) +
+				                    (cw * (ppv - pv)));
 
 				if (area < thinning_factor) {
 					iterator tmp = pprev;
@@ -420,6 +432,7 @@ ControlList::thin (double thinning_factor)
 					 */
 
 					pprev = i;
+					prev  = cur;
 					_events.erase (tmp);
 					changed = true;
 					continue;
@@ -595,6 +608,7 @@ ControlList::add_guard_point (timepos_t const& time, timecnt_t const& offset)
 	 */
 	if (_in_write_pass && new_write_pass) {
 		WritePassStarted (); /* EMIT SIGNAL w/WriteLock */
+		did_write_during_pass = true;
 		new_write_pass = false;
 	}
 
@@ -814,7 +828,6 @@ ControlList::add (timepos_t const& time, double value, bool with_guards, bool wi
 
 			if (with_guards) {
 				add_guard_point (insert_position, timecnt_t (_time_domain));
-				did_write_during_pass = true;
 			} else {
 				/* not adding a guard, but we need to set iterator appropriately */
 				const ControlEvent cp (when, 0.0);

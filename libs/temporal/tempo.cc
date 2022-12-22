@@ -766,42 +766,29 @@ TempoMap::operator= (TempoMap const & other)
 void
 TempoMap::copy_points (TempoMap const & other)
 {
-	std::vector<Point*> p;
+	MusicTimePoint const * mt;
+	TempoPoint const * tp;
+	MeterPoint const * mp;
 
-	p.reserve (other._meters.size() + other._tempos.size() + other._bartimes.size());
-
-	for (Meters::const_iterator m = other._meters.begin(); m != other._meters.end(); ++m) {
-		if (dynamic_cast<MusicTimePoint const *> (&*m)) {
-			continue;
+	for (auto const & point : other._points) {
+		if ((mt = dynamic_cast<MusicTimePoint const *> (&point))) {
+			MusicTimePoint* mtp = new MusicTimePoint (*mt);
+			_bartimes.push_back (*mtp);
+			_meters.push_back (*mtp);
+			_tempos.push_back (*mtp);
+			_points.push_back (*mtp);
+		} else if ((mp = dynamic_cast<MeterPoint const *> (&point))) {
+			MeterPoint* mpp = new MeterPoint (*mp);
+			_meters.push_back (*mpp);
+			_points.push_back (*mpp);
+		} else if ((tp = dynamic_cast<TempoPoint const *> (&point))) {
+			TempoPoint* tpp = new TempoPoint (*tp);
+			_tempos.push_back (*tpp);
+			_points.push_back (*tpp);
 		}
-		MeterPoint* mp = new MeterPoint (*m);
-		_meters.push_back (*mp);
-		p.push_back (mp);
 	}
-
-	for (Tempos::const_iterator t = other._tempos.begin(); t != other._tempos.end(); ++t) {
-		if (dynamic_cast<MusicTimePoint const *> (&*t)) {
-			continue;
-		}
-		TempoPoint* tp = new TempoPoint (*t);
-		_tempos.push_back (*tp);
-		p.push_back (tp);
-	}
-
-	for (MusicTimes::const_iterator mt = other._bartimes.begin(); mt != other._bartimes.end(); ++mt) {
-		MusicTimePoint* mtp = new MusicTimePoint (*mt);
-		_bartimes.push_back (*mtp);
-		_tempos.push_back (*mtp);
-		_meters.push_back (*mtp);
-		p.push_back (mtp);
-	}
-
-	sort (p.begin(), p.end(), Point::ptr_sclock_comparator());
-
-	for (auto & pi : p) {
-		pi->set_map (*this);
-		_points.push_back (*pi);
-	}
+	std::cerr << "\n\nAFTER COPY POINTS\n";
+	dump (std::cerr);
 }
 
 MeterPoint*
@@ -825,6 +812,13 @@ TempoMap::change_tempo (TempoPoint & p, Tempo const & t)
 {
 	*((Tempo*)&p) = t;
 	reset_starting_at (p.sclock());
+}
+
+void
+TempoMap::replace_tempo (TempoPoint const & old, Tempo const & t, timepos_t const & time)
+{
+	remove_tempo (old, false);
+	set_tempo (t, time);
 }
 
 TempoPoint &
@@ -988,7 +982,7 @@ TempoMap::add_tempo (TempoPoint * tp)
 }
 
 void
-TempoMap::remove_tempo (TempoPoint const & tp)
+TempoMap::remove_tempo (TempoPoint const & tp, bool with_reset)
 {
 	if (_tempos.size() < 2) {
 		return;
@@ -1045,7 +1039,9 @@ TempoMap::remove_tempo (TempoPoint const & tp)
 	if (prev != _tempos.end() && was_end) {
 		prev->set_end_npm (prev->note_types_per_minute()); /* remove any ramp */
 	} else {
-		reset_starting_at (sc);
+		if (with_reset) {
+			reset_starting_at (sc);
+		}
 	}
 }
 
@@ -1082,7 +1078,7 @@ TempoMap::add_or_replace_bartime (MusicTimePoint* mtp)
 }
 
 void
-TempoMap::remove_bartime (MusicTimePoint const & tp)
+TempoMap::remove_bartime (MusicTimePoint const & tp, bool with_reset)
 {
 	superclock_t sc (tp.sclock());
 	MusicTimes::iterator m;
@@ -1111,7 +1107,9 @@ TempoMap::remove_bartime (MusicTimePoint const & tp)
 
 	_bartimes.erase (m);
 	remove_point (*m);
-	reset_starting_at (sc);
+	if (with_reset) {
+		reset_starting_at (sc);
+	}
 }
 
 void
@@ -1621,7 +1619,7 @@ TempoMap::set_meter (Meter const & t, BBT_Time const & bbt)
 }
 
 void
-TempoMap::remove_meter (MeterPoint const & mp)
+TempoMap::remove_meter (MeterPoint const & mp, bool with_reset)
 {
 	if (_meters.size() < 2) {
 		return;
@@ -1659,7 +1657,9 @@ TempoMap::remove_meter (MeterPoint const & mp)
 
 	_meters.erase (m);
 	remove_point (*m);
-	reset_starting_at (sc);
+	if (with_reset) {
+		reset_starting_at (sc);
+	}
 }
 
 Temporal::BBT_Time
@@ -3108,6 +3108,14 @@ TempoMap::set_continuing (TempoPoint& tp, bool yn)
 	return true;
 }
 
+/* Adjusts the outgoing tempo at @p ts so that the next Tempo point is at @p
+ * end_sample, while keeping the beat time positions of both the same.
+ *
+ * i.e. literally "stretches" out a tempo section (between two markers) by
+ * speeding or slowing the initial outbound tempo and ramping to the end
+ * tempo.
+ */
+
 void
 TempoMap::stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sample, Beats const & start_qnote, Beats const & end_qnote)
 {
@@ -3120,6 +3128,15 @@ TempoMap::stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sam
 	*/
 
 	if (!ts) {
+		return;
+	}
+
+	TempoPoint* next_t = const_cast<TempoPoint*> (next_tempo (*ts));
+
+	/* no stretching of the final tempo, where final includes "terminated
+	 * by a BBT marker"
+	 */
+	if (!next_t || dynamic_cast<MusicTimePoint*> (next_t)) {
 		return;
 	}
 
@@ -3136,7 +3153,6 @@ TempoMap::stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sam
 		 * that the previous tempo ended with.
 		 */
 
-		TempoPoint* next_t = const_cast<TempoPoint*> (next_tempo (*ts));
 		TempoPoint* prev_to_ts = const_cast<TempoPoint*> (previous_tempo (*ts));
 		assert (prev_to_ts);
 		/* the change in samples is the result of changing the slope of at most 2 previous tempo sections.

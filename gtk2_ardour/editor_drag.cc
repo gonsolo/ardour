@@ -3304,6 +3304,7 @@ TempoMarkerDrag::motion (GdkEvent* event, bool first_move)
 		stringstream strs;
 		Temporal::Tempo new_tempo (new_bpm, _marker->tempo().note_type());
 		map->change_tempo (const_cast<TempoPoint&>(_marker->tempo()), new_tempo);
+		_editor->mid_tempo_change (Editor::TempoChanged);
 		strs << "Tempo: " << fixed << setprecision(3) << new_bpm;
 		show_verbose_cursor_text (strs.str());
 
@@ -3542,7 +3543,7 @@ BBTRulerDrag::motion (GdkEvent* event, bool first_move)
 		pf = adjusted_current_time (event);
 	}
 
-	if (ArdourKeyboard::indicates_constraint (event->button.state)) {
+	if (ArdourKeyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)) {
 		/* adjust previous tempo to match pointer sample */
 		map->stretch_tempo (_tempo, timepos_t (_grab_qn).samples(), pf.samples(), _grab_qn, pf.beats());
 		_editor->mid_tempo_change (Editor::BBTChanged);
@@ -6745,13 +6746,11 @@ void
 NoteCreateDrag::motion (GdkEvent* event, bool)
 {
 	const timepos_t pos = _drags->current_pointer_time ();
-	Temporal::Beats aligned_beats = round_to_grid (pos, event);
 
 	//when the user clicks and starts a drag to define the note's length, require notes to be at least |this| long
 	const Temporal::Beats min_length (_region_view->get_draw_length_beats (pos));
-	aligned_beats = aligned_beats+min_length;
-
-	_note[1] = timepos_t (max (Temporal::Beats(), aligned_beats));
+	Temporal::Beats aligned_beats = round_to_grid (pos, event);
+	_note[1] = std::max (aligned_beats, (_note[0].beats() + min_length));
 
 	const timecnt_t rrp1 (_region_view->region()->region_relative_position (_note[0]));
 	const timecnt_t rrp2 (_region_view->region()->region_relative_position (_note[1]));

@@ -5769,7 +5769,8 @@ Editor::adjust_region_gain (bool up)
 
 		arv->region()->clear_changes ();
 
-		double dB = accurate_coefficient_to_dB (arv->audio_region()->scale_amplitude ());
+		gain_t scale_amplitude = arv->audio_region()->scale_amplitude ();
+		double dB = accurate_coefficient_to_dB (fabsf (scale_amplitude));
 
 		if (up) {
 			dB += 1;
@@ -5777,7 +5778,7 @@ Editor::adjust_region_gain (bool up)
 			dB -= 1;
 		}
 
-		arv->audio_region()->set_scale_amplitude (dB_to_coefficient (dB));
+		arv->audio_region()->set_scale_amplitude (dB_to_coefficient (dB) * (scale_amplitude < 0 ? -1. : 1.));
 
 		if (!in_command) {
 				begin_reversible_command ("adjust region gain");
@@ -6405,6 +6406,41 @@ Editor::set_gain_envelope_visibility ()
 		if (v) {
 			v->audio_view()->foreach_regionview (sigc::mem_fun (this, &Editor::set_region_gain_visibility));
 		}
+	}
+}
+
+void
+Editor::toggle_region_polarity ()
+{
+	if (_ignore_region_action) {
+		return;
+	}
+
+	RegionSelection rs = get_regions_from_selection_and_entered ();
+
+	if (!_session || rs.empty()) {
+		return;
+	}
+
+	bool in_command = false;
+
+	for (RegionSelection::iterator i = rs.begin(); i != rs.end(); ++i) {
+		AudioRegionView* const arv = dynamic_cast<AudioRegionView*>(*i);
+		if (arv) {
+			arv->region()->clear_changes ();
+			gain_t scale_amplitude = arv->audio_region()->scale_amplitude ();
+			arv->audio_region()->set_scale_amplitude (-1 * scale_amplitude);
+
+			if (!in_command) {
+				begin_reversible_command (_("region polarity invery"));
+				in_command = true;
+			}
+			_session->add_command (new StatefulDiffCommand (arv->region()));
+		}
+	}
+
+	if (in_command) {
+		commit_reversible_command ();
 	}
 }
 
