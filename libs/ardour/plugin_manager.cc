@@ -269,8 +269,8 @@ PluginManager::PluginManager ()
 		rdfs += t;
 	} else {
 #ifndef PLATFORM_WINDOWS
-		rdfs += "usr/local/share/ladspa";
-		rdfs += "usr/share/ladspa";
+		rdfs += "/usr/local/share/ladspa";
+		rdfs += "/usr/share/ladspa";
 #endif
 		rdfs.add_subdirectory_to_paths ("rdf");
 	}
@@ -278,6 +278,13 @@ PluginManager::PluginManager ()
 	add_lrdf_data (rdfs);
 
 	add_lrdf_presets ("ladspa");
+
+#if 0 // dump RDF
+	lrdf_statement* r = lrdf_all_statements();
+	for (lrdf_statement* it = r; it != NULL; it = it->next) {
+		printf("LRDF: (%s, %s, %s)\n", it->subject, it->predicate, it->object);
+	}
+#endif
 
 	if ((s = getenv ("VST_PATH"))) {
 		windows_vst_path = s;
@@ -828,18 +835,24 @@ PluginManager::add_lrdf_presets(string domain)
 	vector<string> presets;
 	vector<string>::iterator x;
 
-	char* envvar;
-	if ((envvar = getenv ("HOME")) == 0) {
+#ifdef PLATFORM_WINDOWS
+	string path = Glib::build_filename (ARDOUR::user_cache_directory (), domain, "rdf");
+#else
+	if (Glib::get_home_dir ().empty ()) {
 		return;
 	}
+	string path = Glib::build_filename (Glib::get_home_dir (), "." + domain, "rdf");
+#endif
 
-	string path = string_compose("%1/.%2/rdf", envvar, domain);
 	find_files_matching_filter (presets, path, rdf_filter, 0, false, true);
 
 	for (x = presets.begin(); x != presets.end (); ++x) {
-		string file = "file:" + *x;
-		if (lrdf_read_file(file.c_str())) {
-			warning << string_compose(_("Could not parse rdf file: %1"), *x) << endmsg;
+		const string uri (Glib::filename_to_uri(*x));
+#ifndef NDEBUG
+		info << string_compose (_("Reading RDF %1"), uri) << endmsg;
+#endif
+		if (lrdf_read_file(uri.c_str())) {
+			warning << string_compose (_("Could not parse RDF %1"), uri) << endmsg;
 		}
 	}
 
@@ -853,10 +866,13 @@ PluginManager::add_lrdf_data (Searchpath const& path)
 	vector<string> rdf_files;
 	vector<string>::iterator x;
 
+	info << "add_lrdf_data '" << path.to_string () << "'" << endmsg;
+
 	find_files_matching_filter (rdf_files, path, rdf_filter, 0, false, true);
 
 	for (x = rdf_files.begin(); x != rdf_files.end (); ++x) {
-		const string uri(string("file://") + *x);
+		const string uri (Glib::filename_to_uri(*x));
+		info << "read rdf_file '" << uri << "'" << endmsg;
 
 		if (lrdf_read_file(uri.c_str())) {
 			warning << "Could not parse rdf file: " << uri << endmsg;
