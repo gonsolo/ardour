@@ -24,6 +24,7 @@
 
 #include <vector>
 
+#include <glibmm/convert.h>
 #include <glibmm/miscutils.h>
 #include <glibmm/timer.h>
 
@@ -398,7 +399,11 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPip
 	argp[a++] = strdup ("-i");
 	argp[a++] = strdup ("pipe:0");
 
-	argp[a++] = strdup ("-y");
+	argp[a++] = strdup ("-f");
+	argp[a++] = strdup ("mp3");
+	argp[a++] = strdup ("-acodec");
+	argp[a++] = strdup ("mp3");
+
 	if (quality <= 0) {
 		/* variable rate, lower is better */
 		snprintf (tmp, sizeof(tmp), "%d", -quality);
@@ -422,17 +427,25 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPip
 		argp[a++] = SystemExec::format_key_value_parameter (it->first.c_str(), it->second.c_str());
 	}
 
+	argp[a++] = strdup ("-y");
+#ifdef PLATFORM_WINDOWS
+	try {
+		argp[a] = strdup (Glib::locale_from_utf8 (writer_filename).c_str());
+	} catch (Glib::ConvertError&) {
+		argp[a] = strdup (Glib::convert_with_fallback (writer_filename, "UTF-8", "ASCII", "_").c_str()); // or "CP1252"
+	}
+	++a;
+#else
 	argp[a++] = strdup (writer_filename.c_str());
+#endif
 	argp[a] = (char *)0;
 
 	/* argp is free()d in ~SystemExec,
 	 * SystemExec is deleted when writer is destroyed */
 	ARDOUR::SystemExec* exec = new ARDOUR::SystemExec (ffmpeg_exe, argp, true);
+
 	PBD::info << "Encode command: { " << exec->to_s () << "}" << endmsg;
-	if (exec->start (SystemExec::MergeWithStdin)) {
-		throw ExportFailed ("External encoder (ffmpeg) cannot be started.");
-	}
-	writer.reset (new AudioGrapher::CmdPipeWriter<T> (exec, writer_filename));
+	writer.reset (new AudioGrapher::CmdPipeWriter<T> (exec, writer_filename, false));
 	writer->FileWritten.connect_same_thread (copy_files_connection, boost::bind (&ExportGraphBuilder::Encoder::copy_files, this, _1));
 }
 

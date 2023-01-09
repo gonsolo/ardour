@@ -422,6 +422,9 @@ SystemExec::terminate ()
 		delete pid;
 		pid=0;
 	}
+
+	if (thread_active) pthread_join(thread_id_tt, NULL);
+	thread_active = false;
 	::pthread_mutex_unlock(&write_lock);
 }
 
@@ -528,7 +531,7 @@ void
 SystemExec::output_interposer()
 {
 	DWORD bytesRead = 0;
-	char data[BUFSIZ];
+	char data[8192];
 #if 0 // untested code to set up nonblocking
 	unsigned long l = 1;
 	ioctlsocket(stdoutP[0], FIONBIO, &l);
@@ -540,14 +543,15 @@ SystemExec::output_interposer()
 		if (bytesAvail < 1) {Sleep(500); printf("N/A\n"); continue;}
 #endif
 		if (stdoutP[0] == INVALID_HANDLE_VALUE) break;
-		if (!ReadFile(stdoutP[0], data, BUFSIZ - 1, &bytesRead, 0)) {
+		if (!ReadFile(stdoutP[0], data, 8191, &bytesRead, 0)) {
 			DWORD err =  GetLastError();
 			if (err == ERROR_IO_PENDING) continue;
 			break;
 		}
 		if (bytesRead < 1) continue; /* actually not needed; but this is safe. */
 		data[bytesRead] = 0;
-		ReadStdout(data, bytesRead); /* EMIT SIGNAL */
+		std::string rv = std::string (data, bytesRead);
+		ReadStdout(rv, bytesRead); /* EMIT SIGNAL */
 	}
 	Terminated(); /* EMIT SIGNAL */
 	pthread_exit(0);
@@ -560,6 +564,8 @@ SystemExec::close_stdin()
 	if (stdinP[1] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdinP[1]);
 	Sleep(200);
 	destroy_pipe (stdinP);
+	if (stdoutP[0] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdoutP[0]);
+	if (stdoutP[1] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdoutP[1]);
 }
 
 size_t
@@ -916,8 +922,7 @@ SystemExec::close_stdin()
 	}
 	close_fd (pin[0]);
 	close_fd (pin[1]);
-	close_fd (pout[0]);
-	close_fd (pout[1]);
+	fsync (pout[0]);
 }
 
 size_t
