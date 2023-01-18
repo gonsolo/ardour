@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Robin Gareus <robin@gareus.org>
+ * Copyright (C) 2016-2023 Robin Gareus <robin@gareus.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -135,13 +135,28 @@ PluginSetupDialog::setup_output_presets ()
 		}
 	}
 
-	bool have_matching_io = false;
+	const uint32_t n_audio = _cur_outputs.n_audio ();
+
+	bool have_matching_io = ppc.find (n_audio) != ppc.end ();
+	if (have_matching_io) {
+		_out_presets.AddMenuElem (MenuElem (preset_label (n_audio), sigc::bind (sigc::mem_fun (*this, &PluginSetupDialog::select_output_preset), n_audio)));
+	}
+
+	if (ppc.size() > 6 && *ppc.rbegin () != n_audio) {
+		uint32_t all = *ppc.rbegin ();
+		_out_presets.AddMenuElem (MenuElem (string_compose (_("All (%1)"), preset_label (all)), sigc::bind (sigc::mem_fun (*this, &PluginSetupDialog::select_output_preset), all)));
+		ppc.erase (all);
+	}
 
 	for (PluginOutputConfiguration::const_iterator i = ppc.begin () ; i != ppc.end (); ++i) {
 		assert (*i > 0);
+		if (*i == n_audio) {
+			assert (have_matching_io);
+			continue;
+		}
 		_out_presets.AddMenuElem (MenuElem (preset_label (*i), sigc::bind (sigc::mem_fun (*this, &PluginSetupDialog::select_output_preset), *i)));
-		if (*i == _cur_outputs.n_audio ()) {
-			have_matching_io = true;
+		if (_out_presets.items ().size () > 6) {
+			break;
 		}
 	}
 
@@ -207,7 +222,7 @@ PluginSetupDialog::toggle_fan_out ()
 }
 
 std::string
-PluginSetupDialog::preset_label (uint32_t n_audio) const
+PluginSetupDialog::preset_label (uint32_t n_audio)
 {
 		std::string rv;
 		switch (n_audio) {

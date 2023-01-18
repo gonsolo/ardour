@@ -3,7 +3,7 @@
  * Copyright (C) 2007-2012 Carl Hetherington <carl@carlh.net>
  * Copyright (C) 2007-2014 David Robillard <d@drobilla.net>
  * Copyright (C) 2008-2009 Sampo Savolainen <v2@iki.fi>
- * Copyright (C) 2013-2019 Robin Gareus <robin@gareus.org>
+ * Copyright (C) 2013-2023 Robin Gareus <robin@gareus.org>
  * Copyright (C) 2016-2017 Tim Mayberry <mojofunk@gmail.com>
  * Copyright (C) 2018 Johannes Mueller <github@johannes-mueller.org>
  *
@@ -1063,6 +1063,7 @@ PluginInsert::connect_and_run (BufferSet& bufs, samplepos_t start, samplepos_t e
 						inplace_bufs.get_available (*t, m).read_from (bufs.get_available (*t, in_idx), nframes, offset, offset);
 					} else {
 						inplace_bufs.get_available (*t, m).silence (nframes, offset);
+						i_in_map.unset (*t, in);
 					}
 					mapped.set (*t, m + 1);
 				}
@@ -2024,6 +2025,7 @@ PluginInsert::configure_io (ChanCount in, ChanCount out)
 	/* configure plugins */
 	switch (_match.method) {
 	case Split:
+		/* fallthrough */
 	case Hide:
 		if (_plugins.front()->reconfigure_io (natural_input_streams(), ChanCount (), out) == false) {
 			PluginIoReConfigure (); /* EMIT SIGNAL */
@@ -2064,6 +2066,12 @@ PluginInsert::configure_io (ChanCount in, ChanCount out)
 			}
 		}
 		break;
+
+	case Replicate:
+		assert (get_count () > 1);
+		assert (!_plugins.front()->get_info()->reconfigurable_io ());
+		break;
+
 	default:
 		if (_plugins.front()->reconfigure_io (in, aux_in, out) == false) {
 			PluginIoReConfigure (); /* EMIT SIGNAL */
@@ -2813,6 +2821,14 @@ PluginInsert::set_state(const XMLNode& node, int version)
 			} else {
 				update_sidechain_name ();
 			}
+		}
+	}
+
+	if (version < 7002 && !_custom_cfg /* && !strict_io ()*/ && plugin()->get_info ()->type == ARDOUR::VST3) {
+		if (_configured_in != plugin()->get_info()->n_inputs * _plugins.size () ||
+		    _configured_out != plugin()->get_info()->n_outputs * _plugins.size ()) {
+			/* do not add VST busses which were not previously available */
+			_custom_cfg = true;
 		}
 	}
 
