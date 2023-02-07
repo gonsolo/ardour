@@ -20,6 +20,7 @@
 #include <iostream>
 
 #include "pbd/compose.h"
+#include "pbd/configuration.h"
 #include "pbd/configuration_variable.h"
 #include "pbd/debug.h"
 
@@ -108,4 +109,19 @@ ConfigVariableBase::miss ()
 {
 	// placeholder for any debugging desired when a config variable
 	// is set but to the same value as it already has
+}
+
+std::map<std::string,Configuration::Metadata> Configuration::all_metadata;
+
+Configuration::Metadata const *
+Configuration::get_metadata (std::string const & name)
+{
+	auto i = all_metadata.find (name);
+	if (i != all_metadata.end()) {
+		/* Only return actual, useful metadata */
+		if (!i->second.empty() && !i->second.front().empty()) {
+			return &i->second;
+		}
+	}
+	return 0;
 }

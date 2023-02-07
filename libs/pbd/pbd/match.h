@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Carl Hetherington <carl@carlh.net>
+ * Copyright (C) 2020 Robin Gareus <robin@gareus.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,24 +16,29 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <cppunit/TestFixture.h>
-#include <cppunit/extensions/HelperMacros.h>
+#ifndef __libpbd_match_h__
+#define __libpbd_match_h__
 
-#include "temporal/superclock.h"
+#include <string>
+#include <boost/tokenizer.hpp>
 
-class AutomationListPropertyTest : public CppUnit::TestFixture
+namespace PBD {
+
+inline static bool
+match_search_strings (std::string const& haystack, std::string const& needle)
 {
-	CPPUNIT_TEST_SUITE (AutomationListPropertyTest);
-	CPPUNIT_TEST (basicTest);
-	CPPUNIT_TEST (undoTest);
-	CPPUNIT_TEST_SUITE_END ();
+	boost::char_separator<char> sep (" ");
+	typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
+	tokenizer t (needle, sep);
 
-public:
-	void setUp ();
-	void tearDown ();
-	void basicTest ();
-	void undoTest ();
+	for (tokenizer::iterator ti = t.begin (); ti != t.end (); ++ti) {
+		if (haystack.find (*ti) == std::string::npos) {
+			return false;
+		}
+	}
+	return true;
+}
 
-private:
-	Temporal::superclock_t _saved_superclock_ticks_per_second;
-};
+}
+
+#endif /* __libpbd_match_h__ */

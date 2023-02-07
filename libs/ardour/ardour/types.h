@@ -685,6 +685,12 @@ enum PluginGUIBehavior {
 	PluginGUIDestroyVST,
 };
 
+enum AppleNSGLViewMode {
+	NSGLHiRes,
+	NSGLLoRes,
+	NSGLDisable,
+};
+
 /** A struct used to describe changes to processors in a route.
  *  This is useful because objects that respond to a change in processors
  *  can optimise what work they do based on details of what has changed.
@@ -697,7 +703,8 @@ struct RouteProcessorChange {
 	enum Type {
 		MeterPointChange = 0x1,
 		RealTimeChange   = 0x2,
-		GeneralChange    = 0x4
+		GeneralChange    = 0x4,
+		SendReturnChange = 0x8
 	};
 
 	RouteProcessorChange () : type (GeneralChange), meter_visibly_changed (true)

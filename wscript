@@ -99,6 +99,8 @@ compiler_flags_dictionaries= {
         'attasm': '-masm=att',
         # Flags to make AVX instructions/intrinsics available
         'avx': '-mavx',
+        # Flags to make AVX512F instructions/intrinsics available
+        'avx512f': '-mavx512f',
         # Flags to make FMA instructions/intrinsics available
         'fma': '-mfma',
         # Flags to make ARM/NEON instructions/intrinsics available
@@ -528,7 +530,18 @@ int main() { return 0; }''',
         elif conf.env['build_target'] == 'mingw':
             if re.search ('x86_64-w64', str(conf.env['CC'])) is not None:
                 conf.define ('FPU_AVX_FMA_SUPPORT', 1)
+                conf.define ('FPU_AVX512F_SUPPORT', 1)
         elif conf.env['build_target'] == 'i386' or conf.env['build_target'] == 'i686' or conf.env['build_target'] == 'x86_64':
+            conf.check_cxx(fragment = "#include <immintrin.h>\nint main(void) { __m512 a; _mm512_abs_ps(a); _mm512_fmadd_ps(a, a, a); (void) _mm512_reduce_min_ps(a); (void)_mm512_reduce_max_ps(a); return 0; }\n",
+                           features  = ['cxx'],
+                           cxxflags  = [ conf.env['compiler_flags_dict']['avx512f'], conf.env['compiler_flags_dict']['fma'], conf.env['compiler_flags_dict']['avx'] ],
+                           mandatory = False,
+                           execute   = False,
+                           msg       = 'Checking compiler for AVX512F intrinsics',
+                           okmsg     = 'Found',
+                           errmsg    = 'Not supported',
+                           define_name = 'FPU_AVX512F_SUPPORT')
+
             conf.check_cxx(fragment = "#include <immintrin.h>\nint main(void) { __m128 a; _mm_fmadd_ss(a, a, a); return 0; }\n",
                            features  = ['cxx'],
                            cxxflags  = [ conf.env['compiler_flags_dict']['fma'], conf.env['compiler_flags_dict']['avx'] ],
@@ -950,7 +963,7 @@ def options(opt):
     opt.add_option('--thread-sanitizer', action='store_true', default=False, dest='tsan',
                     help='Turn on ThreadSanitizer (requires GCC >= 4.8 or clang, and 64bit CPU)')
     opt.add_option('--ptformat', action='store_true', default=False, dest='ptformat',
-                    help='Turn on PT session import option')
+                    help='Enable support to import PTS/PTF/PTX sessions')
     opt.add_option('--no-threaded-waveviews', action='store_true', default=False, dest='no_threaded_waveviews',
                     help='Disable threaded waveview rendering')
     opt.add_option('--no-futex-semaphore', action='store_true', default=False, dest='no_futex_semaphore',
@@ -1110,6 +1123,10 @@ def configure(conf):
         conf.env.append_value('CXXFLAGS_AUDIOUNITS', "-DAUDIOUNIT_SUPPORT")
         conf.env.append_value('LINKFLAGS_AUDIOUNITS', ['-framework', 'AudioToolbox', '-framework', 'AudioUnit'])
         conf.env.append_value('LINKFLAGS_AUDIOUNITS', ['-framework', 'Cocoa'])
+
+        # use image surface for rendering
+        conf.env.append_value('CFLAGS', '-DUSE_CAIRO_IMAGE_SURFACE')
+        conf.env.append_value('CXXFLAGS', '-DUSE_CAIRO_IMAGE_SURFACE')
 
         if (
                 # osx up to and including 10.6 (uname 10.X.X)
@@ -1540,6 +1557,7 @@ const char* const ardour_config_info = "\\n\\
     write_config_text('Dr. Mingw',             conf.is_defined('HAVE_DRMINGW'))
     write_config_text('FLAC',                  conf.is_defined('HAVE_FLAC'))
     write_config_text('FPU optimization',      opts.fpu_optimization)
+    write_config_text('FPU AVX512F support',   conf.is_defined('FPU_AVX512F_SUPPORT'))
     write_config_text('FPU AVX/FMA support',   conf.is_defined('FPU_AVX_FMA_SUPPORT'))
     write_config_text('Futex Semaphore',       conf.is_defined('USE_FUTEX_SEMAPHORE'))
     write_config_text('Freedesktop files',     opts.freedesktop)

@@ -107,6 +107,7 @@ UI_CONFIG_VARIABLE (double, waveform_clip_level, "waveform-clip-level", -0.09339
 UI_CONFIG_VARIABLE (bool, no_new_session_dialog, "no-new-session-dialog", false)
 UI_CONFIG_VARIABLE (bool, buggy_gradients, "buggy-gradients", false)
 UI_CONFIG_VARIABLE (bool, cairo_image_surface, "cairo-image-surface", false)
+UI_CONFIG_VARIABLE (ARDOUR::AppleNSGLViewMode, nsgl_view_mode, "nsgl-view-mode", NSGLHiRes)
 UI_CONFIG_VARIABLE (uint64_t, waveform_cache_size, "waveform-cache-size", 100) /* units of megagbytes */
 UI_CONFIG_VARIABLE (int32_t, recent_session_sort, "recent-session-sort", 0)
 UI_CONFIG_VARIABLE (bool, save_export_analysis_image, "save-export-analysis-image", false)
@@ -144,6 +145,7 @@ UI_CONFIG_VARIABLE (int, default_lower_midi_note, "default-lower-midi-note", 60)
 UI_CONFIG_VARIABLE (int, default_upper_midi_note, "default-upper-midi-note", 71)
 UI_CONFIG_VARIABLE (bool, ask_before_closing_last_window, "ask-before-closing-last-window", true)
 UI_CONFIG_VARIABLE (std::string, freesound_dir, "freesound-dir", "")
+UI_CONFIG_VARIABLE (int, max_note_height, "max-note-height", 20)
 
 /* these are visibility-type selections in the New Track dialog that we should make persistent for the user's choices */
 UI_CONFIG_VARIABLE (bool, show_on_cue_page, "show-on-cue-page", true)

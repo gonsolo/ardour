@@ -343,8 +343,8 @@ AutomationLine::sync_model_with_view_points (list<ControlPoint*> cp)
 	update_pending = true;
 
 	bool moved = false;
-	for (list<ControlPoint*>::iterator i = cp.begin(); i != cp.end(); ++i) {
-		moved = sync_model_with_view_point (**i) || moved;
+	for (auto const & vp : cp) {
+		moved = sync_model_with_view_point (*vp) || moved;
 	}
 
 	return moved;
@@ -518,7 +518,7 @@ AutomationLine::ContiguousControlPoints::compute_x_bounds (PublicEditor& e)
 }
 
 double
-AutomationLine::ContiguousControlPoints::clamp_dx (double dx)
+AutomationLine::ContiguousControlPoints::clamp_dx (double dx, double region_limit)
 {
 	if (empty()) {
 		return dx;
@@ -539,8 +539,13 @@ AutomationLine::ContiguousControlPoints::clamp_dx (double dx)
 	}
 
 	tx = cp->get_x() + dx; // new possible position if we just add the motion
+
+	tx = max (tx, 0.);
+	tx = min (tx, region_limit);
+
 	tx = max (tx, before_x); // can't move later than following point
 	tx = min (tx, after_x);  // can't move earlier than preceding point
+
 	return  tx - cp->get_x ();
 }
 
@@ -622,8 +627,8 @@ AutomationLine::drag_motion (double const x, float fraction, bool ignore_x, bool
 			contiguous_points.pop_back ();
 		}
 
-		for (vector<CCP>::iterator ccp = contiguous_points.begin(); ccp != contiguous_points.end(); ++ccp) {
-			(*ccp)->compute_x_bounds (trackview.editor());
+		for (auto const & ccp : contiguous_points) {
+			ccp->compute_x_bounds (trackview.editor());
 		}
 		_drag_had_movement = true;
 	}
@@ -637,8 +642,10 @@ AutomationLine::drag_motion (double const x, float fraction, bool ignore_x, bool
 	 */
 
 	if (dx < 0 || ((dx > 0) && !with_push)) {
-		for (vector<CCP>::iterator ccp = contiguous_points.begin(); ccp != contiguous_points.end(); ++ccp) {
-			dx = (*ccp)->clamp_dx (dx);
+		const timepos_t rl (maximum_time() + _offset);
+		double region_limit = trackview.editor().duration_to_pixels_unrounded (timecnt_t (rl, get_origin()));
+		for (auto const & ccp : contiguous_points){
+			dx = ccp->clamp_dx (dx, region_limit);
 		}
 	}
 
@@ -772,31 +779,38 @@ AutomationLine::sync_model_with_view_point (ControlPoint& cp)
 	 * is the RegionView's top-left corner.
 	 */
 	double view_x = cp.get_x();
-	double view_y = 1.0 - cp.get_y() / (double)_height;
 
 	/* model time is relative to the Region (regardless of region->start offset) */
 	timepos_t model_time = (*cp.model())->when;
 
-	/* convert to absolute time on timeline */
-	const timepos_t absolute_time = model_time + get_origin();
+	const timepos_t origin (get_origin());
 
-	/* now convert it back to match the view_x (RegionView pixel pos) */
-	const double model_x = trackview.editor().time_to_pixel_unrounded (absolute_time.earlier (_offset).earlier (get_origin ()));
+	/* convert to absolute time on timeline */
+	const timepos_t absolute_time = model_time + origin;
+
+	/* now convert to pixels relative to start of region, which matches view_x */
+	const double model_x = trackview.editor().time_to_pixel_unrounded (absolute_time) - trackview.editor().time_to_pixel_unrounded (origin);
 
 	if (view_x != model_x) {
 
-		/* convert the current position in the view (units: pixels)
-		 * into samples, then use that to create a timecnt_t that
-		 * measures the distance from the origin for this line.
+		/* convert the current position in the view (units:
+		 * region-relative pixels) into samples, then use that to
+		 * create a timecnt_t that measures the distance from the
+		 * origin for this line.
 		 *
 		 * Note that the offset and origin is irrelevant here,
 		 * pixel_to_sample() islinear only depending on zoom level.
 		 */
 
-		const timecnt_t view_samples (trackview.editor().pixel_to_sample (view_x));
+		const timepos_t view_samples (trackview.editor().pixel_to_sample (view_x));
 
 		/* measure distance from RegionView origin (this preserves time domain) */
-		model_time = timepos_t (the_list()->time_domain()).distance (timepos_t (view_samples));
+
+		if (model_time.time_domain() == Temporal::AudioTime) {
+			model_time = timepos_t (timecnt_t (view_samples, origin).samples());
+		} else {
+			model_time = timepos_t (timecnt_t (view_samples, origin).beats());
+		}
 
 		/* convert RegionView to Region position (account for region->start() _offset) */
 		model_time += _offset;
@@ -804,6 +818,7 @@ AutomationLine::sync_model_with_view_point (ControlPoint& cp)
 
 	update_pending = true;
 
+	double view_y = 1.0 - cp.get_y() / (double)_height;
 	view_to_model_coord_y (view_y);
 
 	alist->modify (cp.model(), model_time, view_y);
@@ -1395,6 +1410,18 @@ AutomationLine::add_visible_control_point (uint32_t view_index, uint32_t pi, dou
 		control_points[view_index]->show ();
 	} else {
 		control_points[view_index]->hide ();
+	}
+}
+
+void
+AutomationLine::dump (std::ostream& ostr) const
+{
+	for (auto const & cp : control_points) {
+		if (cp->model() != alist->end()) {
+			ostr << '#' << cp->view_index() << " @ " << cp->get_x() << ", " << cp->get_y() << " for " << (*cp->model())->value << " @ " << (*(cp->model()))->when << std::endl;
+		} else {
+			ostr << "dead point\n";
+		}
 	}
 }
 

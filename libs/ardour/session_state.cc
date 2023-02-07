@@ -100,6 +100,7 @@
 #include "ardour/boost_debug.h"
 #include "ardour/butler.h"
 #include "ardour/control_protocol_manager.h"
+#include "ardour/debug.h"
 #include "ardour/directory_names.h"
 #include "ardour/disk_reader.h"
 #include "ardour/filename_extensions.h"
@@ -422,9 +423,6 @@ Session::session_loaded ()
 
 	if (_is_new) {
 		save_state ("");
-	} else if (state_was_pending) {
-		save_state ("");
-		state_was_pending = false;
 	}
 
 	/* Now, finally, we can fill the playback buffers */
@@ -810,6 +808,10 @@ Session::save_state (string snapshot_name, bool pending, bool switch_to_snapshot
 		fork_state = switch_to_snapshot ? SwitchToSnapshot : SnapshotKeep;
 	}
 
+#ifndef NDEBUG
+	const int64_t save_start_time = g_get_monotonic_time();
+#endif
+
 	/* tell sources we're saving first, in case they write out to a new file
 	 * which should be saved with the state rather than the old one */
 	for (SourceMap::const_iterator i = sources.begin(); i != sources.end(); ++i) {
@@ -866,6 +868,8 @@ Session::save_state (string snapshot_name, bool pending, bool switch_to_snapshot
 	std::string tmp_path(_session_dir->root_path());
 	tmp_path = Glib::build_filename (tmp_path, legalize_for_path (snapshot_name) + temp_suffix);
 
+	DEBUG_TRACE (DEBUG::SaveState, string_compose ("writing state to '%1'\n", tmp_path));
+
 	if (!tree.write (tmp_path)) {
 		error << string_compose (_("state could not be saved to %1"), tmp_path) << endmsg;
 		if (g_remove (tmp_path.c_str()) != 0) {
@@ -875,6 +879,8 @@ Session::save_state (string snapshot_name, bool pending, bool switch_to_snapshot
 		return -1;
 
 	} else {
+
+		DEBUG_TRACE (DEBUG::SaveState, string_compose ("renaming state to '%1'\n", xml_path));
 
 		if (::g_rename (tmp_path.c_str(), xml_path.c_str()) != 0) {
 			error << string_compose (_("could not rename temporary session file %1 to %2 (%3)"),
@@ -923,6 +929,13 @@ Session::save_state (string snapshot_name, bool pending, bool switch_to_snapshot
 		StateSaved (snapshot_name); /* EMIT SIGNAL */
 	}
 
+#ifndef NDEBUG
+	if (DEBUG_ENABLED (DEBUG::SaveState)) {
+		const int64_t elapsed_time_us = g_get_monotonic_time() - save_start_time;
+		DEBUG_TRACE (DEBUG::SaveState, string_compose ("saved in %1%2%3 ms\n", fixed, setprecision (1), elapsed_time_us / 1000.));
+	}
+#endif
+
 	if (!pending && !for_archive && ! template_only) {
 		remove_pending_capture_state ();
 	}
@@ -952,7 +965,7 @@ Session::load_state (string snapshot_name, bool from_template)
 	delete state_tree;
 	state_tree = 0;
 
-	state_was_pending = false;
+	bool state_was_pending = false;
 
 	/* check for leftover pending state from a crashed capture attempt */
 
@@ -966,6 +979,8 @@ Session::load_state (string snapshot_name, bool from_template)
 		boost::optional<int> r = AskAboutPendingState();
 		if (r.value_or (1)) {
 			state_was_pending = true;
+		} else {
+			remove_pending_capture_state ();
 		}
 	}
 
@@ -1279,7 +1294,7 @@ Session::state (bool save_template, snapshot_t snapshot_type, bool for_archive, 
 		node->add_child_nocopy (*midi_port_stuff);
 	}
 
-	XMLNode& cfgxml (config.get_variables ());
+	XMLNode& cfgxml (config.get_variables (X_("Config")));
 	if (save_template) {
 		/* exclude search-paths from template */
 		cfgxml.remove_nodes_and_delete ("name", "audio-search-path");
@@ -1690,7 +1705,8 @@ Session::set_state (const XMLNode& node, int version)
 
 	if (node.get_property (X_("sample-rate"), _base_sample_rate)) {
 
-		_nominal_sample_rate = _base_sample_rate;
+		/* required to convert positions during session load */
+		Temporal::set_sample_rate (_base_sample_rate);
 
 		while (!AudioEngine::instance()->running () || _base_sample_rate != AudioEngine::instance()->sample_rate ()) {
 			boost::optional<int> r = AskAboutSampleRateMismatch (_base_sample_rate, _current_sample_rate);
@@ -1701,7 +1717,6 @@ Session::set_state (const XMLNode& node, int version)
 			} else if (rv == -1 && AudioEngine::instance()->running ()) {
 				/* retry */
 				set_block_size (_engine.samples_per_cycle());
-				/* retry */
 				continue;
 			} else {
 				if (AudioEngine::instance()->running ()) {
@@ -1715,7 +1730,12 @@ Session::set_state (const XMLNode& node, int version)
 		}
 
 		if (_base_sample_rate != _engine.sample_rate ()) {
-			set_sample_rate (_engine.sample_rate());
+			set_sample_rate (_base_sample_rate);
+			/* post_engine_init() calls initialize_latencies()
+			 * which sets up resampling. However by that time all session
+			 * ports will exist and would be need to be reinitialized.
+			 */
+			setup_engine_resampling ();
 		}
 	}
 

@@ -100,7 +100,7 @@ PluginInsert::PluginInsert (Session& s, Temporal::TimeDomain td, boost::shared_p
 		add_plugin (plug);
 		create_automatable_parameters ();
 		const ChanCount& sc (sidechain_input_pins ());
-		if (sc.n_audio () > 0 || sc.n_midi () > 0) {
+		if ((sc.n_audio () > 0 || sc.n_midi () > 0) && Config->get_setup_sidechain ()) {
 			add_sidechain (sc.n_audio (), sc.n_midi ());
 		}
 	}
@@ -1969,6 +1969,53 @@ PluginInsert::reset_map (bool emit)
 }
 
 bool
+PluginInsert::reset_sidechain_map ()
+{
+	/* intended to be called from Route::add_remove_sidechain after
+	 * adding a SC. This connects the SC ports like reset_map() above.
+	 */
+
+	if (!has_sidechain () || sidechain_input_pins ().n_total () == 0) {
+		return false;
+	}
+	if (_custom_cfg) {
+		return false;
+	}
+
+	const PinMappings old_in (_in_map);
+	for (DataType::iterator t = DataType::begin(); t != DataType::end(); ++t) {
+		uint32_t sc = 0; // side-chain round-robin (all instances)
+		uint32_t pc = 0;
+		for (Plugins::iterator i = _plugins.begin(); i != _plugins.end(); ++i, ++pc) {
+			const uint32_t nis = natural_input_streams ().get(*t);
+
+			/* SC inputs are last in the plugin-insert.. */
+			const uint32_t sc_start = _configured_in.get (*t);
+			const uint32_t sc_len = _configured_internal.get (*t) - sc_start;
+
+			for (uint32_t in = 0; in < nis; ++in) {
+				const Plugin::IOPortDescription& iod (_plugins[pc]->describe_io_port (*t, true, in));
+				if (iod.is_sidechain) {
+					/* connect sidechain sinks to sidechain inputs in round-robin fashion */
+					if (sc_len > 0) {// side-chain may be hidden
+						_in_map[pc].set (*t, in, sc_start + sc);
+						sc = (sc + 1) % sc_len;
+					}
+				}
+			}
+		}
+	}
+
+	sanitize_maps ();
+	if (old_in == _in_map) {
+		return false;
+	}
+
+	mapping_changed ();
+	return true;
+}
+
+bool
 PluginInsert::configure_io (ChanCount in, ChanCount out)
 {
 	Match old_match = _match;
@@ -2068,7 +2115,8 @@ PluginInsert::configure_io (ChanCount in, ChanCount out)
 		break;
 
 	case Replicate:
-		assert (get_count () > 1);
+		/* NB. When resolving impossible matches, "replicate 1 time" is valid.
+		 * e.g. add a MIDI filter (1 MIDI in, 1 MIDI out) after some audio plugin */
 		assert (!_plugins.front()->get_info()->reconfigurable_io ());
 		break;
 
@@ -2367,6 +2415,7 @@ PluginInsert::internal_can_support_io_configuration (ChanCount const & inx, Chan
 		// prefer floor() so the count won't overly increase IFF (nin < nout)
 		f = max (f, (uint32_t) floor (inx.get(*t) / (float)nout));
 	}
+	DEBUG_TRACE (DEBUG::ChanMapping, string_compose ("%1: resolving by output, replicate %2\n", name(), f));
 	if (f > 0 && outputs * f >= _configured_out) {
 		out = outputs * f + midi_bypass;
 		return Match (Replicate, f, _strict_io);
@@ -2379,6 +2428,7 @@ PluginInsert::internal_can_support_io_configuration (ChanCount const & inx, Chan
 		if (nin == 0 || inx.get(*t) == 0) { continue; }
 		f = max (f, (uint32_t) ceil (inx.get(*t) / (float)nin));
 	}
+	DEBUG_TRACE (DEBUG::ChanMapping, string_compose ("%1: resolving by input, replicate %2\n", name(), f));
 	if (f > 0) {
 		out = outputs * f + midi_bypass;
 		return Match (Replicate, f, _strict_io);
@@ -2391,6 +2441,7 @@ PluginInsert::internal_can_support_io_configuration (ChanCount const & inx, Chan
 		if (nin == 0 || inx.get(*t) == 0) { continue; }
 		f = max (f, (uint32_t) ceil (inx.get(*t) / (float)nin));
 	}
+	DEBUG_TRACE (DEBUG::ChanMapping, string_compose ("%1: resolving by input w/sc, replicate %2\n", name(), f));
 	out = outputs * f + midi_bypass;
 	return Match (Replicate, f, _strict_io);
 }
@@ -2455,7 +2506,7 @@ PluginInsert::automatic_can_support_io_configuration (ChanCount const& inx, Chan
 	}
 
 	/* Plugin inputs match requested inputs + side-chain-ports exactly */
-	if (inputs == insc) {
+	if (inputs == insc && has_sidechain ()) {
 		out = outputs + midi_bypass;
 		return Match (ExactMatch, 1);
 	}

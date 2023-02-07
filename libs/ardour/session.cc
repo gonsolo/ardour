@@ -191,7 +191,6 @@ Session::Session (AudioEngine &eng,
 	, _bounce_processing_active (false)
 	, waiting_for_sync_offset (false)
 	, _base_sample_rate (0)
-	, _nominal_sample_rate (0)
 	, _current_sample_rate (0)
 	, _transport_sample (0)
 	, _session_range_location (0)
@@ -240,7 +239,6 @@ Session::Session (AudioEngine &eng,
 	, _session_dir (new SessionDirectory (fullpath))
 	, _current_snapshot_name (snapshot_name)
 	, state_tree (0)
-	, state_was_pending (false)
 	, _state_of_the_state (StateOfTheState (CannotSave | InitialConnecting | Loading))
 	, _save_queued (false)
 	, _save_queued_pending (false)
@@ -566,6 +564,7 @@ Session::immediately_post_engine ()
 	 * know that the engine is running, but before we either create a
 	 * session or set state for an existing one.
 	 */
+	Port::setup_resampler (Config->get_port_resampler_quality ());
 
 	_process_graph.reset (new Graph (*this));
 	_rt_tasklist.reset (new RTTaskList (_process_graph));
@@ -613,9 +612,9 @@ Session::destroy ()
 {
 	vector<void*> debug_pointers;
 
-	/* if we got to here, leaving pending capture state around
-	   is a mistake.
-	*/
+	/* if we got to here, leaving pending state around
+	 * is a mistake.
+	 */
 
 	remove_pending_capture_state ();
 
@@ -2111,20 +2110,28 @@ Session::preroll_samples (samplepos_t pos) const
 void
 Session::set_sample_rate (samplecnt_t frames_per_second)
 {
-	/** \fn void Session::set_sample_size(samplecnt_t)
-		the AudioEngine object that calls this guarantees
-		that it will not be called while we are also in
-		::process(). Its fine to do things that block
-		here.
-	*/
+	/* this is called from the engine when SR changes,
+	 * and after creating or loading a session
+	 * via post_engine_init().
+	 *
+	 * In the latter case this call can happen
+	 * concurrently with processing.
+	 */
 
 	if (_base_sample_rate == 0) {
 		_base_sample_rate = frames_per_second;
 	}
-	else if (_base_sample_rate != frames_per_second && frames_per_second != _nominal_sample_rate) {
+	else if (_base_sample_rate != frames_per_second && _engine.running ()) {
 		NotifyAboutSampleRateMismatch (_base_sample_rate, frames_per_second);
 	}
-	_nominal_sample_rate = frames_per_second;
+
+	/* The session's actual SR does not change.
+	 * _engine.Running calls Session::initialize_latencies ()
+	 * which sets up resampling, so the following really needs
+	 * to be called only once.
+	 */
+
+	Temporal::set_sample_rate (_base_sample_rate);
 
 	sync_time_vars();
 
@@ -2135,12 +2142,7 @@ Session::set_sample_rate (samplecnt_t frames_per_second)
 	Location* loc = _locations->auto_loop_location ();
 	DiskReader::reset_loop_declick (loc, nominal_sample_rate());
 
-	// XXX we need some equivalent to this, somehow
-	// SndFileSource::setup_standard_crossfades (frames_per_second);
-
 	set_dirty();
-
-	/* XXX need to reset/reinstantiate all LADSPA plugins */
 }
 
 void
@@ -3467,8 +3469,6 @@ Session::add_internal_send (boost::shared_ptr<Route> dest, boost::shared_ptr<Pro
 	}
 
 	sender->add_aux_send (dest, before);
-
-	graph_reordered (false);
 }
 
 void
@@ -4388,7 +4388,7 @@ Session::maybe_update_session_range (timepos_t const & a, timepos_t const & b)
 		return;
 	}
 
-	samplepos_t session_end_marker_shift_samples = session_end_shift * _nominal_sample_rate;
+	samplepos_t session_end_marker_shift_samples = session_end_shift * nominal_sample_rate ();
 
 	if (_session_range_location == 0) {
 
@@ -6728,9 +6728,21 @@ Session::missing_filesources (DataType dt) const
 }
 
 void
+Session::setup_engine_resampling ()
+{
+	if (_base_sample_rate != AudioEngine::instance()->sample_rate ()) {
+		Port::setup_resampler (std::max<uint32_t>(65, Config->get_port_resampler_quality ()));
+	} else {
+		Port::setup_resampler (Config->get_port_resampler_quality ());
+	}
+	Port::set_engine_ratio (_base_sample_rate,  AudioEngine::instance()->sample_rate ());
+}
+
+void
 Session::initialize_latencies ()
 {
 	block_processing ();
+	setup_engine_resampling ();
 	update_latency (false);
 	update_latency (true);
 	unblock_processing ();
@@ -7182,6 +7194,64 @@ void
 Session::clear_object_selection ()
 {
 	_object_selection = Temporal::Range (timepos_t::max (Temporal::AudioTime), timepos_t::max (Temporal::AudioTime));
+}
+
+void
+Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos_t const& to, bool const copy)
+{
+	std::list<TimelineRange> ltr;
+	TimelineRange tlr (start, end, 0);
+	ltr.push_back (tlr);
+
+	if (copy) {
+		begin_reversible_command (_("Copy Section"));
+	} else {
+		begin_reversible_command (_("Move Section"));
+	}
+
+	{
+		/* disable DiskReader::playlist_ranges_moved moving automation */
+		bool automation_follows = Config->get_automation_follows_regions ();
+		Config->set_automation_follows_regions (false);
+
+		for (auto& pl : _playlists->playlists) {
+			pl->freeze ();
+			pl->clear_changes ();
+			pl->clear_owned_changes ();
+
+			boost::shared_ptr<Playlist> p = copy ? pl->copy (ltr) : pl->cut (ltr);
+			// TODO copy interpolated MIDI events
+			if (!copy) {
+				pl->ripple (start, end.distance(start), NULL);
+			}
+
+			/* now make space at the insertion-point */
+			pl->ripple (to, start.distance(end), NULL);
+
+			pl->paste (p, to, 1);
+
+			vector<Command*> cmds;
+			pl->rdiff (cmds);
+			add_commands (cmds);
+			add_command (new StatefulDiffCommand (pl));
+		}
+
+		for (auto& pl : _playlists->playlists) {
+			pl->thaw ();
+		}
+
+		Config->set_automation_follows_regions (automation_follows);
+	}
+
+	for (auto& r : *(routes.reader())) {
+		r->cut_copy_section (start, end, to, copy);
+	}
+
+	// TODO: update ranges and Tempo-Map
+
+	if (!abort_empty_reversible_command ()) {
+		commit_reversible_command ();
+	}
 }
 
 void

@@ -121,7 +121,7 @@ public:
 	virtual void cycle_start (pframes_t);
 	virtual void cycle_end (pframes_t) = 0;
 	virtual void cycle_split () = 0;
-	virtual void reinit () {}
+	virtual void reinit (bool) {}
 	virtual Buffer& get_buffer (pframes_t nframes) = 0;
 	virtual void flush_buffers (pframes_t /*nframes*/) {}
 	virtual void transport_stopped () {}
@@ -139,6 +139,7 @@ public:
 
 	static PBD::Signal0<void> PortDrop;
 	static PBD::Signal0<void> PortSignalDrop;
+	static PBD::Signal0<void> ResamplerQualityChanged;
 
 	static void set_varispeed_ratio (double s); //< varispeed playback
 	static bool set_engine_ratio (double session, double engine); //< SR mismatch

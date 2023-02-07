@@ -62,6 +62,8 @@ using namespace PBD;
 using namespace ARDOUR;
 using namespace Gtkmm2ext;
 
+extern int query_darwin_version (); // cocoacarbon.mm
+
 static const char* ui_config_file_name = "ui_config";
 static const char* default_ui_config_file_name = "default_ui_config";
 
@@ -92,6 +94,25 @@ UIConfiguration::UIConfiguration ()
 	modifiers_modified (false),
 	block_save (0)
 {
+
+/* Uncomment the following to get a list of all config variables */
+#if 0
+#undef  UI_CONFIG_VARIABLE
+#define UI_CONFIG_VARIABLE(Type,var,name,value) _my_variables.insert (std::make_pair ((name), &(var)));
+#define CANVAS_FONT_VARIABLE(var,name) /* no need for metadata for these */
+#include "ui_config_vars.h"
+#undef  UI_CONFIG_VARIABLE
+#undef  CANVAS_FONT_VARIABLE
+
+	for (auto const & s : _my_variables) {
+		std::cerr << s.first << std::endl;
+	}
+#endif
+
+	/* This is global across all Configuration objects */
+
+	build_metadata ();
+
 	load_state();
 
 	/* Setup defaults */
@@ -215,6 +236,11 @@ UIConfiguration::pre_gui_init ()
 #ifndef USE_CAIRO_IMAGE_SURFACE
 	if (get_cairo_image_surface()) {
 		g_setenv ("ARDOUR_IMAGE_SURFACE", "1", 1);
+	}
+#endif
+#ifdef __APPLE__
+	if (NSGLDisable == get_nsgl_view_mode()) {
+		g_setenv ("ARDOUR_NSGL", "0", 0);
 	}
 #endif
 	return 0;
@@ -532,11 +558,11 @@ UIConfiguration::get_state () const
 }
 
 XMLNode&
-UIConfiguration::get_variables (std::string which_node) const
+UIConfiguration::get_variables (std::string const & node_name) const
 {
 	XMLNode* node;
 
-	node = new XMLNode (which_node);
+	node = new XMLNode (node_name);
 
 #undef  UI_CONFIG_VARIABLE
 #undef  CANVAS_FONT_VARIABLE
@@ -836,3 +862,5 @@ UIConfiguration::color_to_hex_string_no_alpha (Gtkmm2ext::Color c)
 	}
 	return buf;
 }
+
+#include "configuration_metadata.h"

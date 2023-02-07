@@ -517,7 +517,7 @@ public:
 	/** "actual" sample rate of session, set by current audioengine rate, pullup/down etc. */
 	samplecnt_t sample_rate () const { return _current_sample_rate; }
 	/** "native" sample rate of session, regardless of current audioengine rate, pullup/down etc */
-	samplecnt_t nominal_sample_rate () const { return _nominal_sample_rate; }
+	samplecnt_t nominal_sample_rate () const { return _base_sample_rate; }
 	samplecnt_t frames_per_hour () const { return _frames_per_hour; }
 
 	double samples_per_timecode_frame() const { return _samples_per_timecode_frame; }
@@ -1169,6 +1169,8 @@ public:
 	void clear_range_selection ();
 	void clear_object_selection ();
 
+	void cut_copy_section (Temporal::timepos_t const& start, Temporal::timepos_t const& end, Temporal::timepos_t const& to, bool const copy = false);
+
 	/* buffers for gain and pan */
 
 	gain_t* gain_automation_buffer () const;
@@ -1430,7 +1432,6 @@ private:
 	bool                    _bounce_processing_active;
 	bool                     waiting_for_sync_offset;
 	samplecnt_t             _base_sample_rate;     // sample-rate of the session at creation time, "native" SR
-	samplecnt_t             _nominal_sample_rate;  // overridden by audioengine setting
 	samplecnt_t             _current_sample_rate;  // this includes video pullup offset
 	samplepos_t             _transport_sample;
 	GATOMIC_QUAL gint       _seek_counter;
@@ -1484,6 +1485,8 @@ private:
 
 	void send_latency_compensation_change ();
 	void update_send_delaylines ();
+
+	void setup_engine_resampling ();
 
 	void ensure_buffers (ChanCount howmany = ChanCount::ZERO);
 
@@ -1597,7 +1600,6 @@ private:
 	std::string _current_snapshot_name;
 
 	XMLTree*         state_tree;
-	bool             state_was_pending;
 	StateOfTheState _state_of_the_state;
 
 	friend class    StateProtector;

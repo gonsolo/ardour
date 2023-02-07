@@ -1104,6 +1104,8 @@ Route::add_processors (const ProcessorList& others, boost::shared_ptr<Processor>
 		}
 	}
 
+	bool routing_processor_added = false;
+
 	{
 		Glib::Threads::Mutex::Lock lx (AudioEngine::instance()->process_lock ());
 		Glib::Threads::RWLock::WriterLock lm (_processor_lock);
@@ -1177,6 +1179,10 @@ Route::add_processors (const ProcessorList& others, boost::shared_ptr<Processor>
 					send->output()->changed.connect_same_thread (**i, boost::bind (&Route::output_change_handler, this, _1, _2));
 				}
 			}
+
+			if (boost::dynamic_pointer_cast<InternalSend>(*i)) {
+				routing_processor_added = true;
+			}
 		}
 
 		for (ProcessorList::const_iterator i = _processors.begin(); i != _processors.end(); ++i) {
@@ -1192,7 +1198,7 @@ Route::add_processors (const ProcessorList& others, boost::shared_ptr<Processor>
 	}
 
 	reset_instrument_info ();
-	processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
+	processors_changed (RouteProcessorChange (routing_processor_added ? RouteProcessorChange::SendReturnChange : RouteProcessorChange::GeneralChange, false)); /* EMIT SIGNAL */
 	set_processor_positions ();
 
 	if (fanout && fanout->configured ()
@@ -1465,6 +1471,8 @@ Route::remove_processor (boost::shared_ptr<Processor> processor, ProcessorStream
 		return 1;
 	}
 
+	bool routing_processor_removed = false;
+
 	processor_max_streams.reset();
 
 	{
@@ -1508,6 +1516,10 @@ Route::remove_processor (boost::shared_ptr<Processor> processor, ProcessorStream
 			lm.acquire ();
 		}
 
+		if (boost::dynamic_pointer_cast<InternalSend>(*i)) {
+			routing_processor_removed = true;
+		}
+
 		_processors.erase (i);
 
 		if (configure_processors_unlocked (err, &lm)) {
@@ -1536,7 +1548,7 @@ Route::remove_processor (boost::shared_ptr<Processor> processor, ProcessorStream
 
 	reset_instrument_info ();
 	processor->drop_references ();
-	processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
+	processors_changed (RouteProcessorChange (routing_processor_removed ? RouteProcessorChange::SendReturnChange : RouteProcessorChange::GeneralChange, false)); /* EMIT SIGNAL */
 	set_processor_positions ();
 
 	return 0;
@@ -1648,6 +1660,8 @@ Route::remove_processors (const ProcessorList& to_be_deleted, ProcessorStreams* 
 		return 1;
 	}
 
+	bool routing_processor_removed = false;
+
 	processor_max_streams.reset();
 
 	{
@@ -1692,6 +1706,10 @@ Route::remove_processors (const ProcessorList& to_be_deleted, ProcessorStreams* 
 				iop->disconnect ();
 			}
 
+			if (boost::dynamic_pointer_cast<InternalSend>(processor)) {
+				routing_processor_removed = true;
+			}
+
 			deleted.push_back (processor);
 			i = _processors.erase (i);
 		}
@@ -1730,7 +1748,7 @@ Route::remove_processors (const ProcessorList& to_be_deleted, ProcessorStreams* 
 	}
 
 	reset_instrument_info ();
-	processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
+	processors_changed (RouteProcessorChange (routing_processor_removed ? RouteProcessorChange::SendReturnChange : RouteProcessorChange::GeneralChange, false)); /* EMIT SIGNAL */
 	set_processor_positions ();
 
 	return 0;
@@ -2335,7 +2353,11 @@ Route::add_remove_sidechain (boost::shared_ptr<Processor> proc, bool add)
 		PBD::Unwinder<bool> uw (_in_sidechain_setup, true);
 
 		if (add) {
-			if (!pi->add_sidechain ()) {
+			ChanCount sc (pi->sidechain_input_pins ());
+			if (sc.n_audio () == 0 && sc.n_midi () == 0) {
+				sc.set (DataType::AUDIO, 1);
+			}
+			if (!pi->add_sidechain (sc.n_audio (), sc.n_midi ())) {
 				return false;
 			}
 		} else {
@@ -2366,6 +2388,7 @@ Route::add_remove_sidechain (boost::shared_ptr<Processor> proc, bool add)
 	}
 
 	if (pi->has_sidechain ()) {
+		pi->reset_sidechain_map ();
 		pi->sidechain_input ()->changed.connect_same_thread (*pi, boost::bind (&Route::sidechain_change_handler, this, _1, _2));
 	}
 
@@ -4521,45 +4544,52 @@ Route::protect_automation ()
 void
 Route::shift (timepos_t const & pos, timecnt_t const & distance)
 {
-	/* pan automation */
-	if (_pannable) {
-		ControlSet::Controls& c (_pannable->controls());
-
-		for (ControlSet::Controls::const_iterator ci = c.begin(); ci != c.end(); ++ci) {
-			boost::shared_ptr<AutomationControl> pc = boost::dynamic_pointer_cast<AutomationControl> (ci->second);
-			if (pc) {
-				boost::shared_ptr<AutomationList> al = pc->alist();
-				XMLNode& before = al->get_state ();
-				al->shift (pos, timecnt_t (distance));
-				XMLNode& after = al->get_state ();
-				_session.add_command (new MementoCommand<AutomationList> (*al.get(), &before, &after));
-			}
+	ControllableSet acs;
+	automatables (acs);
+	for (auto& ec : acs) {
+		boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl> (ec);
+		if (!ac) {
+			continue;
 		}
+		boost::shared_ptr<AutomationList> al = ac->alist();
+		if (!al || al->empty ()) {
+			continue;
+		}
+
+		XMLNode &before = al->get_state ();
+		al->shift (pos, timecnt_t (distance));
+		XMLNode& after = al->get_state ();
+		_session.add_command (new MementoCommand<AutomationList> (*al.get(), &before, &after));
 	}
+}
 
-	/* TODO mute automation, MuteControl */
-
-	/* processor automation (incl. gain, trim,..) */
-	{
-		Glib::Threads::RWLock::ReaderLock lm (_processor_lock);
-		for (ProcessorList::iterator i = _processors.begin (); i != _processors.end (); ++i) {
-
-			set<Evoral::Parameter> parameters = (*i)->what_can_be_automated();
-
-			for (set<Evoral::Parameter>::const_iterator p = parameters.begin (); p != parameters.end (); ++p) {
-				boost::shared_ptr<AutomationControl> ac = (*i)->automation_control (*p);
-				if (ac) {
-					boost::shared_ptr<AutomationList> al = ac->alist();
-					if (al->empty ()) {
-						continue;
-					}
-					XMLNode &before = al->get_state ();
-					al->shift (pos, distance);
-					XMLNode &after = al->get_state ();
-					_session.add_command (new MementoCommand<AutomationList> (*al.get(), &before, &after));
-				}
-			}
+void
+Route::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos_t const& to, bool const copy)
+{
+	ControllableSet acs;
+	automatables (acs);
+	for (auto& ec : acs) {
+		boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl> (ec);
+		if (!ac) {
+			continue;
 		}
+		boost::shared_ptr<AutomationList> al = ac->alist();
+		if (!al || al->empty ()) {
+			continue;
+		}
+
+		XMLNode &before = al->get_state ();
+		boost::shared_ptr<Evoral::ControlList> cl = copy ? al->copy (start, end) : al->cut (start, end);
+		if (!copy) {
+			/* remove time (negative distance), ripple */
+			al->shift (start, end.distance (start));
+		}
+		/* make space at the inserion point */
+		al->shift (to, start.distance (end));
+		al->paste (*cl, to);
+
+		XMLNode &after = al->get_state ();
+		_session.add_command (new MementoCommand<AutomationList> (*al.get(), &before, &after));
 	}
 }
 

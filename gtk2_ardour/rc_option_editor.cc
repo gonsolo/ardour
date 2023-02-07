@@ -2367,6 +2367,7 @@ RCOptionEditor::RCOptionEditor ()
 	, Tabbable (*this, _("Preferences"), X_("preferences"), /* detached by default */ false)
 	, _rc_config (Config)
 	, _mixer_strip_visibility ("mixer-element-visibility")
+	, _cairo_image_surface (0)
 {
 	UIConfiguration::instance().ParameterChanged.connect (sigc::mem_fun (*this, &RCOptionEditor::parameter_changed));
 	BoolOption* bo;
@@ -3016,17 +3017,33 @@ These settings will only take effect after %1 is restarted.\n\
 	add_option (_("Appearance"), new OptionEditorHeading (_("Graphics Acceleration")));
 #endif
 
+#ifdef __APPLE__
+	ComboOption<AppleNSGLViewMode>* glmode = new ComboOption<AppleNSGLViewMode> (
+		"nsgl-view-mode",
+		_("Render Canvas on openGL texture (requires restart)"),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_nsgl_view_mode),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_nsgl_view_mode)
+		);
+	glmode->add (NSGLHiRes, _("Yes, with Retina scaling"));
+	glmode->add (NSGLLoRes, _("Yes, low resolution"));
+	glmode->add (NSGLDisable, _("No"));
+
+	Gtkmm2ext::UI::instance()->set_tip (glmode->tip_widget(), string_compose (
+				_("Render editor canvas, on a openGL texture which may improve graphics performance.\nThis requires restarting %1 before having an effect"), PROGRAM_NAME));
+	add_option (_("Appearance"), glmode);
+#endif
+
 #ifndef USE_CAIRO_IMAGE_SURFACE
-	BoolOption* bgc = new BoolOption (
+	_cairo_image_surface = new BoolOption (
 		"cairo-image-surface",
-		_("Disable Graphics Hardware Acceleration (requires restart)"),
+		_("Use intermediate image-surface to render canvas (requires restart)"),
 		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_cairo_image_surface),
 		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_cairo_image_surface)
 		);
 
-	Gtkmm2ext::UI::instance()->set_tip (bgc->tip_widget(), string_compose (
+	Gtkmm2ext::UI::instance()->set_tip (_cairo_image_surface->tip_widget(), string_compose (
 				_("Render large parts of the application user-interface in software, instead of using 2D-graphics acceleration.\nThis requires restarting %1 before having an effect"), PROGRAM_NAME));
-	add_option (_("Appearance"), bgc);
+	add_option (_("Appearance"), _cairo_image_surface);
 #endif
 
 #ifdef CAIRO_SUPPORTS_FORCE_BUGGY_GRADIENTS_ENVIRONMENT_VARIABLE
@@ -3455,8 +3472,13 @@ These settings will only take effect after %1 is restarted.\n\
 	                                           sigc::mem_fun (*this, &RCOptionEditor::set_default_upper_midi_note));
 	mru_option->set_valid_chars (legal_midi_name_chars);
 
+	SpinOption<int>* mnh_option = new SpinOption<int> ("max-note-height", _("Maximum note height"),
+	                                                   sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_max_note_height),
+	                                                   sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_max_note_height),
+	                                                   10, 40, 1, 5);
 	add_option (_("MIDI"), mrl_option);
 	add_option (_("MIDI"), mru_option);
+	add_option (_("MIDI"), mnh_option);
 
 	/* MIDI PORTs */
 	add_option (_("MIDI"), new OptionEditorHeading (_("MIDI Port Options")));
@@ -3772,6 +3794,7 @@ These settings will only take effect after %1 is restarted.\n\
 			    ));
 
 	add_option (_("Transport"), new OptionEditorHeading (_("Plugins")));
+
 	bo = new BoolOption (
 		"plugins-stop-with-transport",
 		_("Silence plugins when the transport is stopped"),
@@ -3846,7 +3869,17 @@ These settings will only take effect after %1 is restarted.\n\
 			);
 	add_option (_("Plugins"), bo);
 	Gtkmm2ext::UI::instance()->set_tip (bo->tip_widget(),
-					    _("<b>When enabled</b> plugins will be activated when they are added to tracks/busses. When disabled plugins will be left inactive when they are added to tracks/busses"));
+					    _("<b>When enabled</b> plugins will be activated when they are added to tracks/busses.\n<b>When disabled</b> plugins will be left inactive when they are added to tracks/busses"));
+
+	bo = new BoolOption (
+		"setup-sidechain",
+			_("Setup Sidechain ports when loading plugin with aux inputs"),
+			sigc::mem_fun (*_rc_config, &RCConfiguration::get_setup_sidechain),
+			sigc::mem_fun (*_rc_config, &RCConfiguration::set_setup_sidechain)
+			);
+	add_option (_("Plugins"), bo);
+	Gtkmm2ext::UI::instance()->set_tip (bo->tip_widget(),
+					    _("<b>When enabled</b> sidechain ports are created for plugins at instantiation time if a plugin has sidechain inputs. Note that the ports themselves will have to be manually connected, so while the plugin pins are connected they are initially fed with silence.\n<b>When disabled</b> sidechain input pins will remain unconnected."));
 
 	add_option (_("Plugins/GUI"), new OptionEditorHeading (_("Plugin GUI")));
 	add_option (_("Plugins/GUI"),
@@ -4257,6 +4290,39 @@ These settings will only take effect after %1 is restarted.\n\
 				sigc::mem_fun (*_rc_config, &RCConfiguration::get_use_master_volume),
 				sigc::mem_fun (*_rc_config, &RCConfiguration::set_use_master_volume)
 				));
+
+	ComboOption<uint32_t>* zitaq = new ComboOption<uint32_t> (
+			"port-resampler-quality",
+			_("I/O Resampler (vari-speed) quality"),
+			sigc::mem_fun (*_rc_config, &RCConfiguration::get_port_resampler_quality),
+			sigc::mem_fun (*_rc_config, &RCConfiguration::set_port_resampler_quality)
+			);
+
+		zitaq->add (0, _("Off (no vari-speed)"));
+		zitaq->add (9, _("Low (16 samples latency)"));
+		zitaq->add (17, _("Moderate (32 samples latency), default"));
+		zitaq->add (33, _("Medium (64 samples latency)"));
+		zitaq->add (49, _("High (96 samples latency)"));
+		zitaq->add (65, _("Very High (128 samples latency)"));
+		zitaq->add (93, _("Extreme (184 samples latency)"));
+
+		uint32_t prq_val = _rc_config->get_port_resampler_quality ();
+		if (!(prq_val == 0 || prq_val == 9 || prq_val == 17 || prq_val == 33 || prq_val == 65 || prq_val == 93)) {
+			if (prq_val < 8) {
+				_rc_config->set_port_resampler_quality (8);
+				prq_val = 8;
+			}
+			if (prq_val > 96) {
+				_rc_config->set_port_resampler_quality (96);
+				prq_val = 96;
+			}
+			zitaq->add (prq_val, string_compose (_("Custom (%1 samples latency)"), prq_val - 1));
+		}
+
+		zitaq->set_note (_("This setting will only take effect when the Audio Engine is restarted."));
+		set_tooltip (zitaq->tip_widget(), _("To facilitate vari-speed playback/recording, audio is resampled to change pitch and speed. This introduces latency depending on the quality. For consistency this latency is also present when not vari-speeding (even if no resampling happens).\n\nIt is possible to disable this feature, which will also disable vari-speed. - Except if the audio-engine runs at a different sample-rate than the session, the quality is set to be at least 'Very High' (128 samples round-trip latency)"));
+
+	add_option (_("Signal Flow"), zitaq);
 
 	add_option (_("Signal Flow"), new OptionEditorHeading (_("Default Track / Bus Muting Options")));
 
@@ -4777,6 +4843,10 @@ These settings will only take effect after %1 is restarted.\n\
 	parameter_changed ("sync-source");
 	parameter_changed ("open-gui-after-adding-plugin");
 
+#ifdef __APPLE__
+	parameter_changed ("use-opengl-view");
+#endif
+
 	XMLNode* node = ARDOUR_UI::instance()->preferences_settings();
 	if (node) {
 		/* gcc4 complains about ambiguity with Gtk::Widget::set_state
@@ -4786,6 +4856,24 @@ These settings will only take effect after %1 is restarted.\n\
 	}
 
 	set_current_page (_("General"));
+
+	/* Place the search entry */
+
+	treeview_packer.pack_end (search_packer, false, false);
+
+	/* Connect metadata */
+
+	for (auto p : pages()) {
+		for (auto oc : p.second->components) {
+			Option* o = dynamic_cast<Option*> (oc);
+			if (o) {
+				Configuration::Metadata const * m = Configuration::get_metadata (o->id());
+				if (m) {
+					oc->set_metadata (*m);
+				}
+			}
+		}
+	}
 }
 
 bool

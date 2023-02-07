@@ -41,6 +41,7 @@ using namespace PBD;
 
 PBD::Signal0<void> Port::PortDrop;
 PBD::Signal0<void> Port::PortSignalDrop;
+PBD::Signal0<void> Port::ResamplerQualityChanged;
 
 bool         Port::_connecting_blocked = false;
 pframes_t    Port::_global_port_buffer_offset = 0;
@@ -711,26 +712,32 @@ Port::set_state (const XMLNode& node, int)
 /* static */ bool
 Port::setup_resampler (uint32_t q)
 {
-	/* configure at application start (Ardour::init) */
-	if (port_manager && port_manager->session_port_count() > 0) {
-		return false;
-	}
+	uint32_t cur_quality = _resampler_quality;
 
 	if (q == 0) {
 		/* no vari-speed */
 		_resampler_quality = 0;
 		_resampler_latency = 0;
-		return true;
+	} else {
+		/* range constrained in VMResampler::setup */
+		if (q < 8) {
+			q = 8;
+		}
+		if (q > 96) {
+			q = 96;
+		}
+		_resampler_quality = q;
+		_resampler_latency = q - 1;
 	}
-	// range constrained in VMResampler::setup
-	if (q < 8) {
-		q = 8;
+
+	if (cur_quality != _resampler_quality) {
+		ResamplerQualityChanged (); /* EMIT SIGNAL */
+		if (port_manager) {
+			Glib::Threads::Mutex::Lock lm (port_manager->process_lock ());
+			port_manager->reinit (true);
+			return false;
+		}
 	}
-	if (q > 96) {
-		q = 96;
-	}
-	_resampler_quality = q;
-	_resampler_latency = q - 1;
 	return true;
 }
 

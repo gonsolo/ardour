@@ -27,6 +27,7 @@
 #include <sstream>
 #include <ostream>
 #include <iostream>
+#include <map>
 
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
@@ -34,9 +35,10 @@
 #include "ardour/types.h" // required for operators used in pbd/configuration_variable.h
 #include "ardour/types_convert.h"
 
+#include "pbd/configuration.h"
+#include "pbd/configuration_variable.h"
 #include "pbd/stateful.h"
 #include "pbd/xml++.h"
-#include "pbd/configuration_variable.h"
 
 #include "gtkmm2ext/colors.h"
 #include "widgets/ui_config.h"
@@ -53,6 +55,7 @@ public:
 	static UIConfiguration& instance ();
 
 	static std::string color_file_suffix;
+	static void build_metadata ();
 
 	void load_rc_file (bool themechange, bool allow_own = true);
 
@@ -61,9 +64,10 @@ public:
 	int load_defaults ();
 	int load_color_theme (bool allow_own);
 
+	void     map_parameters (boost::function<void (std::string)>&);
 	int      set_state (const XMLNode&, int version);
 	XMLNode& get_state () const;
-	XMLNode& get_variables (std::string) const;
+	XMLNode& get_variables (std::string const &) const;
 	void     set_variables (const XMLNode&);
 
 	std::string color_file_name (bool use_my, bool with_version) const;
@@ -94,7 +98,6 @@ public:
 	float get_ui_scale ();
 
 	sigc::signal<void, std::string> ParameterChanged;
-	void                            map_parameters (boost::function<void (std::string)>&);
 
 	void parameter_changed (std::string);
 
@@ -106,6 +109,8 @@ public:
 
 	/** called after the GUI toolkit has been initialized. */
 	UIConfiguration* post_gui_init ();
+
+	std::map<std::string,PBD::ConfigVariableBase*> _my_variables;
 
 #undef UI_CONFIG_VARIABLE
 #define UI_CONFIG_VARIABLE(Type,var,name,value) \

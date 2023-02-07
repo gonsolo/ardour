@@ -1518,7 +1518,7 @@ VST3PI::performEdit (Vst::ParamID id, Vst::ParamValue v)
 		_update_ctrl[idx->second] = true;
 		/* set_parameter_internal() is called via OnParameterChange */
 		value = _controller->normalizedParamToPlain (id, value);
-		OnParameterChange (ValueChange, idx->second, v); /* EMIT SIGNAL */
+		OnParameterChange (ValueChange, idx->second, value); /* EMIT SIGNAL */
 	}
 	return kResultOk;
 }
@@ -1850,6 +1850,8 @@ VST3PI::set_parameter (uint32_t p, float value, int32 sample_off, bool to_list)
 {
 	if (to_list) {
 		set_parameter_internal (index_to_id (p), value, sample_off, false);
+	} else {
+		value = _controller->plainParamToNormalized (index_to_id (p), value);
 	}
 	_shadow_data[p] = value;
 	_update_ctrl[p] = true;
