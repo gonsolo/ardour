@@ -173,7 +173,9 @@ public:
 	                       EndGesture,
 	                       ValueChange,
 	                       InternalChange,
-	                       PresetChange };
+	                       PresetChange,
+	                       ParamValueChanged
+	                     };
 
 	PBD::Signal3<void, ParameterChange, uint32_t, float> OnParameterChange;
 
@@ -182,6 +184,7 @@ public:
 	bool     set_block_size (int32_t);
 	bool     activate ();
 	bool     deactivate ();
+	bool     active () const { return _is_processing; }
 
 	/* State */
 	bool save_state (RAMStream& stream);

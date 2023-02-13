@@ -124,6 +124,8 @@ VST3Plugin::parameter_change_handler (VST3PI::ParameterChange t, uint32_t param,
 			break;
 		case VST3PI::ValueChange:
 			_parameter_queue.write_one (PV (param, value));
+			/* fallthrough */
+		case VST3PI::ParamValueChanged:
 			/* emit ParameterChangedExternally, mark preset dirty */
 			Plugin::parameter_changed_externally (param, value);
 			break;
@@ -166,7 +168,8 @@ VST3Plugin::default_value (uint32_t port)
 void
 VST3Plugin::set_parameter (uint32_t port, float val, sampleoffset_t when)
 {
-	if (AudioEngine::instance()->in_process_thread()) {
+	if (!_plug->active () || AudioEngine::instance()->in_process_thread()) {
+		/* directly use VST3PI::_input_param_changes */
 		_plug->set_parameter (port, val, when);
 	} else {
 		assert (when == 0);
@@ -610,9 +613,18 @@ VST3Plugin::set_state (const XMLNode& node, int version)
 			continue;
 		}
 
+		/* This is not required, PluginInsert::set_state calls
+		 * set_control_ids() which already calls VST3Plugin::set_parameter.
+		 *
+		 * However there /may/ not be controllables for all parameters. Doing
+		 * this here also prevents an additional pass to synchronize the controller
+		 * via VST3PI::load_state -> VST3PI::update_shadow_data -> addParameterData
+		 */
+#if 1
 		if (!_plug->try_set_parameter_by_id (param_id, value)) {
 			warning << string_compose (_("VST3<%1>: Invalid Vst::ParamID in VST3Plugin::set_state"), name ()) << endmsg;
 		}
+#endif
 	}
 
 	XMLNode* chunk;
@@ -1253,6 +1265,8 @@ VST3PI::VST3PI (boost::shared_ptr<ARDOUR::VST3PluginModule> m, std::string uniqu
 	}
 
 	int32 n_params = _controller->getParameterCount ();
+	DEBUG_TRACE (DEBUG::VST3Config, string_compose ("VST3 parameter count: %1\n", n_params));
+
 	for (int32 i = 0; i < n_params; ++i) {
 		Vst::ParameterInfo pi;
 		if (_controller->getParameterInfo (i, pi) != kResultTrue) {
@@ -1456,7 +1470,12 @@ VST3PI::restartComponent (int32 flags)
 	DEBUG_TRACE (DEBUG::VST3Callbacks, string_compose ("VST3PI::restartComponent %1%2\n", std::hex, flags));
 
 	if (flags & Vst::kReloadComponent) {
-		Glib::Threads::Mutex::Lock pl (_process_lock);
+		Glib::Threads::Mutex::Lock pl (_process_lock, Glib::Threads::NOT_LOCK);
+		if (!AudioEngine::instance()->in_process_thread()) {
+			pl.acquire ();
+		} else {
+			assert (0); // a plugin should not call this while processing
+		}
 		/* according to the spec, "The host has to unload completely
 		 * the plug-in (controller/processor) and reload it."
 		 *
@@ -1469,14 +1488,30 @@ VST3PI::restartComponent (int32 flags)
 		activate ();
 	}
 	if (flags & Vst::kParamValuesChanged) {
-		Glib::Threads::Mutex::Lock pl (_process_lock);
+		Glib::Threads::Mutex::Lock pl (_process_lock, Glib::Threads::NOT_LOCK);
+		if (!AudioEngine::instance()->in_process_thread()) {
+			pl.acquire ();
+		}
 		update_shadow_data ();
 	}
 	if (flags & Vst::kLatencyChanged) {
-		Glib::Threads::Mutex::Lock pl (_process_lock);
-		/* need to re-activate the plugin as per spec */
-		deactivate ();
-		activate ();
+		/* https://forums.steinberg.net/t/reporting-latency-change/201601
+		 * mentions that the host plugin should be deactivated before querying
+		 * latency. However the official spec does not require this.
+		 *
+		 * However other implementations do not call setActive(false/true) when 
+		 * the latency changes, and Ardour does not require it either, latency
+		 * changes are automatically picked up.
+		 */
+		Glib::Threads::Mutex::Lock pl (_process_lock, Glib::Threads::NOT_LOCK);
+		if (!AudioEngine::instance()->in_process_thread()) {
+			/* Some plugins (e.g BlendEQ) call this from the process,
+			 * IPlugProcessor::ProcessBuffers. In that case taking the
+			 * _process_lock would deadlock.
+			 */
+			pl.acquire ();
+		}
+		_plugin_latency.reset ();
 	}
 	if (flags & Vst::kIoChanged) {
 		warning << "VST3: Vst::kIoChanged (not implemented)" << endmsg;
@@ -1931,6 +1966,7 @@ VST3PI::update_shadow_data ()
 			_input_param_changes.addParameterData (i->second, index)->addPoint (0, v, index);
 #endif
 			_shadow_data[i->first] = v;
+			OnParameterChange (ParamValueChanged, i->first, v); /* EMIT SIGNAL */
 		}
 	}
 }
