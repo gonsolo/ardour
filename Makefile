@@ -7,7 +7,7 @@ configure:
 	#CXX='ccache g++' CC='ccache gcc' ./waf configure --debug-symbols --optimize --compile-database
 	CXX='ccache g++' CC='ccache gcc' ./waf configure --optimize --compile-database
 compile:
-	mold -run ./waf
+	mold --run ./waf
 	#./waf
 run:
 	pw-jack $(ARDEV) $(SESSION)
