@@ -1,5 +1,6 @@
 ARDEV = ./gtk2_ardour/ardev
 ARDBG = ./gtk2_ardour/ardbg
+SESSION = ~/work/Ofenroehr/Ofenroehr.ardour
 
 all: configure compile run
 configure:
@@ -9,10 +10,10 @@ compile:
 	mold -run ./waf
 	#./waf
 run:
-	pw-jack $(ARDEV) ~/work/Ofenroehr/Ofenroehr.ardour
+	pw-jack $(ARDEV) $(SESSION)
 run_empty:
 	pw-jack $(ARDEV)
 debug:
-	pw-jack $(ARDBG) ~/work/Ofenroehr/Ofenroehr.ardour
+	pw-jack $(ARDBG) $(SESSION)
 clean:
 	./waf clean
