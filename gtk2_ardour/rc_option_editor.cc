@@ -1114,6 +1114,7 @@ class FontScalingOptions : public HSliderOption
 					1024, false)
 	{
 		const std::string dflt = _("100%");
+		const std::string dbl = _("200%");
 		const std::string empty = X_(""); // despite gtk-doc saying so, NULL does not work as reference
 
 		_hscale.set_name("FontScaleSlider");
@@ -1127,7 +1128,7 @@ class FontScalingOptions : public HSliderOption
 		_hscale.add_mark(125, Gtk::POS_TOP, empty);
 		_hscale.add_mark(150, Gtk::POS_TOP, empty);
 		_hscale.add_mark(175, Gtk::POS_TOP, empty);
-		_hscale.add_mark(200, Gtk::POS_TOP, empty);
+		_hscale.add_mark(200, Gtk::POS_TOP, dbl);
 		_hscale.add_mark(250, Gtk::POS_TOP, empty);
 
 		set_note (_("Adjusting the scale requires an application restart for fully accurate re-layout."));
@@ -3707,6 +3708,23 @@ These settings will only take effect after %1 is restarted.\n\
 				   "Instead the frame rate indication in the main clock will flash red and %1 will convert between the external "
 				   "timecode standard and the session standard."), PROGRAM_NAME));
 	add_option (_("Transport/Chase"), _sync_framerate);
+
+	auto mcr = new SpinOption<double> (
+		"midi-clock-resolution",
+		_("BPM Resolution for incoming MIDI Clock"),
+		sigc::mem_fun (*_rc_config, &RCConfiguration::get_midi_clock_resolution),
+		sigc::mem_fun (*_rc_config, &RCConfiguration::set_midi_clock_resolution),
+		0., 1., 0.01, 0.1, _("quarters"), 1, 2
+		);
+	Gtkmm2ext::UI::instance()->set_tip
+		(mcr->tip_widget(),
+		 _("This option can be used to quantize incoming MIDI clock to whole (or fractions of a) quarter note.\n\n"
+		   "Setting it to zero prevents any quantization, which can result in a rather jittery response to incoming MIDI Clock.\n\n"
+		   "Setting it to 1.0 quantizes to whole (integer) BPM values, and is the default.\n\n"
+		   "If you are using a MIDI clock source that quantizes to some fraction of a quarter note then adjust this setting to reflect that."));
+
+	add_option (_("Transport/Chase"), new OptionEditorHeading (_("MIDI Clock")));
+	add_option (_("Transport/Chase"), mcr);
 
 	add_option (_("Transport/Generate"), new OptionEditorHeading (_("Linear Timecode (LTC) Generator")));
 

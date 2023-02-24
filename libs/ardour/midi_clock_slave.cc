@@ -178,19 +178,11 @@ MIDIClock_TransportMaster::calculate_song_position(uint16_t song_position_in_six
 void
 MIDIClock_TransportMaster::calculate_filter_coefficients (double qpm)
 {
-	/* Paul says: I don't understand this computation of bandwidth
-	*/
-
-	const double bandwidth = 2.0 / qpm;
-
-	/* Frequency of the clock messages is ENGINE->sample_rate() / * one_ppqn_in_samples, per second or in Hz */
-	const double freq = (double) ENGINE->sample_rate() / one_ppqn_in_samples;
-
-	const double omega = 2.0 * M_PI * bandwidth / freq;
+	const double omega = 2.0 * M_PI * (60 / qpm) / 24;
 	b = 1.4142135623730950488 * omega; // sqrt (2.0) * omega
 	c = omega * omega;
 
-	DEBUG_TRACE (DEBUG::MidiClock, string_compose ("DLL coefficients: bw:%1 omega:%2 b:%3 c:%4\n", bandwidth, omega, b, c));
+	DEBUG_TRACE (DEBUG::MidiClock, string_compose ("DLL coefficients: omega:%1 b:%2 c:%3\n", omega, b, c));
 }
 
 void
@@ -232,9 +224,8 @@ MIDIClock_TransportMaster::update_midi_clock (Parser& /*parser*/, samplepos_t ti
 		} else {
 			_bpm = bpm;
 
-			calculate_filter_coefficients (_bpm);
-
 			/* finish DLL initialization */
+			calculate_filter_coefficients (500.0); // do not rely on initial bpm, but assume a realistic BW
 
 			t0 = timestamp;
 			t1 = t0 + e2; /* timestamp we predict for the next 0xf8 clock message */
@@ -257,13 +248,21 @@ MIDIClock_TransportMaster::update_midi_clock (Parser& /*parser*/, samplepos_t ti
 		const double samples_per_quarter = (t1 - t0) * ppqn;
 
 		_bpm = (ENGINE->sample_rate() * 60.0) / samples_per_quarter;
-		calculate_filter_coefficients (_bpm);
+
+		double mr = Config->get_midi_clock_resolution();
+
+		if (mr == 1.) {
+			_bpm = round (_bpm);
+		} else if (mr != 0.) {
+			_bpm -= fmod (_bpm, mr);
+		}
 
 		/* when rolling speed is always 1.0. The transport moves at wall-clock
 		 * speed. What changes is the music-time (BPM), not the speed.
 		 */
-		if (TransportMasterManager::instance().current().get() == this) {
+		if (_session && _session->config.get_external_sync() && TransportMasterManager::instance().current().get() == this) {
 			/* TODO always set tempo, even when there is a map */
+
 			_session->maybe_update_tempo_from_midiclock_tempo (_bpm);
 		}
 
