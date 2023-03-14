@@ -4908,9 +4908,9 @@ Session::format_audio_source_name (const string& legalized_base, uint32_t nchan,
 			sstr << "%R";
 		}
 	} else if (nchan > 2) {
-		if (nchan < 26) {
+		if (nchan <= 26) {
 			sstr << '%';
-			sstr << 'a' + chan;
+			sstr << static_cast<char>('a' + chan);
 		} else {
 			/* XXX what? more than 26 channels! */
 			sstr << '%';
@@ -6814,7 +6814,7 @@ restart:
 		 * Except mixbus that allows up to 3 (aux-sends, sends to mixbusses 1-8, sends to mixbusses 9-12,
 		 * and then there's JACK */
 		if (++bailout < 5) {
-			cerr << "restarting Session::update_latency. # of send changes: " << _send_latency_changes << " iteration: " << bailout << endl;
+			DEBUG_TRACE (DEBUG::LatencyCompensation, string_compose ("restarting update. send changes: %1, iteration: %2\n", _send_latency_changes, bailout));
 			goto restart;
 		}
 	}
