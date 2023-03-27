@@ -76,7 +76,7 @@ compiler_flags_dictionaries= {
                           '-Wno-use-after-free', '-Wno-unknown-pragmas', '-Wno-cast-qual',
                           '-Wno-maybe-uninitialized', '-Wno-cpp', '-Wno-switch', '-Wno-free-nonheap-object',
                           '-Wno-dangling-pointer', '-Wno-stringop-overflow', '-Wno-unused-variable',
-                          '-Wno-unused-but-set-variable', '-Wno-uninitialized' ],
+                          '-Wno-unused-but-set-variable', '-Wno-uninitialized', '-Wno-sign-compare'  ],
         'quiet-build-c': [ '-Wno-strict-prototypes' ],
         'quiet-build-cxx': [ '-Wno-reorder' ],
         # All warnings (left from quiet-build) are errors
