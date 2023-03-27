@@ -23,17 +23,16 @@
 #ifndef __ardour_source_h__
 #define __ardour_source_h__
 
+#include <atomic>
+#include <memory>
 #include <string>
 #include <set>
 
 #include <glibmm/threads.h>
 
-#include <boost/shared_ptr.hpp>
-#include <boost/enable_shared_from_this.hpp>
 #include <boost/utility.hpp>
 
 #include "pbd/statefuldestructible.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "ardour/ardour.h"
 #include "ardour/session_object.h"
@@ -45,7 +44,7 @@ namespace ARDOUR {
 class Session;
 
 class LIBARDOUR_API Source : public SessionObject,
-		public boost::enable_shared_from_this<ARDOUR::Source>
+		public std::enable_shared_from_this<ARDOUR::Source>
 {
 public:
 	enum Flag {
@@ -141,7 +140,7 @@ public:
 
 	virtual void inc_use_count ();
 	virtual void dec_use_count ();
-	int  use_count() const { return g_atomic_int_get (const_cast<GATOMIC_QUAL gint*> (&_use_count)); }
+	int  use_count() const { return _use_count.load(); }
 	bool used() const { return use_count() > 0; }
 
 	uint32_t level() const { return _level; }
@@ -163,7 +162,7 @@ public:
 	timepos_t           _natural_position;
 	bool                _have_natural_position;
 	bool                _analysed;
-	GATOMIC_QUAL gint _use_count; /* atomic */
+	std::atomic<int> _use_count; /* atomic */
 	uint32_t            _level; /* how deeply nested is this source w.r.t a disk file */
 	std::string         _ancestor_name;
 	std::string        _captured_for;

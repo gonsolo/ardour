@@ -275,6 +275,10 @@ Canvas::item_shown_or_hidden (Item* item)
 {
 	Rect bbox = item->bounding_box ();
 	if (bbox) {
+		if (item->visible() && !item->ignore_events()) {
+			pick_current_item (0); /* no mouse state */
+		}
+
 		if (_queue_draw_frozen) {
 			frozen_area = frozen_area.extend (compute_draw_item_area (item, bbox));
 			return;
@@ -606,12 +610,8 @@ GtkCanvas::pick_current_item (Duple const & point, int state)
 
 #ifndef NDEBUG
 	if (DEBUG_ENABLED(PBD::DEBUG::CanvasEnterLeave)) {
-		for (vector<Item const*>::const_iterator it = items.begin(); it != items.end(); ++it) {
-#ifdef CANVAS_DEBUG
-			// std::cerr << "\tItem " << (*it)->whatami() << '/' << (*it)->name << " ignore events ? " << (*it)->ignore_events() << " vis ? " << (*it)->visible() << std::endl;
-#else
-			// std::cerr << "\tItem " << (*it)->whatami() << '/' << " ignore events ? " << (*it)->ignore_events() << " vis ? " << (*it)->visible() << std::endl;
-#endif
+		for (auto const & item : items) {
+			std::cerr << "\tItem " << item->whoami() << " ignore events ? " << item->ignore_events() << " vis ? " << item->visible() << std::endl;
 		}
 	}
 #endif

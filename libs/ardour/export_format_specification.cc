@@ -532,7 +532,7 @@ ExportFormatSpecification::set_state (const XMLNode & root)
 bool
 ExportFormatSpecification::is_compatible_with (ExportFormatCompatibility const & compatibility) const
 {
-	boost::shared_ptr<ExportFormatBase> intersection = get_intersection (compatibility);
+	std::shared_ptr<ExportFormatBase> intersection = get_intersection (compatibility);
 
 	if (intersection->formats_empty() && format_id() != 0) {
 		return false;
@@ -581,8 +581,29 @@ ExportFormatSpecification::is_complete () const
 	return true;
 }
 
+bool ExportFormatSpecification::operator== (ExportFormatSpecification const& other) const
+{
+	const int a = format_id() | sample_format() | endianness();
+	const int b = other.format_id() | other.sample_format() | other.endianness();
+	if (a != b) {
+		return false;
+	}
+
+	/* BWF has the same format id with wav, so we need to check this. */
+	if (has_broadcast_info () != other.has_broadcast_info ()) {
+		return false;
+	}
+
+	if (_has_codec_quality && other._has_codec_quality) {
+		if (_codec_quality != other._codec_quality) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool
-ExportFormatSpecification::is_format (boost::shared_ptr<ExportFormat> format) const
+ExportFormatSpecification::is_format (std::shared_ptr<ExportFormat> format) const
 {
 	assert (format);
 	return (format_id () == format->get_format_id () &&
@@ -593,7 +614,7 @@ ExportFormatSpecification::is_format (boost::shared_ptr<ExportFormat> format) co
 }
 
 void
-ExportFormatSpecification::set_format (boost::shared_ptr<ExportFormat> format)
+ExportFormatSpecification::set_format (std::shared_ptr<ExportFormat> format)
 {
 	if (format) {
 		FormatId new_fmt = format->get_format_id ();
@@ -620,7 +641,7 @@ ExportFormatSpecification::set_format (boost::shared_ptr<ExportFormat> format)
 		if (!_has_codec_quality) {
 			_codec_quality = 0;
 		} else if (fmt_changed) {
-			_codec_quality = boost::dynamic_pointer_cast<HasCodecQuality> (format)->default_codec_quality();
+			_codec_quality = std::dynamic_pointer_cast<HasCodecQuality> (format)->default_codec_quality();
 		}
 
 		_supports_tagging = format->supports_tagging ();

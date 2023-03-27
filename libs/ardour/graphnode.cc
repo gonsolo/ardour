@@ -18,6 +18,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "pbd/atomic.h"
+
 #include "ardour/graphnode.h"
 #include "ardour/graph.h"
 #include "ardour/route.h"
@@ -33,30 +35,30 @@ GraphActivision::GraphActivision ()
 node_set_t const&
 GraphActivision::activation_set (GraphChain const* const g) const
 {
-	boost::shared_ptr<ActivationMap> m (_activation_set.reader ());
+	std::shared_ptr<ActivationMap> m (_activation_set.reader ());
 	return m->at (g);
 }
 
 int
 GraphActivision::init_refcount (GraphChain const* const g) const
 {
-	boost::shared_ptr<RefCntMap> m (_init_refcount.reader ());
+	std::shared_ptr<RefCntMap> m (_init_refcount.reader ());
 	return m->at (g);
 }
 
 /* ****************************************************************************/
 
-GraphNode::GraphNode (boost::shared_ptr<Graph> graph)
+GraphNode::GraphNode (std::shared_ptr<Graph> graph)
 	: _graph (graph)
 {
-	g_atomic_int_set (&_refcount, 0);
+	_refcount.store (0);
 }
 
 void
 GraphNode::prep (GraphChain const* chain)
 {
 	/* This is the number of nodes that directly feed us */
-	g_atomic_int_set (&_refcount, init_refcount (chain));
+	_refcount.store (init_refcount (chain));
 }
 
 void
@@ -71,10 +73,10 @@ void
 GraphNode::trigger ()
 {
 	/* check if we can run */
-	if (g_atomic_int_dec_and_test (&_refcount)) {
+	if (PBD::atomic_dec_and_test (_refcount)) {
 #if 0 // TODO optimize: remove prep()
 		/* reset reference count for next cycle */
-		g_atomic_int_set (&_refcount, _init_refcount[chain]);
+		_refcount.store (_init_refcount[chain]);
 #endif
 		/* All nodes that feed this node have completed, so this node be processed now. */
 		_graph->trigger (this);

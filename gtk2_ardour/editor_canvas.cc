@@ -35,6 +35,7 @@
 
 #include "pbd/error.h"
 
+#include "canvas/arc.h"
 #include "canvas/canvas.h"
 #include "canvas/rectangle.h"
 #include "canvas/pixbuf.h"
@@ -142,6 +143,12 @@ Editor::initialize_canvas ()
 	_time_markers_group = new ArdourCanvas::Container (h_scroll_group);
 	CANVAS_DEBUG_NAME (_time_markers_group, "time bars");
 
+
+	/* Note that because of ascending-y-axis coordinates, this order is
+	 * bottom-to-top. But further note that the actual order is set in
+	 * ::update_ruler_visibility()
+	 */
+
 	cd_marker_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, 0.0));
 	CANVAS_DEBUG_NAME (cd_marker_group, "cd marker group");
 	/* the vide is temporarily placed a the same location as the
@@ -159,6 +166,8 @@ Editor::initialize_canvas ()
 	CANVAS_DEBUG_NAME (tempo_group, "tempo group");
 	meter_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 5.0) + 1.0));
 	CANVAS_DEBUG_NAME (meter_group, "meter group");
+	mapping_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 6.0) + 1.0));
+	CANVAS_DEBUG_NAME (mapping_group, "mapping group");
 
 	float timebar_thickness = timebar_height; //was 4
 	float timebar_top = (timebar_height - timebar_thickness)/2;
@@ -169,10 +178,27 @@ Editor::initialize_canvas ()
 	meter_bar->set_outline(false);
 
 	tempo_bar = new ArdourCanvas::Rectangle (tempo_group, ArdourCanvas::Rect (0.0, 0.0, ArdourCanvas::COORD_MAX, timebar_height));
-	CANVAS_DEBUG_NAME (tempo_bar, "Tempo  Bar");
+	CANVAS_DEBUG_NAME (tempo_bar, "Tempo Bar");
 	tempo_bar->set_fill(true);
 	tempo_bar->set_outline(false);
 	tempo_bar->set_outline_what(ArdourCanvas::Rectangle::BOTTOM);
+
+	mapping_bar = new ArdourCanvas::Rectangle (mapping_group, ArdourCanvas::Rect (0.0, 0.0, ArdourCanvas::COORD_MAX, timebar_height));
+	CANVAS_DEBUG_NAME (mapping_bar, "Mapping Bar");
+	mapping_bar->set_fill(true);
+	mapping_bar->set_outline(false);
+	mapping_bar->set_outline_what(ArdourCanvas::Rectangle::BOTTOM);
+
+	mapping_cursor = new ArdourCanvas::Arc (mapping_group);
+	CANVAS_DEBUG_NAME (mapping_cursor, "Mapping Cursor");
+	mapping_cursor->set_fill (false);
+	mapping_cursor->set_outline (true);
+	mapping_cursor->set_outline_color (0xff0000ff);
+	mapping_cursor->set_outline_width (3. * UIConfiguration::instance().get_ui_scale());
+	mapping_cursor->set_radius ((timebar_height-5.)/2);
+	mapping_cursor->set_arc (360);
+	mapping_cursor->set_position (ArdourCanvas::Duple (35., (timebar_height-5.)/2.0)); // x is arbitrary at this time
+	mapping_cursor->hide ();
 
 	range_marker_bar = new ArdourCanvas::Rectangle (range_marker_group, ArdourCanvas::Rect (0.0, timebar_top, ArdourCanvas::COORD_MAX, timebar_btm));
 	CANVAS_DEBUG_NAME (range_marker_bar, "Range Marker Bar");
@@ -234,6 +260,8 @@ Editor::initialize_canvas ()
 	transport_punchout_line->hide();
 
 	tempo_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), tempo_bar, TempoBarItem, "tempo bar"));
+	mapping_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), mapping_bar, MappingBarItem, "mapping bar"));
+	mapping_cursor->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), mapping_cursor, MappingCursorItem, "mapping cursor"));
 	meter_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), meter_bar, MeterBarItem, "meter bar"));
 	marker_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), marker_bar, MarkerBarItem, "marker bar"));
 	cd_marker_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), cd_marker_bar, CdMarkerBarItem, "cd marker bar"));
@@ -455,13 +483,13 @@ Editor::drop_paths_part_two (const vector<string>& paths, timepos_t const & p, d
 
 		if (tv->track()) {
 			do_import (midi_paths, Editing::ImportSerializeFiles, ImportToTrack,
-				   SrcBest, SMFTrackNumber, SMFTempoIgnore, pos, boost::shared_ptr<ARDOUR::PluginInfo>(), tv->track ());
+				   SrcBest, SMFTrackNumber, SMFTempoIgnore, pos, std::shared_ptr<ARDOUR::PluginInfo>(), tv->track ());
 
 			if (UIConfiguration::instance().get_only_copy_imported_files() || copy) {
 				do_import (audio_paths, Editing::ImportSerializeFiles, Editing::ImportToTrack,
-					   SrcBest, SMFTrackName, SMFTempoIgnore, pos, boost::shared_ptr<PluginInfo>(), tv->track ());
+					   SrcBest, SMFTrackName, SMFTempoIgnore, pos, std::shared_ptr<PluginInfo>(), tv->track ());
 			} else {
-				do_embed (audio_paths, Editing::ImportSerializeFiles, ImportToTrack, pos, boost::shared_ptr<ARDOUR::PluginInfo>(), tv->track ());
+				do_embed (audio_paths, Editing::ImportSerializeFiles, ImportToTrack, pos, std::shared_ptr<ARDOUR::PluginInfo>(), tv->track ());
 			}
 		}
 	}
@@ -629,9 +657,9 @@ Editor::session_gui_extents (bool use_extra) const
 	 * NOTE: we should listen to playlists, and cache these values so we don't calculate them every time.
 	 */
 	{
-		boost::shared_ptr<RouteList> rl = _session->get_routes();
+		std::shared_ptr<RouteList> rl = _session->get_routes();
 		for (RouteList::iterator r = rl->begin(); r != rl->end(); ++r) {
-			boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*r);
+			std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*r);
 
 			if (!tr) {
 				continue;
@@ -1040,6 +1068,8 @@ Editor::color_handler()
 	meter_bar->set_outline_color (UIConfiguration::instance().color ("marker bar separator"));
 
 	tempo_bar->set_fill_color (UIConfiguration::instance().color_mod ("tempo bar", "marker bar"));
+
+	mapping_bar->set_fill_color (UIConfiguration::instance().color_mod ("mapping bar", "marker bar"));
 
 	marker_bar->set_fill_color (UIConfiguration::instance().color_mod ("marker bar", "marker bar"));
 	marker_bar->set_outline_color (UIConfiguration::instance().color ("marker bar separator"));

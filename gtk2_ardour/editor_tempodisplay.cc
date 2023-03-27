@@ -220,8 +220,7 @@ Editor::reset_tempo_marks ()
 	const uint32_t tc_color = UIConfiguration::instance().color ("tempo curve");
 	const samplecnt_t sr (_session->sample_rate());
 
-	Temporal::TempoMap::SharedPtr tmap (TempoMap::use());
-	TempoMap::Tempos const & tempi (tmap->tempos());
+	TempoMap::Tempos const & tempi (TempoMap::use()->tempos());
 	TempoPoint const * prev_ts = 0;
 	double max_tempo = 0.0;
 	double min_tempo = DBL_MAX;
@@ -252,8 +251,7 @@ Editor::reset_meter_marks ()
 		return;
 	}
 
-	Temporal::TempoMap::SharedPtr tmap (TempoMap::use());
-	TempoMap::Meters const & meters (tmap->meters());
+	TempoMap::Meters const & meters (TempoMap::use()->meters());
 
 	for (auto & m : meter_marks) {
 		delete m;
@@ -754,6 +752,38 @@ Editor::real_remove_meter_marker (Temporal::MeterPoint const * section)
 	return FALSE;
 }
 
+
+Temporal::TempoMap::WritableSharedPtr
+Editor::begin_tempo_mapping ()
+{
+	TempoMap::WritableSharedPtr wmap = TempoMap::fetch_writable ();
+	reassociate_metric_markers (wmap);
+	(void) Temporal::DomainSwapInformation::start (Temporal::BeatTime);
+	_session->globally_change_time_domain (Temporal::BeatTime, Temporal::AudioTime);
+	return wmap;
+}
+
+void
+Editor::abort_tempo_mapping ()
+{
+	delete domain_swap; /* undo the domain swap */
+	domain_swap = 0;
+
+	TempoMap::abort_update ();
+	TempoMap::SharedPtr tmap (TempoMap::fetch());
+	reassociate_metric_markers (tmap);
+}
+
+void
+Editor::commit_tempo_mapping (TempoMap::WritableSharedPtr& new_map)
+{
+	TempoMap::update (new_map);
+	delete domain_swap; /* undo the domain swap */
+	domain_swap = 0;
+	TempoMap::SharedPtr tmap (TempoMap::fetch());
+	reassociate_metric_markers (tmap);
+}
+
 Temporal::TempoMap::WritableSharedPtr
 Editor::begin_tempo_map_edit ()
 {
@@ -793,7 +823,7 @@ Editor::mid_tempo_change (MidTempoChanges what_changed)
 	// TempoMap::SharedPtr map (TempoMap::use());
 	// map->dump (std::cerr);
 
-	if (what_changed & TempoChanged) {
+	if ((what_changed & MidTempoChanges(BBTChanged|TempoChanged|MappingChanged))) {
 		double min_tempo = DBL_MAX;
 		double max_tempo = 0.0;
 
@@ -822,8 +852,12 @@ Editor::mid_tempo_change (MidTempoChanges what_changed)
 	update_tempo_based_rulers ();
 	maybe_draw_grid_lines ();
 
-	foreach_time_axis_view (sigc::mem_fun (*this, &Editor::mid_tempo_per_track_update));
-
+	if (!(what_changed & (MappingChanged|BBTChanged))) {
+		/* Nothing changes in tracks when it is a tempo mapping
+		 * operation or a BBT change
+		 */
+		foreach_time_axis_view (sigc::mem_fun (*this, &Editor::mid_tempo_per_track_update));
+	}
 }
 
 void
@@ -842,7 +876,7 @@ Editor::mid_tempo_per_track_update (TimeAxisView& tav)
 
 		for (TimeAxisView::Children::iterator ct = kids.begin(); ct != kids.end(); ++ct) {
 
-			boost::shared_ptr<AutomationTimeAxisView> atav = boost::dynamic_pointer_cast<AutomationTimeAxisView> (*ct);
+			std::shared_ptr<AutomationTimeAxisView> atav = std::dynamic_pointer_cast<AutomationTimeAxisView> (*ct);
 
 			if (atav) {
 				AutomationStreamView* asv = atav->automation_view ();

@@ -211,9 +211,9 @@ Editor::canvas_event_sample (GdkEvent const * event, double* pcx, double* pcy) c
 }
 
 void
-Editor::set_current_trimmable (boost::shared_ptr<Trimmable> t)
+Editor::set_current_trimmable (std::shared_ptr<Trimmable> t)
 {
-	boost::shared_ptr<Trimmable> st = _trimmable.lock();
+	std::shared_ptr<Trimmable> st = _trimmable.lock();
 
 	if (!st || st == t) {
 		_trimmable = t;
@@ -221,9 +221,9 @@ Editor::set_current_trimmable (boost::shared_ptr<Trimmable> t)
 }
 
 void
-Editor::set_current_movable (boost::shared_ptr<Movable> m)
+Editor::set_current_movable (std::shared_ptr<Movable> m)
 {
-	boost::shared_ptr<Movable> sm = _movable.lock();
+	std::shared_ptr<Movable> sm = _movable.lock();
 
 	if (!sm || sm != m) {
 		_movable = m;
@@ -816,6 +816,11 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		return true;
 		break;
 
+	case MappingBarItem:
+	case MappingCursorItem:
+		choose_mapping_drag (item, event);
+		return true;
+
 	case TempoBarItem:
 	case TempoCurveItem:
 		if (!Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)
@@ -838,10 +843,6 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		if (!Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)
 		    && !ArdourKeyboard::indicates_constraint (event->button.state)) {
 			_drags->set (new CursorDrag (this, *_playhead_cursor, false), event);
-		} else if (Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier|Keyboard::TertiaryModifier)) {
-			_drags->set (new TempoTwistDrag (this, item), event);
-		} else if (Keyboard::modifier_state_contains (event->button.state, Keyboard::PrimaryModifier)) {
-			_drags->set (new BBTRulerDrag (this, item), event);
 		}
 		return true;
 
@@ -1178,14 +1179,14 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 
 					RouteTimeAxisView* p = dynamic_cast<RouteTimeAxisView*> (parent);
 					assert (p);
-					boost::shared_ptr<Playlist> pl = p->track()->playlist ();
+					std::shared_ptr<Playlist> pl = p->track()->playlist ();
 					if (pl->n_regions() == 0) {
 						/* Parent has no regions; create one so that we have somewhere to put automation */
 						_drags->set (new RegionCreateDrag (this, item, parent), event);
 					} else {
 						/* See if there's a region before the click that we can extend, and extend it if so */
 						timepos_t const t (canvas_event_sample (event));
-						boost::shared_ptr<Region> prev = pl->find_next_region (t, End, -1);
+						std::shared_ptr<Region> prev = pl->find_next_region (t, End, -1);
 						if (!prev) {
 							_drags->set (new RegionCreateDrag (this, item, parent), event);
 						} else {
@@ -1277,18 +1278,18 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				TrackViewList ts = selection->tracks.filter_to_unique_playlists ();
 				for (TrackViewList::iterator i = ts.begin(); i != ts.end(); ++i) {
 					RouteTimeAxisView* tatv;
-					boost::shared_ptr<Playlist> playlist;
+					std::shared_ptr<Playlist> playlist;
 					if ((tatv = dynamic_cast<RouteTimeAxisView*> (*i)) == 0) {
 						continue;
 					}
 					if ((playlist = (*i)->playlist()) == 0) {
 						continue;
 					}
-					if (boost::dynamic_pointer_cast<AudioPlaylist> (playlist) == 0) {
+					if (std::dynamic_pointer_cast<AudioPlaylist> (playlist) == 0) {
 						continue;
 					}
 					for (list<TimelineRange>::const_iterator j = selection->time.begin(); j != selection->time.end(); ++j) {
-						boost::shared_ptr<RegionList> rl = playlist->regions_touched (j->start(), j->end());
+						std::shared_ptr<RegionList> rl = playlist->regions_touched (j->start(), j->end());
 						for (RegionList::iterator ir = rl->begin(); ir != rl->end(); ++ir) {
 							RegionView* rv;
 							if ((rv = tatv->view()->find_view (*ir)) != 0) {
@@ -1690,6 +1691,8 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			case TransportMarkerBarItem:
 			case CdMarkerBarItem:
 			case TempoBarItem:
+			case MappingBarItem:
+			case MappingCursorItem:
 			case TempoCurveItem:
 			case MeterBarItem:
 			case VideoBarItem:
@@ -1815,6 +1818,11 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				mouse_add_new_marker (where, Location::IsCueMarker);
 			}
 			return true;
+
+		case MappingBarItem:
+		case MappingCursorItem:
+			return true;
+
 		case TempoBarItem:
 		case TempoCurveItem:
 			if (!_dragging_playhead && Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)) {
@@ -1976,6 +1984,15 @@ Editor::enter_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemType item_
 	choose_canvas_cursor_on_entry (item_type);
 
 	switch (item_type) {
+	case MappingCursorItem:
+		/* nothing to do ??? */
+		break;
+
+	case MappingBarItem:
+		mapping_cursor->show ();
+		mapping_cursor->raise_to_top ();
+		break;
+
 	case ControlPointItem:
 		if (mouse_mode == MouseDraw || mouse_mode == MouseObject || mouse_mode == MouseContent) {
 			cp = static_cast<ControlPoint*>(item->get_data ("control_point"));
@@ -2121,6 +2138,14 @@ Editor::leave_handler (ArdourCanvas::Item* item, GdkEvent*, ItemType item_type)
 	}
 
 	switch (item_type) {
+	case MappingCursorItem:
+		/* ignore */
+		break;
+
+	case MappingBarItem:
+		mapping_cursor->hide ();
+		break;
+
 	case ControlPointItem:
 		_verbose_cursor->hide ();
 		break;
@@ -2269,7 +2294,7 @@ Editor::scrub (samplepos_t sample, double current_x)
 }
 
 bool
-Editor::motion_handler (ArdourCanvas::Item* /*item*/, GdkEvent* event, bool from_autoscroll)
+Editor::motion_handler (ArdourCanvas::Item* item, GdkEvent* event, bool from_autoscroll)
 {
 	_last_motion_y = event->motion.y;
 
@@ -2305,9 +2330,11 @@ Editor::motion_handler (ArdourCanvas::Item* /*item*/, GdkEvent* event, bool from
 		//drags change the snapped_cursor location, because we are snapping the thing being dragged, not the actual mouse cursor
 		return _drags->motion_handler (event, from_autoscroll);
 	} else {
+
 		bool ignored;
 		bool peaks_visible = false;
 		samplepos_t where;
+
 		if (mouse_sample (where, ignored)) {
 
 			/* display peaks */
@@ -2319,10 +2346,49 @@ Editor::motion_handler (ArdourCanvas::Item* /*item*/, GdkEvent* event, bool from
 				}
 			}
 
-			/* the snapped_cursor shows where an operation (like Split) is going to occur */
 			timepos_t t (where);
-			snap_to_with_modifier (t, event);
-			set_snapped_cursor_position (t);
+			bool move_snapped_cursor = true;
+
+			if (item == mapping_bar || item == mapping_cursor) {
+
+				/* Snap to the nearest beat, and figure out how
+				 * many pixels from the pointer cursor that is.
+				 */
+
+				timepos_t snapped = _snap_to_bbt (t, RoundNearest, SnapToGrid_Unscaled, GridTypeBeat);
+				const double unsnapped_pos = time_to_pixel_unrounded (t);
+				const double snapped_pos = time_to_pixel_unrounded (snapped);
+
+				if (std::abs (snapped_pos - unsnapped_pos) < 10 * UIConfiguration::instance().get_ui_scale()) {
+
+					/* Close to a beat, so snap the mapping
+					 * cursor *and* the snapped cursor to
+					 * the beat.
+					 */
+
+					mapping_cursor->show ();
+					mapping_cursor->raise_to_top ();
+
+					mapping_cursor->set_position (ArdourCanvas::Duple (snapped_pos, mapping_cursor->position().y));
+					set_snapped_cursor_position (snapped);
+
+					move_snapped_cursor = false;
+
+				} else {
+
+					/* Not close to a beat, hide the
+					 * mapping cursor, then move the
+					 * snapped cursor as normal.
+					 */
+
+					mapping_cursor->hide ();
+				}
+			}
+
+			if (move_snapped_cursor) {
+				snap_to_with_modifier (t, event);
+				set_snapped_cursor_position (t);
+			}
 		}
 
 		if (!peaks_visible) {
@@ -2631,10 +2697,10 @@ Editor::mouse_brush_insert_region (RegionView* rv, timepos_t const & pos)
 		return;
 	}
 
-	boost::shared_ptr<Playlist> playlist = rtv->playlist();
+	std::shared_ptr<Playlist> playlist = rtv->playlist();
 
 	playlist->clear_changes ();
-	boost::shared_ptr<Region> new_region (RegionFactory::create (rv->region(), true));
+	std::shared_ptr<Region> new_region (RegionFactory::create (rv->region(), true));
 	playlist->add_region (new_region, pos);
 	_session->add_command (new StatefulDiffCommand (playlist));
 
@@ -2699,7 +2765,7 @@ Editor::start_selection_grab (ArdourCanvas::Item* /*item*/, GdkEvent* event)
 
 	/* lets try to create new Region for the selection */
 
-	vector<boost::shared_ptr<Region> > new_regions;
+	vector<std::shared_ptr<Region> > new_regions;
 	create_region_from_selection (new_regions);
 
 	if (new_regions.empty()) {
@@ -2708,7 +2774,7 @@ Editor::start_selection_grab (ArdourCanvas::Item* /*item*/, GdkEvent* event)
 
 	/* XXX fix me one day to use all new regions */
 
-	boost::shared_ptr<Region> region (new_regions.front());
+	std::shared_ptr<Region> region (new_regions.front());
 
 	/* add it to the current stream/playlist.
 	 *
@@ -2725,7 +2791,7 @@ Editor::start_selection_grab (ArdourCanvas::Item* /*item*/, GdkEvent* event)
 	 */
 	begin_reversible_command (Operations::selection_grab);
 
-	boost::shared_ptr<Playlist> playlist = clicked_axisview->playlist();
+	std::shared_ptr<Playlist> playlist = clicked_axisview->playlist();
 
 	playlist->clear_changes ();
 	clicked_routeview->playlist()->add_region (region, selection->time[clicked_selection].start());
@@ -2876,4 +2942,87 @@ Editor::get_pointer_position (double& x, double& y) const
 	int px, py;
 	_track_canvas->get_pointer (px, py);
 	_track_canvas->window_to_canvas (px, py, x, y);
+}
+
+void
+Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
+{
+	if (item != mapping_cursor && item != mapping_bar) {
+		return;
+	}
+
+	Temporal::TempoMap::WritableSharedPtr map = begin_tempo_mapping ();
+
+	if (item == mapping_bar) {
+		/* Drag on the bar, not the cursor: just adjust tempo up or
+		 * down.
+		 */
+		_drags->set (new MappingLinearDrag (this, item, map), event);
+		std::cerr << ":Linear\n";
+		return;
+	}
+
+	/* Decide between a tempo twist drag, which we do if the
+	 * pointer is between two tempo markers, and a tempo stretch
+	 * drag, which we do if the pointer is after the last tempo
+	 * marker before the end of the map or a BBT Marker.
+	 */
+
+	timepos_t pointer_time (canvas_event_sample (event, nullptr, nullptr));
+	Temporal::TempoPoint& tempo = const_cast<Temporal::TempoPoint&>(map->tempo_at (pointer_time));
+
+	TempoPoint* after = const_cast<TempoPoint*> (map->next_tempo (tempo));
+
+	if (!after || dynamic_cast<MusicTimePoint*>(after)) {
+		/* This is the final tempo, or the next one is a BBT marker.
+		 * No twisting, just stretch this one.
+		*/
+		std::cerr << "stretch!\n";
+		_drags->set (new MappingStretchDrag (this, item, map), event);
+		std::cerr << ":Stretch\n";
+		return;
+	}
+
+	std::cerr << "Pointer time: " << pointer_time << std::endl;
+
+	BBT_Argument bbt = map->bbt_at (pointer_time);
+	std::cerr << " bbt " << bbt << std::endl;
+	bbt = BBT_Argument (bbt.reference(), bbt.round_to_beat ());
+	std::cerr << "rounded to " << bbt << " vs. " << tempo.bbt() << std::endl;
+
+	TempoPoint* before;
+	TempoPoint* focus;
+
+	/* Reversible command starts here, must be ended/aborted in drag */
+
+	begin_reversible_command (_("map tempo/twist"));
+	XMLNode* before_state = &map->get_state();
+
+	if (tempo.bbt() < bbt) {
+
+		/* Add a new tempo marker at the nearest beat point
+		   (essentially the snapped grab point for the drag), so that
+		   it becomes the middle one of three used by the twist tempo
+		   operation.
+		*/
+
+		before = const_cast<TempoPoint*> (&tempo);
+		Tempo copied_no_ramp (map->tempo_at (bbt));
+		TempoPoint& added = const_cast<TempoPoint&> (map->set_tempo (copied_no_ramp, bbt));
+		focus = &added;
+		reset_tempo_marks ();
+
+	} else {
+
+		before = const_cast<TempoPoint*> (map->previous_tempo (tempo));
+
+		if (!before) {
+			return;
+		}
+
+		focus = &tempo;
+	}
+
+	_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state), event);
+
 }

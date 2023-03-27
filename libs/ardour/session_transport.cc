@@ -34,6 +34,7 @@
 
 #include <boost/algorithm/string/erase.hpp>
 
+#include "pbd/atomic.h"
 #include "pbd/error.h"
 #include "pbd/enumwriter.h"
 #include "pbd/i18n.h"
@@ -121,7 +122,7 @@ Session::realtime_stop (bool abort, bool clear_state)
 
 	/* call routes */
 
-	boost::shared_ptr<RouteList> r = routes.reader ();
+	std::shared_ptr<RouteList> r = routes.reader ();
 
 	for (RouteList::iterator i = r->begin (); i != r->end(); ++i) {
 		(*i)->realtime_handle_transport_stopped ();
@@ -153,8 +154,8 @@ Session::realtime_stop (bool abort, bool clear_state)
 
 	reset_punch_loop_constraint ();
 
-	g_atomic_int_set (&_playback_load, 100);
-	g_atomic_int_set (&_capture_load, 100);
+	_playback_load.store (100);
+	_capture_load.store (100);
 
 	if (config.get_use_video_sync()) {
 		waiting_for_sync_offset = true;
@@ -177,6 +178,7 @@ Session::locate (samplepos_t target_sample, bool for_loop_end, bool force, bool 
 	}
 
 	bool need_butler = false;
+	samplepos_t existing = _transport_sample;
 
 	/* Locates for seamless looping are fairly different from other
 	 * locates. They assume that the diskstream buffers for each track
@@ -200,7 +202,7 @@ Session::locate (samplepos_t target_sample, bool for_loop_end, bool force, bool 
 	_nominal_jack_transport_sample = boost::none;
 	// Bump seek counter so that any in-process locate in the butler
 	// thread(s?) can restart.
-	g_atomic_int_inc (&_seek_counter);
+	_seek_counter.fetch_add (1);
 	_last_roll_or_reversal_location = target_sample;
 	if (!for_loop_end) {
 		_remaining_latency_preroll = worst_latency_preroll_buffer_size_ceil ();
@@ -211,7 +213,7 @@ Session::locate (samplepos_t target_sample, bool for_loop_end, bool force, bool 
 
 	/* Tell all routes to do the RT part of locate */
 
-	boost::shared_ptr<RouteList> r = routes.reader ();
+	std::shared_ptr<RouteList> r = routes.reader ();
 	for (RouteList::iterator i = r->begin(); i != r->end(); ++i) {
 		(*i)->realtime_locate (for_loop_end);
 	}
@@ -264,10 +266,10 @@ Session::locate (samplepos_t target_sample, bool for_loop_end, bool force, bool 
 
 				// located to start of loop - this is looping, basically
 
-				boost::shared_ptr<RouteList> rl = routes.reader();
+				std::shared_ptr<RouteList> rl = routes.reader();
 
 				for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-					boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+					std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 
 					if (tr && tr->rec_enable_control()->get_value()) {
 						// tell it we've looped, so it can deal with the record state
@@ -293,6 +295,12 @@ Session::locate (samplepos_t target_sample, bool for_loop_end, bool force, bool 
 
 	if (with_mmc) {
 		send_mmc_locate (_transport_sample);
+	}
+
+	if (for_loop_end) {
+		processed_ranges.end[0] = existing;
+		processed_ranges.start[1] = _transport_sample;
+		processed_ranges.cnt = 2;
 	}
 
 	_last_roll_location = _last_roll_or_reversal_location =  _transport_sample;
@@ -436,7 +444,7 @@ Session::set_transport_speed (double speed)
 void
 Session::trigger_stop_all (bool now)
 {
-	boost::shared_ptr<RouteList> rl = routes.reader();
+	std::shared_ptr<RouteList> rl = routes.reader();
 
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
 		(*i)->stop_triggers (now);
@@ -717,9 +725,9 @@ Session::micro_locate (samplecnt_t distance)
 {
 	ENSURE_PROCESS_THREAD;
 
-	boost::shared_ptr<RouteList> rl = routes.reader();
+	std::shared_ptr<RouteList> rl = routes.reader();
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr && !tr->can_internal_playback_seek (distance)) {
 			return -1;
 		}
@@ -728,7 +736,7 @@ Session::micro_locate (samplecnt_t distance)
 	DEBUG_TRACE (DEBUG::Transport, string_compose ("micro-locate by %1\n", distance));
 
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr) {
 			tr->internal_playback_seek (distance);
 		}
@@ -742,7 +750,7 @@ void
 Session::flush_all_inserts ()
 {
 	ENSURE_PROCESS_THREAD;
-	boost::shared_ptr<RouteList> r = routes.reader ();
+	std::shared_ptr<RouteList> r = routes.reader ();
 
 	for (RouteList::iterator i = r->begin(); i != r->end(); ++i) {
 		(*i)->flush_processors ();
@@ -761,9 +769,9 @@ Session::add_post_transport_work (PostTransportWork ptw)
 	int tries = 0;
 
 	while (tries < 8) {
-		oldval = (PostTransportWork) g_atomic_int_get (&_post_transport_work);
+		oldval = _post_transport_work.load ();
 		newval = PostTransportWork (oldval | ptw);
-		if (g_atomic_int_compare_and_exchange (&_post_transport_work, oldval, newval)) {
+		if (_post_transport_work.compare_exchange_strong (oldval, newval)) {
 			/* success */
 			return;
 		}
@@ -792,7 +800,7 @@ Session::synced_to_engine() const
 }
 
 void
-Session::request_sync_source (boost::shared_ptr<TransportMaster> tm)
+Session::request_sync_source (std::shared_ptr<TransportMaster> tm)
 {
 	SessionEvent* ev = new SessionEvent (SessionEvent::SetTransportMaster, SessionEvent::Add, SessionEvent::Immediate, 0, 0.0);
 	ev->transport_master = tm;
@@ -1066,10 +1074,10 @@ Session::solo_selection_active ()
 void
 Session::solo_selection (StripableList &list, bool new_state)
 {
-	boost::shared_ptr<ControlList> solo_list (new ControlList);
-	boost::shared_ptr<ControlList> unsolo_list (new ControlList);
+	std::shared_ptr<ControlList> solo_list (new ControlList);
+	std::shared_ptr<ControlList> unsolo_list (new ControlList);
 
-	boost::shared_ptr<RouteList> rl = get_routes();
+	std::shared_ptr<RouteList> rl = get_routes();
 
 	for (ARDOUR::RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
 
@@ -1077,15 +1085,15 @@ Session::solo_selection (StripableList &list, bool new_state)
 			continue;
 		}
 
-		boost::shared_ptr<Stripable> s (*i);
+		std::shared_ptr<Stripable> s (*i);
 
 		bool found = (std::find(list.begin(), list.end(), s) != list.end());
 		if ( found ) {
 			/* must invalidate playlists on selected track, so disk reader
 			 * will re-fill with the new selection state for solo_selection */
-			boost::shared_ptr<Track> track = boost::dynamic_pointer_cast<Track> (*i);
+			std::shared_ptr<Track> track = std::dynamic_pointer_cast<Track> (*i);
 			if (track) {
-				boost::shared_ptr<Playlist> playlist = track->playlist();
+				std::shared_ptr<Playlist> playlist = track->playlist();
 				if (playlist) {
 					playlist->ContentsChanged();
 				}
@@ -1116,8 +1124,8 @@ Session::butler_transport_work (bool have_process_lock)
 	/* Note: this function executes in the butler thread context */
 
   restart:
-	boost::shared_ptr<RouteList> r = routes.reader ();
-	int on_entry = g_atomic_int_get (&_butler->should_do_transport_work);
+	std::shared_ptr<RouteList> r = routes.reader ();
+	int on_entry = _butler->should_do_transport_work.load();
 	bool finished = true;
 	PostTransportWork ptw = post_transport_work();
 #ifndef NDEBUG
@@ -1134,7 +1142,7 @@ Session::butler_transport_work (bool have_process_lock)
 			lx.acquire ();
 		}
 		for (RouteList::iterator i = r->begin(); i != r->end(); ++i) {
-			boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+			std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 			if (tr) {
 				tr->adjust_playback_buffering ();
 				/* and refill those buffers ... */
@@ -1155,22 +1163,22 @@ Session::butler_transport_work (bool have_process_lock)
 			lx.acquire ();
 		}
 		for (RouteList::iterator i = r->begin(); i != r->end(); ++i) {
-			boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+			std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 			if (tr) {
 				tr->adjust_capture_buffering ();
 			}
 		}
 	}
 
-	const int butler = g_atomic_int_get (&_butler_seek_counter);
-	const int rtlocates = g_atomic_int_get (&_seek_counter);
+	const int butler = _butler_seek_counter.load ();
+	const int rtlocates = _seek_counter.load ();
 	const bool will_locate = (butler != rtlocates);
 
 	if (ptw & PostTransportStop) {
 		non_realtime_stop (ptw & PostTransportAbort, on_entry, finished, will_locate);
 
 		if (!finished) {
-			g_atomic_int_dec_and_test (&_butler->should_do_transport_work);
+			(void) PBD::atomic_dec_and_test (_butler->should_do_transport_work);
 			goto restart;
 		}
 	}
@@ -1184,7 +1192,7 @@ Session::butler_transport_work (bool have_process_lock)
 	if (ptw & PostTransportOverWrite) {
 		non_realtime_overwrite (on_entry, finished, (ptw & PostTransportLoopChanged));
 		if (!finished) {
-			g_atomic_int_dec_and_test (&_butler->should_do_transport_work);
+			(void) PBD::atomic_dec_and_test (_butler->should_do_transport_work);
 			goto restart;
 		}
 	}
@@ -1193,7 +1201,7 @@ Session::butler_transport_work (bool have_process_lock)
 		non_realtime_set_audition ();
 	}
 
-	g_atomic_int_dec_and_test (&_butler->should_do_transport_work);
+	(void) PBD::atomic_dec_and_test (_butler->should_do_transport_work);
 
 	DEBUG_TRACE (DEBUG::Transport, string_compose (X_("Butler transport work all done after %1 usecs @ %2 ptw %3 trw = %4\n"), g_get_monotonic_time() - before, _transport_sample, enum_2_string (post_transport_work()), _butler->transport_work_requested()));
 }
@@ -1205,13 +1213,13 @@ Session::non_realtime_overwrite (int on_entry, bool& finished, bool update_loop_
 		DiskReader::reset_loop_declick (_locations->auto_loop_location(), sample_rate());
 	}
 
-	boost::shared_ptr<RouteList> rl = routes.reader();
+	std::shared_ptr<RouteList> rl = routes.reader();
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr && tr->pending_overwrite ()) {
 			tr->overwrite_existing_buffers ();
 		}
-		if (on_entry != g_atomic_int_get (&_butler->should_do_transport_work)) {
+		if (on_entry != _butler->should_do_transport_work.load()) {
 			finished = false;
 			return;
 		}
@@ -1258,16 +1266,16 @@ Session::non_realtime_locate ()
 	gint sc;
 
 	{
-		boost::shared_ptr<RouteList> rl = routes.reader();
+		std::shared_ptr<RouteList> rl = routes.reader();
 
 	  restart:
-		sc = g_atomic_int_get (&_seek_counter);
+		sc = _seek_counter.load ();
 		tf = _transport_sample;
 		start = get_microseconds ();
 
 		for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i, ++nt) {
 			(*i)->non_realtime_locate (tf);
-			if (sc != g_atomic_int_get (&_seek_counter)) {
+			if (sc != _seek_counter.load ()) {
 				goto restart;
 			}
 		}
@@ -1277,15 +1285,15 @@ Session::non_realtime_locate ()
 #ifndef NDEBUG
 		std::cerr << "locate to " << tf << " took " << (end - start) << " usecs for " << nt << " tracks = " << usecs_per_track << " per track\n";
 #endif
-		if (usecs_per_track > g_atomic_int_get (&_current_usecs_per_track)) {
-			g_atomic_int_set (&_current_usecs_per_track, usecs_per_track);
+		if (usecs_per_track > _current_usecs_per_track.load ()) {
+			_current_usecs_per_track.store (usecs_per_track);
 		}
 	}
 
 	/* we've caught up with whatever the _seek_counter was when we did the
 	   non-realtime locates.
 	*/
-	g_atomic_int_set (&_butler_seek_counter, sc);
+	_butler_seek_counter.store (sc);
 
 	{
 		/* VCAs are quick to locate because they have no data (except
@@ -1341,9 +1349,9 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 	did_record = false;
 	saved = false;
 
-	boost::shared_ptr<RouteList> rl = routes.reader();
+	std::shared_ptr<RouteList> rl = routes.reader();
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr && tr->get_captured_samples () != 0) {
 			did_record = true;
 			break;
@@ -1378,7 +1386,7 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 	}
 
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr) {
 			tr->transport_stopped_wallclock (*now, xnow, abort);
 		}
@@ -1390,7 +1398,7 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 		_state_of_the_state = StateOfTheState (_state_of_the_state & ~InCleanup);
 	}
 
-	boost::shared_ptr<RouteList> r = routes.reader ();
+	std::shared_ptr<RouteList> r = routes.reader ();
 
 	if (did_record) {
 		commit_reversible_command ();
@@ -1509,7 +1517,7 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 			DEBUG_TRACE (DEBUG::Transport, string_compose ("Butler PTW: locate on %1\n", (*i)->name()));
 			(*i)->non_realtime_locate (_transport_sample);
 
-			if (on_entry != g_atomic_int_get (&_butler->should_do_transport_work)) {
+			if (on_entry != _butler->should_do_transport_work.load()) {
 				finished = false;
 				/* we will be back */
 				return;
@@ -1648,7 +1656,7 @@ Session::unset_play_loop (bool change_transport_state)
 		TFSM_STOP (false, false);
 	}
 
-	overwrite_some_buffers (boost::shared_ptr<Route>(), LoopDisabled);
+	overwrite_some_buffers (std::shared_ptr<Route>(), LoopDisabled);
 	TransportStateChange (); /* EMIT SIGNAL */
 }
 
@@ -1661,7 +1669,7 @@ Session::set_track_loop (bool yn)
 		yn = false;
 	}
 
-	boost::shared_ptr<RouteList> rl = routes.reader ();
+	std::shared_ptr<RouteList> rl = routes.reader ();
 
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
 		if (*i && !(*i)->is_private_route()) {
@@ -1852,9 +1860,9 @@ Session::xrun_recovery ()
 			/* ..and start the FSM engine again */
 			_transport_fsm->start ();
 		} else {
-			boost::shared_ptr<RouteList> rl = routes.reader();
+			std::shared_ptr<RouteList> rl = routes.reader();
 			for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-				boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+				std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 				if (tr) {
 					tr->mark_capture_xrun ();
 				}
@@ -1878,8 +1886,8 @@ Session::reset_xrun_count ()
 void
 Session::route_processors_changed (RouteProcessorChange c)
 {
-	if (g_atomic_int_get (&_ignore_route_processor_changes) > 0) {
-		g_atomic_int_or (&_ignored_a_processor_change, (int)c.type);
+	if (_ignore_route_processor_changes.load () > 0) {
+		(void) _ignored_a_processor_change.fetch_or (c.type);
 		return;
 	}
 
@@ -1948,10 +1956,10 @@ Session::request_resume_timecode_transmission ()
 bool
 Session::timecode_transmission_suspended () const
 {
-	return g_atomic_int_get (&_suspend_timecode_transmission) == 1;
+	return _suspend_timecode_transmission.load () == 1;
 }
 
-boost::shared_ptr<TransportMaster>
+std::shared_ptr<TransportMaster>
 Session::transport_master() const
 {
 	return TransportMasterManager::instance().current();
@@ -1974,7 +1982,7 @@ Session::sync_source_changed (SyncSource type, samplepos_t pos, pframes_t cycle_
 {
 	/* Runs in process() context */
 
-	boost::shared_ptr<TransportMaster> master = TransportMasterManager::instance().current();
+	std::shared_ptr<TransportMaster> master = TransportMasterManager::instance().current();
 
 	if (master->can_loop()) {
 		request_play_loop (false);
@@ -1991,25 +1999,27 @@ Session::sync_source_changed (SyncSource type, samplepos_t pos, pframes_t cycle_
 #if 0
 	we should not be treating specific transport masters as special cases because there maybe > 1 of a particular type
 
-	boost::shared_ptr<MTC_TransportMaster> mtc_master = boost::dynamic_pointer_cast<MTC_TransportMaster> (master);
+	std::shared_ptr<MTC_TransportMaster> mtc_master = std::dynamic_pointer_cast<MTC_TransportMaster> (master);
 
 	if (mtc_master) {
 		mtc_master->ActiveChanged.connect_same_thread (mtc_status_connection, boost::bind (&Session::mtc_status_changed, this, _1));
 		MTCSyncStateChanged(mtc_master->locked() );
 	} else {
-		if (g_atomic_int_compare_and_exchange (&_mtc_active, 1, 0)) {
+		int canderef (1);
+		if (_mtc_active.compare_exchange_strong (canderef, 0)) {
 			MTCSyncStateChanged( false );
 		}
 		mtc_status_connection.disconnect ();
 	}
 
-	boost::shared_ptr<LTC_TransportMaster> ltc_master = boost::dynamic_pointer_cast<LTC_TransportMaster> (master);
+	std::shared_ptr<LTC_TransportMaster> ltc_master = std::dynamic_pointer_cast<LTC_TransportMaster> (master);
 
 	if (ltc_master) {
 		ltc_master->ActiveChanged.connect_same_thread (ltc_status_connection, boost::bind (&Session::ltc_status_changed, this, _1));
 		LTCSyncStateChanged (ltc_master->locked() );
 	} else {
-		if (g_atomic_int_compare_and_exchange (&_ltc_active, 1, 0)) {
+		int canderef (1);
+		if (_ltc_active.compare_exchange_strong (canderef, 0)) {
 			LTCSyncStateChanged( false );
 		}
 		ltc_status_connection.disconnect ();
@@ -2021,11 +2031,11 @@ Session::sync_source_changed (SyncSource type, samplepos_t pos, pframes_t cycle_
 	// need to queue this for next process() cycle
 	_send_timecode_update = true;
 
-	boost::shared_ptr<RouteList> rl = routes.reader();
+	std::shared_ptr<RouteList> rl = routes.reader();
 	const bool externally_slaved = transport_master_is_external();
 
 	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> tr = boost::dynamic_pointer_cast<Track> (*i);
+		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*i);
 		if (tr && !tr->is_private_route()) {
 			tr->set_slaved (externally_slaved);
 		}

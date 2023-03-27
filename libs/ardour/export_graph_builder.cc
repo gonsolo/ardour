@@ -70,6 +70,89 @@
 using namespace AudioGrapher;
 using std::string;
 
+/*
+ * The Export Graph is evaluated for each Timespan.
+ *
+ *  - The Graph has at least one ChannelConfig
+ *  - Each ChannnelConfig has at least one SilenceHandler.
+ *  - Each SilenceHandler feeds at least one SRC.
+ *  - Each SRC feeds at least one Intermediate or one SFC
+ *    Intermediates and SFC children are processed sequentally.
+ *  - Each Intermediate (tmp-file) runs SFC children in parallel.
+ *  - Each SFC feeds at least one Encoder.
+ *
+ *
+ * [process callback]
+ *      |
+ *      v
+ * {   ChannelConfig
+ * |    |
+ * |    \-> Interleaver -> Chunker
+ * }                          |
+ *                            v
+ *      /---------------------/
+ *      |
+ *      v
+ * {   SilenceHandler
+ * |    |
+ * |    \-> Silence Trimmer (trim and/or add)
+ * }                      |
+ *                        v
+ *      /-----------------/
+ *      |
+ *      v
+ * {   SRC
+ * |    \-> Sample Rate Conversion
+ * }                |
+ *                  v
+ *      /-----------+-------------------------------------\
+ *      |                                                 |
+ *      v                                                 |
+ * {   Intermediate (normalize or realtime)               |
+ * |    |                                                 |
+ * |    \---+------or-------+-------or-------\            |
+ * |        v               v                v            |
+ * |     Peak Reader -> Loudness Reader -> TMP File       |
+ * |                                         |            |
+ * |                                         v            |
+ * |               Threader (run SFC childs in parallel)  |
+ * }                                         |            |
+ *                                           v            |
+ *      /------------------------------------/            |
+ *      |                                                 |
+ *      v                    /----------------------------/
+ * {   SFC                   |
+ * |    |                    v
+ * |    \-> Normalizer -> Limiter
+ * |                         |
+ * |                         v
+ * |          /------or------+-or-\
+ * |         v                    |
+ * |      Chunker -> Analyzer -> -+
+ * |                              |
+ * |                    /---or----+
+ * |                    |         |
+ * |                    |         v
+ * |                    |     Demo Noise
+ * |                    |         |
+ * |                    +----<----/
+ * |                    |
+ * |                    v
+ * |      Int/Short/Float Converter & Dither
+ * }                    |
+ *      /---------------/
+ *      |
+ *      v
+ * {   Encoder
+ * |    |
+ * |    \---+------or-------+-------or------\
+ * |        v               v                v
+ * |     Int Writer    Float Writer      Pipe Writer
+ * |      (sndfile)     (sndfile)         (ffmpeg)
+ * }
+ *
+ */
+
 namespace ARDOUR {
 
 ExportGraphBuilder::ExportGraphBuilder (Session const & session)
@@ -169,7 +252,7 @@ ExportGraphBuilder::cleanup (bool remove_out_files/*=false*/)
 }
 
 void
-ExportGraphBuilder::set_current_timespan (boost::shared_ptr<ExportTimespan> span)
+ExportGraphBuilder::set_current_timespan (std::shared_ptr<ExportTimespan> span)
 {
 	timespan = span;
 }
@@ -211,7 +294,7 @@ ExportGraphBuilder::add_config (FileSpec const & config, bool rt)
 	/* Split channel configurations are split into several channel configurations,
 	 * each corresponding to a file, at this stage
 	 */
-	typedef std::list<boost::shared_ptr<ExportChannelConfiguration> > ConfigList;
+	typedef std::list<std::shared_ptr<ExportChannelConfiguration> > ConfigList;
 	ConfigList file_configs;
 	new_config.channel_config->configurations_for_files (file_configs);
 
@@ -255,7 +338,7 @@ ExportGraphBuilder::add_split_config (FileSpec const & config)
 /* Encoder */
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<Sample> >
+std::shared_ptr<AudioGrapher::Sink<Sample> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -269,7 +352,7 @@ ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 }
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<int> >
+std::shared_ptr<AudioGrapher::Sink<int> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -278,7 +361,7 @@ ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 }
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<short> >
+std::shared_ptr<AudioGrapher::Sink<short> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -327,7 +410,9 @@ ExportGraphBuilder::Encoder::destroy_writer (bool delete_out_file)
 bool
 ExportGraphBuilder::Encoder::operator== (FileSpec const & other_config) const
 {
-	return get_real_format (config) == get_real_format (other_config);
+	ExportFormatSpecification const& a = *config.format;
+	ExportFormatSpecification const& b = *other_config.format;
+	return a == b;
 }
 
 int
@@ -339,7 +424,7 @@ ExportGraphBuilder::Encoder::get_real_format (FileSpec const & config)
 
 template<typename T>
 void
-ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::SndfileWriter<T> > & writer)
+ExportGraphBuilder::Encoder::init_writer (std::shared_ptr<AudioGrapher::SndfileWriter<T> > & writer)
 {
 	unsigned channels = config.channel_config->get_n_chans();
 	int format = get_real_format (config);
@@ -364,7 +449,7 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::Sndfil
 
 template<typename T>
 void
-ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPipeWriter<T> > & writer)
+ExportGraphBuilder::Encoder::init_writer (std::shared_ptr<AudioGrapher::CmdPipeWriter<T> > & writer)
 {
 	unsigned channels = config.channel_config->get_n_chans();
 	config.filename->set_channel_config(config.channel_config);
@@ -496,7 +581,7 @@ ExportGraphBuilder::SFC::SFC (ExportGraphBuilder &parent, FileSpec const & new_c
 
 	normalizer->add_output (limiter);
 
-	boost::shared_ptr<AudioGrapher::ListedSource<float> > intermediate = limiter;
+	std::shared_ptr<AudioGrapher::ListedSource<float> > intermediate = limiter;
 
 	config.filename->set_channel_config (config.channel_config);
 	parent.add_export_fn (config.filename->get_path (config.format));
@@ -649,7 +734,18 @@ ExportGraphBuilder::SFC::operator== (FileSpec const& other_config) const
 	ExportFormatSpecification const& a = *config.format;
 	ExportFormatSpecification const& b = *other_config.format;
 
-	bool id = a.sample_format() == b.sample_format();
+	bool id;
+	if (a.analyse () || b.analyse ()) {
+		/* Show dedicated analysis result for files with different
+		 * quality or wav/bwav. This adds a dedicated SFC for each
+		 * format, rater than only running dedicated Encoders as
+		 * childs of of the same SFC.
+		 */
+		id = a == b;
+	} else {
+		/* delegate disambiguation to Encoder::operator== */
+		id = a.sample_format() == b.sample_format();
+	}
 
 	if (a.normalize_loudness () == b.normalize_loudness ()) {
 		id &= a.normalize_lufs () == b.normalize_lufs ();

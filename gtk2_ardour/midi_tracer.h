@@ -22,6 +22,8 @@
 #ifndef __ardour_gtk_midi_tracer_h__
 #define __ardour_gtk_midi_tracer_h__
 
+#include <atomic>
+
 #include <gtkmm/textview.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/togglebutton.h>
@@ -35,7 +37,6 @@
 #include "pbd/signals.h"
 #include "pbd/ringbuffer.h"
 #include "pbd/pool.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "midi++/types.h"
 #include "ardour_window.h"
@@ -75,7 +76,7 @@ private:
 	 *  equal to 0 when an update is not queued.  May temporarily be negative if a
 	 *  update is handled before it was noted that it had just been queued.
 	 */
-	GATOMIC_QUAL gint _update_queued;
+	std::atomic<int> _update_queued;
 
 	PBD::RingBuffer<char *> fifo;
 	PBD::Pool buffer_pool;
@@ -115,10 +116,10 @@ private:
 	void disconnect ();
 	PBD::ScopedConnection _parser_connection;
 	PBD::ScopedConnection _manager_connection;
-	boost::shared_ptr<MIDI::Parser> _midi_parser;
+	std::shared_ptr<MIDI::Parser> _midi_parser;
 
-	boost::shared_ptr<ARDOUR::MidiPort> tracer_port;
-	boost::shared_ptr<ARDOUR::MidiPort> traced_port;
+	std::shared_ptr<ARDOUR::MidiPort> tracer_port;
+	std::shared_ptr<ARDOUR::MidiPort> traced_port;
 
 	static unsigned int window_count;
 };

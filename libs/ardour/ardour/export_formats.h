@@ -22,8 +22,8 @@
 #ifndef __ardour_export_formats_h__
 #define __ardour_export_formats_h__
 
-#include <boost/weak_ptr.hpp>
 #include <list>
+#include <memory>
 
 #include "pbd/failed_constructor.h"
 #include "pbd/signals.h"
@@ -137,7 +137,7 @@ public:
 		int         quality;
 	};
 
-	typedef boost::shared_ptr<CodecQuality> CodecQualityPtr;
+	typedef std::shared_ptr<CodecQuality> CodecQualityPtr;
 	typedef std::list<CodecQualityPtr>      CodecQualityList;
 
 	virtual ~HasCodecQuality () {}
@@ -187,12 +187,12 @@ public:
 		ExportFormatBase::DitherType type;
 	};
 
-	typedef boost::shared_ptr<SampleFormatState> SampleFormatPtr;
-	typedef boost::weak_ptr<SampleFormatState>   WeakSampleFormatPtr;
+	typedef std::shared_ptr<SampleFormatState> SampleFormatPtr;
+	typedef std::weak_ptr<SampleFormatState>   WeakSampleFormatPtr;
 	typedef std::list<SampleFormatPtr>           SampleFormatList;
 
-	typedef boost::shared_ptr<DitherTypeState> DitherTypePtr;
-	typedef boost::weak_ptr<DitherTypeState>   WeakDitherTypePtr;
+	typedef std::shared_ptr<DitherTypeState> DitherTypePtr;
+	typedef std::weak_ptr<DitherTypeState>   WeakDitherTypePtr;
 	typedef std::list<DitherTypePtr>           DitherTypeList;
 
 public:
