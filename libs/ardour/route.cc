@@ -771,15 +771,15 @@ Route::push_solo_isolate_upstream (int32_t delta)
 {
 	/* forward propagate solo-isolate status to everything fed by this route, but not those via sends only */
 
-	std::shared_ptr<RouteList> routes = _session.get_routes ();
-	for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
+	std::shared_ptr<RouteList const> routes = _session.get_routes ();
+	for (auto const& i : *routes) {
 
-		if ((*i).get() == this || !(*i)->can_solo()) {
+		if (i.get() == this || !i->can_solo()) {
 			continue;
 		}
 
-		if (feeds (*i)) {
-			(*i)->solo_isolate_control()->mod_solo_isolated_by_upstream (delta);
+		if (feeds (i)) {
+			i->solo_isolate_control()->mod_solo_isolated_by_upstream (delta);
 		}
 	}
 }
@@ -3688,13 +3688,13 @@ Route::output_effectively_connected_real () const
 	}
 
 	/* now follow connections downstream */
-	std::shared_ptr<RouteList> routes = _session.get_routes ();
-	for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
-		Route* rp = (*i).get();
+	std::shared_ptr<RouteList const> routes = _session.get_routes ();
+	for (auto const& i : *routes) {
+		Route* rp = i.get();
 		if (rp == this) {
 			continue;
 		}
-		if (!(*i)->input()->connected_to (_output)) {
+		if (!i->input()->connected_to (_output)) {
 			continue;
 		}
 		if (_connection_cache.find (rp) != _connection_cache.end ()) {
@@ -3706,7 +3706,7 @@ Route::output_effectively_connected_real () const
 		_connection_cache[rp] = false;
 
 		/* recurse downstream, check connected route */
-		bool rv = (*i)->output_effectively_connected_real ();
+		bool rv = i->output_effectively_connected_real ();
 		_connection_cache[rp] = rv;
 		if (rv) {
 			return true;
@@ -3767,17 +3767,17 @@ Route::input_change_handler (IOChange change, void * /*src*/)
 	if (_solo_control->soloed_by_others_upstream() || _solo_isolate_control->solo_isolated_by_upstream()) {
 		int sbou = 0;
 		int ibou = 0;
-		std::shared_ptr<RouteList> routes = _session.get_routes ();
+		std::shared_ptr<RouteList const> routes = _session.get_routes ();
 		if (_input->connected()) {
-			for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
-				if ((*i).get() == this || (*i)->is_master() || (*i)->is_monitor() || (*i)->is_auditioner()) {
+			for (auto const& i : *routes) {
+				if (i.get() == this || i->is_master() || i->is_monitor() || i->is_auditioner()) {
 					continue;
 				}
-				if ((*i)->direct_feeds_according_to_reality (std::dynamic_pointer_cast<Route> (shared_from_this()))) {
-					if ((*i)->soloed()) {
+				if (i->direct_feeds_according_to_reality (std::dynamic_pointer_cast<Route> (shared_from_this()))) {
+					if (i->soloed()) {
 						++sbou;
 					}
-					if ((*i)->solo_isolate_control()->solo_isolated()) {
+					if (i->solo_isolate_control()->solo_isolated()) {
 						++ibou;
 					}
 				}
@@ -3812,17 +3812,17 @@ Route::input_change_handler (IOChange change, void * /*src*/)
 
 		// Session::route_solo_changed  does not propagate indirect solo-changes
 		// propagate downstream to tracks
-		for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
-			if ((*i).get() == this || (*i)->is_master() || (*i)->is_monitor() || (*i)->is_auditioner()) {
+		for (auto const& i : *routes) {
+			if (i.get() == this || i->is_master() || i->is_monitor() || i->is_auditioner()) {
 				continue;
 			}
-			bool does_feed = feeds (*i);
+			bool does_feed = feeds (i);
 			if (delta <= 0 && does_feed) {
-				(*i)->solo_control()->mod_solo_by_others_upstream (delta);
+				i->solo_control()->mod_solo_by_others_upstream (delta);
 			}
 
 			if (idelta < 0 && does_feed) {
-				(*i)->solo_isolate_control()->mod_solo_isolated_by_upstream (-1);
+				i->solo_isolate_control()->mod_solo_isolated_by_upstream (-1);
 			}
 		}
 	}
@@ -3866,14 +3866,14 @@ Route::output_change_handler (IOChange change, void * /*src*/)
 			 * ideally the input_change_handler() of the other route
 			 * would propagate the change to us.
 			 */
-			std::shared_ptr<RouteList> routes = _session.get_routes ();
+			std::shared_ptr<RouteList const> routes = _session.get_routes ();
 			if (_output->connected()) {
-				for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
-					if ((*i).get() == this || (*i)->is_master() || (*i)->is_monitor() || (*i)->is_auditioner()) {
+				for (auto const& i : *routes) {
+					if (i.get() == this || i->is_master() || i->is_monitor() || i->is_auditioner()) {
 						continue;
 					}
-					if (direct_feeds_according_to_reality (*i)) {
-						if ((*i)->soloed()) {
+					if (direct_feeds_according_to_reality (i)) {
+						if (i->soloed()) {
 							++sbod;
 							break;
 						}
@@ -3888,12 +3888,12 @@ Route::output_change_handler (IOChange change, void * /*src*/)
 				// Session::route_solo_changed() does not propagate indirect solo-changes
 				// propagate upstream to tracks
 				std::shared_ptr<Route> shared_this = std::dynamic_pointer_cast<Route> (shared_from_this());
-				for (RouteList::iterator i = routes->begin(); i != routes->end(); ++i) {
-					if ((*i).get() == this || !can_solo()) {
+				for (auto const& i : *routes) {
+					if (i.get() == this || !can_solo()) {
 						continue;
 					}
-					if (delta != 0 && (*i)->feeds (shared_this)) {
-						(*i)->solo_control()->mod_solo_by_others_downstream (delta);
+					if (delta != 0 && i->feeds (shared_this)) {
+						i->solo_control()->mod_solo_by_others_downstream (delta);
 					}
 				}
 
@@ -4333,20 +4333,18 @@ Route::listen_position_changed ()
 std::shared_ptr<CapturingProcessor>
 Route::add_export_point()
 {
-	Glib::Threads::RWLock::ReaderLock lm (_processor_lock);
-	if (!_capturing_processor) {
-		lm.release();
-		Glib::Threads::Mutex::Lock lx (AudioEngine::instance()->process_lock ());
-		Glib::Threads::RWLock::WriterLock lw (_processor_lock);
+	assert (!_capturing_processor);
 
-		/* Align all tracks for stem-export w/o processing.
-		 * Compensate for all plugins between the this route's disk-reader
-		 * and the common final downstream output (ie alignment point for playback).
-		 */
-		_capturing_processor.reset (new CapturingProcessor (_session, playback_latency (true)));
-		configure_processors_unlocked (0, &lw);
-		_capturing_processor->activate ();
-	}
+	Glib::Threads::Mutex::Lock lx (AudioEngine::instance()->process_lock ());
+	Glib::Threads::RWLock::WriterLock lw (_processor_lock);
+
+	/* Align all tracks for stem-export w/o processing.
+	 * Compensate for all plugins between the this route's disk-reader
+	 * and the common final downstream output (ie alignment point for playback).
+	 */
+	_capturing_processor.reset (new CapturingProcessor (_session, playback_latency (true)));
+	configure_processors_unlocked (0, &lw);
+	_capturing_processor->activate ();
 
 	return _capturing_processor;
 }
@@ -4510,9 +4508,11 @@ Route::apply_latency_compensation ()
 void
 Route::set_block_size (pframes_t nframes)
 {
+	Glib::Threads::RWLock::ReaderLock lm (_processor_lock);
 	for (ProcessorList::iterator i = _processors.begin(); i != _processors.end(); ++i) {
 		(*i)->set_block_size (nframes);
 	}
+	lm.release ();
 
 	_session.ensure_buffers (n_process_buffers ());
 }
@@ -4520,8 +4520,10 @@ Route::set_block_size (pframes_t nframes)
 void
 Route::protect_automation ()
 {
-	for (ProcessorList::iterator i = _processors.begin(); i != _processors.end(); ++i)
+	Glib::Threads::RWLock::ReaderLock lm (_processor_lock);
+	for (ProcessorList::iterator i = _processors.begin(); i != _processors.end(); ++i) {
 		(*i)->protect_automation();
+	}
 }
 
 /** Shift automation forwards from a particular place, thereby inserting time.
@@ -5807,12 +5809,6 @@ Route::filter_enable_controllable (bool) const
 	return std::shared_ptr<AutomationControl>();
 }
 
-std::string
-Route::tape_mode_name (uint32_t mode) const
-{
-	return _("???");
-}
-
 std::shared_ptr<AutomationControl>
 Route::tape_drive_controllable () const
 {
@@ -5923,24 +5919,6 @@ Route::comp_redux_controllable () const
 {
 	return std::shared_ptr<ReadOnlyControl>();
 }
-string
-Route::comp_mode_name (uint32_t mode) const
-{
-	return _("???");
-}
-
-string
-Route::comp_speed_name (uint32_t mode) const
-{
-	return _("???");
-}
-
-string
-Route::gate_mode_name (uint32_t mode) const
-{
-	return _("???");
-}
-
 std::shared_ptr<AutomationControl>
 Route::gate_enable_controllable () const
 {

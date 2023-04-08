@@ -609,7 +609,7 @@ public:
 
 	bool should_ripple () const;
 	bool should_ripple_all () const;  /* RippleAll will ripple all similar regions and the timeline markers */
-	void do_ripple (std::shared_ptr<ARDOUR::Playlist>, Temporal::timepos_t const &, Temporal::timecnt_t const &, ARDOUR::RegionList* exclude, bool add_to_command);
+	void do_ripple (std::shared_ptr<ARDOUR::Playlist>, Temporal::timepos_t const &, Temporal::timecnt_t const &, ARDOUR::RegionList* exclude, ARDOUR::PlaylistSet const& affected_pls, bool add_to_command);
 	void do_ripple (std::shared_ptr<ARDOUR::Playlist>, Temporal::timepos_t const &, Temporal::timecnt_t const &, std::shared_ptr<ARDOUR::Region> exclude, bool add_to_command);
 	void ripple_marks (std::shared_ptr<ARDOUR::Playlist> target_playlist, Temporal::timepos_t at, Temporal::timecnt_t const & distance);
 	void get_markers_to_ripple (std::shared_ptr<ARDOUR::Playlist> target_playlist, Temporal::timepos_t const & pos, std::vector<ArdourMarker*>& markers);
@@ -619,6 +619,9 @@ public:
 	void clear_region_markers ();
 	void remove_region_marker (ARDOUR::CueMarker&);
 	void make_region_markers_global (bool as_cd_markers);
+
+	Editing::TempoEditBehavior tempo_edit_behavior() const { return _tempo_edit_behavior; }
+	void set_tempo_edit_behavior (Editing::TempoEditBehavior teb);
 
 protected:
 	void map_transport_state ();
@@ -914,6 +917,7 @@ private:
 	Gtk::EventBox            time_bars_event_box;
 	Gtk::VBox                time_bars_vbox;
 
+ 	ArdourCanvas::Container* tempo_meta_group;
 	ArdourCanvas::Container* tempo_group;
 	ArdourCanvas::Container* mapping_group;
 	ArdourCanvas::Container* meter_group;
@@ -962,7 +966,6 @@ private:
 	Glib::RefPtr<Gtk::ToggleAction> ruler_bbt_action;
 	Glib::RefPtr<Gtk::ToggleAction> ruler_meter_action;
 	Glib::RefPtr<Gtk::ToggleAction> ruler_tempo_action;
-	Glib::RefPtr<Gtk::ToggleAction> ruler_mapping_action;
 	Glib::RefPtr<Gtk::ToggleAction> ruler_range_action;
 	Glib::RefPtr<Gtk::ToggleAction> ruler_loop_punch_action;
 	Glib::RefPtr<Gtk::ToggleAction> ruler_cd_marker_action;
@@ -1060,8 +1063,6 @@ private:
 	ArdourCanvas::Rectangle* cue_marker_bar;
 	ArdourCanvas::Line*      ruler_separator;
 
-	ArdourCanvas::Arc*       mapping_cursor;
-
 	void toggle_cue_behavior ();
 
 	Gtk::Label  minsec_label;
@@ -1069,7 +1070,6 @@ private:
 	Gtk::Label  timecode_label;
 	Gtk::Label  samples_label;
 	Gtk::Label  tempo_label;
-	Gtk::Label  mapping_label;
 	Gtk::Label  meter_label;
 	Gtk::Label  mark_label;
 	Gtk::Label  range_mark_label;
@@ -1438,7 +1438,9 @@ private:
 	void temporal_zoom_by_sample (samplepos_t start, samplepos_t end);
 	void temporal_zoom_to_sample (bool coarser, samplepos_t sample);
 
+	std::shared_ptr<ARDOUR::Playlist> current_playlist () const;
 	void insert_source_list_selection (float times);
+	void cut_copy_section (bool copy);
 
 	/* import & embed */
 
@@ -1675,7 +1677,7 @@ private:
 
 	void fade_range ();
 
-	std::set<std::shared_ptr<ARDOUR::Playlist> > motion_frozen_playlists;
+	ARDOUR::PlaylistSet motion_frozen_playlists;
 
 	bool _dragging_playhead;
 
@@ -2524,6 +2526,9 @@ private:
 	void remove_gap_marker_callback (Temporal::timepos_t at, Temporal::timecnt_t distance);
 
 	void choose_mapping_drag (ArdourCanvas::Item*, GdkEvent*);
+
+	Editing::TempoEditBehavior _tempo_edit_behavior;
+	void tempo_edit_behavior_toggled (Editing::TempoEditBehavior);
 
 	template<typename T>
 	Temporal::TimeDomain drag_time_domain (T* thing_with_time_domain) {

@@ -332,7 +332,6 @@ Editor::Editor ()
 	, timecode_label (_("Timecode"))
 	, samples_label (_("Samples"))
 	, tempo_label (_("Tempo"))
-	, mapping_label (_("Tempo Mapping"))
 	, meter_label (_("Time Signature"))
 	, mark_label (_("Location Markers"))
 	, range_mark_label (_("Range Markers"))
@@ -470,6 +469,7 @@ Editor::Editor ()
 	, _stepping_axis_view (0)
 	, quantize_dialog (0)
 	, _main_menu_disabler (0)
+	, _tempo_edit_behavior (UIConfiguration::instance().get_default_tempo_edit_behavior())
 {
 	/* we are a singleton */
 
@@ -543,13 +543,6 @@ Editor::Editor ()
 	tempo_label.set_padding (5,0);
 	tempo_label.hide();
 	tempo_label.set_no_show_all();
-
-	mapping_label.set_name ("EditorRulerLabel");
-	mapping_label.set_size_request (-1, (int)timebar_height);
-	mapping_label.set_alignment (1.0, 0.5);
-	mapping_label.set_padding (5,0);
-	mapping_label.hide();
-	mapping_label.set_no_show_all();
 
 	meter_label.set_name ("EditorRulerLabel");
 	meter_label.set_size_request (-1, (int)timebar_height);
@@ -889,6 +882,9 @@ Editor::Editor ()
 	UIConfiguration::instance().map_parameters (pc);
 
 	setup_fade_images ();
+
+	/* force correct state for tempo edit behavior */
+	tempo_edit_behavior_toggled (_tempo_edit_behavior);
 }
 
 Editor::~Editor()
@@ -1980,6 +1976,10 @@ Editor::add_selection_context_items (Menu_Helpers::MenuList& edit_items)
 	edit_items.push_back (MenuElem (_("Duplicate Range"), sigc::bind (sigc::mem_fun(*this, &Editor::duplicate_range), false)));
 
 	edit_items.push_back (SeparatorElem());
+	edit_items.push_back (MenuElem (_("Copy/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), true)));
+	edit_items.push_back (MenuElem (_("Cut/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), false)));
+
+	edit_items.push_back (SeparatorElem());
 	edit_items.push_back (MenuElem (_("Consolidate"), sigc::bind (sigc::mem_fun(*this, &Editor::bounce_range_selection), ReplaceRange, false)));
 	edit_items.push_back (MenuElem (_("Consolidate (with processing)"), sigc::bind (sigc::mem_fun(*this, &Editor::bounce_range_selection), ReplaceRange, true)));
 	edit_items.push_back (MenuElem (_("Bounce"), sigc::bind (sigc::mem_fun(*this, &Editor::bounce_range_selection), NewSource, false)));
@@ -2056,7 +2056,21 @@ Editor::add_dstream_context_items (Menu_Helpers::MenuList& edit_items)
 
 	edit_items.push_back (SeparatorElem());
 	edit_items.push_back (MenuElem (_("Insert Selected Region"), sigc::bind (sigc::mem_fun(*this, &Editor::insert_source_list_selection), 1.0f)));
+	if (!current_playlist () || !_sources->get_single_selection ()) {
+		edit_items.back ().set_sensitive (false);
+	}
 	edit_items.push_back (MenuElem (_("Insert Existing Media"), sigc::bind (sigc::mem_fun(*this, &Editor::add_external_audio_action), ImportToTrack)));
+
+	/* Cut/Copy Section */
+
+	timepos_t unused;
+	bool have_time_selection = get_selection_extents (unused, unused);
+	edit_items.push_back (SeparatorElem());
+	edit_items.push_back (MenuElem (_("Copy/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), true)));
+	edit_items.back ().set_sensitive (have_time_selection);
+	edit_items.push_back (MenuElem (_("Cut/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), false)));
+	edit_items.back ().set_sensitive (have_time_selection);
+
 
 	/* Nudge track */
 

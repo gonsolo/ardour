@@ -2055,7 +2055,7 @@ RegionMoveDrag::finished_no_copy (
 		}
 	}
 
-	for (set<std::shared_ptr<Playlist> >::iterator p = frozen_playlists.begin(); p != frozen_playlists.end(); ++p) {
+	for (PlaylistSet::iterator p = frozen_playlists.begin(); p != frozen_playlists.end(); ++p) {
 		(*p)->thaw();
 	}
 
@@ -2101,7 +2101,7 @@ RegionMoveDrag::remove_region_from_playlist (
 	PlaylistSet& modified_playlists
 	)
 {
-	pair<set<std::shared_ptr<Playlist> >::iterator, bool> r = modified_playlists.insert (playlist);
+	pair<PlaylistSet::iterator, bool> r = modified_playlists.insert (playlist);
 
 	if (r.second) {
 		playlist->clear_changes ();
@@ -2771,7 +2771,7 @@ TrimDrag::motion (GdkEvent* event, bool first_move)
 {
 	RegionView* rv = _primary;
 
-	pair<set<std::shared_ptr<Playlist> >::iterator,bool> insert_result;
+	pair<PlaylistSet::iterator,bool> insert_result;
 	timecnt_t delta;
 	timepos_t adj_time = adjusted_time (_drags->current_pointer_time () + snap_delta (event->button.state), event, true);
 	timecnt_t dt = raw_grab_time().distance (adj_time) + _pointer_offset - snap_delta (event->button.state);
@@ -2979,7 +2979,7 @@ TrimDrag::finished (GdkEvent* event, bool movement_occurred)
 			}
 		}
 
-		for (set<std::shared_ptr<Playlist> >::iterator p = _editor->motion_frozen_playlists.begin(); p != _editor->motion_frozen_playlists.end(); ++p) {
+		for (PlaylistSet::iterator p = _editor->motion_frozen_playlists.begin(); p != _editor->motion_frozen_playlists.end(); ++p) {
 			/* Trimming one region may affect others on the playlist, so we need
 			   to get undo Commands from the whole playlist rather than just the
 			   region.  Use motion_frozen_playlists (a set) to make sure we don't
@@ -3592,15 +3592,16 @@ MappingLinearDrag::aborted (bool moved)
 
 /******************************************************************************/
 
-MappingStretchDrag::MappingStretchDrag (Editor* e, ArdourCanvas::Item* i, Temporal::TempoMap::WritableSharedPtr& wmap)
+MappingStretchDrag::MappingStretchDrag (Editor* e, ArdourCanvas::Item* i, Temporal::TempoMap::WritableSharedPtr& wmap, Temporal::TempoPoint& focus, XMLNode& before)
 	: Drag (e, i, Temporal::BeatTime)
-	, _tempo (0)
+	, _focus (focus)
 	, map (wmap)
-	, _before_state (0)
+	, direction (0.)
+	, delta (0.)
+	, _before_state (before)
 	, _drag_valid (true)
 {
 	DEBUG_TRACE (DEBUG::Drags, "New MappingStretchDrag\n");
-
 }
 
 void
@@ -3608,33 +3609,17 @@ MappingStretchDrag::start_grab (GdkEvent* event, Gdk::Cursor* cursor)
 {
 	Drag::start_grab (event, cursor);
 
-	_tempo = const_cast<TempoPoint*> (&map->metric_at (raw_grab_time().beats()).tempo());
+	stringstream sstr;
 
-	if (adjusted_current_time (event, false) <= _tempo->time()) {
-		std::cerr << "too early for " << *_tempo << std::endl;
-		_drag_valid = false;
-		return;
-	}
-
-	ostringstream sstr;
-	if (_tempo->continuing()) {
-		TempoPoint const * prev = map->previous_tempo (*_tempo);
-		if (prev) {
-			sstr << "end: " << fixed << setprecision(3) << prev->end_note_types_per_minute() << "\n";
-		}
-	}
-
-	sstr << "start: " << fixed << setprecision(3) << _tempo->note_types_per_minute();
+	sstr << "start: " << fixed << setprecision(3) << _focus.note_types_per_minute();
 	show_verbose_cursor_text (sstr.str());
+	initial_npm = _focus.note_types_per_minute();
 }
 
 void
 MappingStretchDrag::setup_pointer_offset ()
 {
-	/* get current state */
-	_before_state = &map->get_state();
-
-	_grab_qn = max (Beats(), raw_grab_time().beats());
+	Beats grab_qn = max (Beats(), raw_grab_time().beats());
 
 	uint32_t divisions = _editor->get_grid_beat_divisions (_editor->grid_type());
 
@@ -3642,8 +3627,8 @@ MappingStretchDrag::setup_pointer_offset ()
 		divisions = 4;
 	}
 
-	_grab_qn = _grab_qn.round_to_subdivision (divisions, Temporal::RoundDownAlways);
-	_pointer_offset = timepos_t (_grab_qn).distance (raw_grab_time());
+	grab_qn = grab_qn.round_to_subdivision (divisions, Temporal::RoundDownAlways);
+	_pointer_offset = timepos_t (grab_qn).distance (raw_grab_time());
 }
 
 void
@@ -3653,20 +3638,49 @@ MappingStretchDrag::motion (GdkEvent* event, bool first_move)
 		return;
 	}
 
-	if (first_move) {
-		_editor->begin_reversible_command (_("map tempo w/stretch"));
-	}
-
-	timepos_t pf;
-
-	if (_editor->grid_musical()) {
-		pf = adjusted_current_time (event, false);
+	if (_drags->current_pointer_x() < last_pointer_x()) {
+		if (direction < 0.) {
+			direction = 1.;
+			initial_npm += delta;
+			std::cerr << "!!!!! RESET INTIIAL to " << initial_npm << std::endl;
+			delta = 0.;
+		}
 	} else {
-		pf = adjusted_current_time (event);
+		if (direction >= 0.) {
+			direction = -1.;
+			initial_npm += delta;
+			std::cerr << "!!!!! RESET INTIIAL 2 to " << initial_npm << std::endl;
+			delta = 0.;
+		}
 	}
 
-	map->stretch_tempo (_tempo, timepos_t (_grab_qn).samples(), pf.samples(), _grab_qn, pf.beats());
-	_editor->mapping_cursor->set_position (Duple (_editor->time_to_pixel_unrounded (pf), _editor->mapping_cursor->position().y));
+
+	if (_drags->current_pointer_time() >= timepos_t::from_superclock (_focus.sclock())) {
+		std::cerr << "nope\n";
+		return;
+	}
+
+	// if (_drags->current_pointer_time() <= timepos_t::from_superclock (prev.sclock())) {
+	// return;
+        // }
+
+	/* XXX needs to scale somehow with zoom level */
+
+	delta += 0.5 * (last_pointer_x() - _drags->current_pointer_x());
+
+	double new_npm = initial_npm + delta;
+
+	if (new_npm < 8 || new_npm > 300) {
+		return;
+	}
+
+	if (new_npm < 8 || new_npm > 300) {
+		return;
+	}
+
+	std::cerr << "new tempo value will be " << initial_npm << " + " << delta << " = " << new_npm << std::endl;
+
+	map->stretch_tempo (_focus, new_npm);
 	_editor->mid_tempo_change (Editor::MappingChanged);
 }
 
@@ -3689,7 +3703,7 @@ MappingStretchDrag::finished (GdkEvent* event, bool movement_occurred)
 
 	XMLNode &after = map->get_state();
 
-	_editor->session()->add_command (new Temporal::TempoCommand (_("move BBT point"), _before_state, &after));
+	_editor->session()->add_command (new Temporal::TempoCommand (_("tempo conform/stretch"), &_before_state, &after));
 	_editor->commit_reversible_command ();
 
 	/* 2nd argument means "update tempo map display after the new map is
@@ -3778,8 +3792,6 @@ MappingTwistDrag::motion (GdkEvent* event, bool first_move)
 	delta += 0.75 * (last_pointer_x() - _drags->current_pointer_x());
 
 	map->twist_tempi (prev, focus, next, initial_npm + delta);
-
-	_editor->mapping_cursor->set_position (Duple (_editor->sample_to_pixel_unrounded (superclock_to_samples (focus.sclock(), TEMPORAL_SAMPLE_RATE)), _editor->mapping_cursor->position().y));
 	_editor->mid_tempo_change (Editor::MappingChanged);
 }
 
@@ -3988,7 +4000,7 @@ TempoEndDrag::motion (GdkEvent* event, bool first_move)
 	}
 
 	timepos_t const pos = adjusted_current_time (event, false);
-	map->stretch_tempo_end (_tempo, timepos_t (_grab_qn).samples(), pos.samples());
+	// map->stretch_tempo_end (_tempo, timepos_t (_grab_qn).samples(), pos.samples());
 	_editor->mid_tempo_change (Editor::TempoChanged);
 
 	ostringstream sstr;

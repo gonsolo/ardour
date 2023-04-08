@@ -125,7 +125,7 @@ IOPluginWindow::refill ()
 	if (!_session) {
 		return;
 	}
-	std::shared_ptr<IOPlugList> iop (_session->io_plugs ());
+	std::shared_ptr<IOPlugList const> iop (_session->io_plugs ());
 	for (auto& i : *iop) {
 		IOPlugUI* iopup = manage (new IOPlugUI (i));
 		if (i->is_pre ()) {
@@ -335,7 +335,9 @@ IOPluginWindow::IOPlugUI::edit_plugin (bool custom_ui)
 	_window_proxy->set_custom_ui_mode (custom_ui);
 	_window_proxy->show_the_right_window ();
 	Gtk::Window* tlw = dynamic_cast<Gtk::Window*> (get_toplevel ());
-	_window_proxy->set_transient_for (*tlw);
+	if (tlw) {
+		_window_proxy->set_transient_for (*tlw);
+	}
 }
 
 bool
@@ -586,9 +588,9 @@ IOPluginWindow::IOButton::button_press (GdkEventButton* ev)
 
 	uint32_t const n_with_separator = citems.size ();
 
-	std::shared_ptr<ARDOUR::BundleList> b      = _io->session ().bundles ();
-	std::shared_ptr<ARDOUR::RouteList>  routes = _io->session ().get_routes ();
-	RouteList                             copy   = *routes;
+	std::shared_ptr<ARDOUR::BundleList const> b      = _io->session ().bundles ();
+	std::shared_ptr<ARDOUR::RouteList const>  routes = _io->session ().get_routes ();
+	RouteList                                 copy   = *routes;
 	copy.sort (RouteCompareByName ());
 
 	if (_io->direction () == IO::Input) {

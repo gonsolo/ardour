@@ -393,8 +393,7 @@ protected:
 	friend class DraggingView;
 
 protected:
-	typedef std::set<std::shared_ptr<ARDOUR::Playlist> > PlaylistSet;
-	void add_stateful_diff_commands_for_playlists (PlaylistSet const &);
+	void add_stateful_diff_commands_for_playlists (ARDOUR::PlaylistSet const &);
 
 private:
 
@@ -515,13 +514,13 @@ private:
 		RouteTimeAxisView*,
 		ARDOUR::layer_t,
 		Temporal::timepos_t const &,
-		PlaylistSet&
+		ARDOUR::PlaylistSet&
 		);
 
 	void remove_region_from_playlist (
 		std::shared_ptr<ARDOUR::Region>,
 		std::shared_ptr<ARDOUR::Playlist>,
-		PlaylistSet& modified_playlists
+		ARDOUR::PlaylistSet& modified_playlists
 		);
 
 
@@ -945,7 +944,7 @@ private:
 class MappingStretchDrag : public Drag
 {
 public:
-	MappingStretchDrag (Editor *, ArdourCanvas::Item *, Temporal::TempoMap::WritableSharedPtr&);
+	MappingStretchDrag (Editor *, ArdourCanvas::Item *, Temporal::TempoMap::WritableSharedPtr&, Temporal::TempoPoint&, XMLNode&);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -963,11 +962,14 @@ public:
 	void setup_pointer_offset ();
 
 private:
-	Temporal::TempoPoint* _tempo;
+	Temporal::TempoPoint& _focus;
 	Temporal::TempoMap::WritableSharedPtr map;
-	Temporal::Beats _grab_qn;
 
-	XMLNode* _before_state;
+	double direction;
+	double delta;
+	double initial_npm;
+
+	XMLNode& _before_state;
 	bool     _drag_valid;
 };
 

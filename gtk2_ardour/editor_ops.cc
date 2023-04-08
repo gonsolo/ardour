@@ -2656,28 +2656,35 @@ Editor::unhide_ranges ()
 }
 
 /* INSERT/REPLACE */
-
-void
-Editor::insert_source_list_selection (float times)
+std::shared_ptr<Playlist>
+Editor::current_playlist () const
 {
-	RouteTimeAxisView *tv = 0;
 	std::shared_ptr<Playlist> playlist;
+	RouteTimeAxisView *tv = 0;
 
 	if (clicked_routeview != 0) {
 		tv = clicked_routeview;
 	} else if (!selection->tracks.empty()) {
 		if ((tv = dynamic_cast<RouteTimeAxisView*>(selection->tracks.front())) == 0) {
-			return;
+			return playlist;
 		}
 	} else if (entered_track != 0) {
 		if ((tv = dynamic_cast<RouteTimeAxisView*>(entered_track)) == 0) {
-			return;
+			return playlist;;
 		}
 	} else {
-		return;
+		return playlist;
 	}
 
-	if ((playlist = tv->playlist()) == 0) {
+	return tv->playlist ();
+}
+
+void
+Editor::insert_source_list_selection (float times)
+{
+	std::shared_ptr<Playlist> playlist = current_playlist ();
+
+	if (!playlist) {
 		return;
 	}
 
@@ -2699,6 +2706,16 @@ Editor::insert_source_list_selection (float times)
 	}
 
 	commit_reversible_command ();
+}
+
+void
+Editor::cut_copy_section (bool copy)
+{
+	timepos_t start, end;
+	if (!get_selection_extents (start, end) || !_session) {
+		return;
+	}
+	_session->cut_copy_section (start, end, get_preferred_edit_position(), copy);
 }
 
 /* BUILT-IN EFFECTS */
@@ -2940,8 +2957,8 @@ Editor::do_layer_operation (LayerOperation op)
 		break;
 	}
 
-	set<std::shared_ptr<Playlist> > playlists = selection->regions.playlists ();
-	for (set<std::shared_ptr<Playlist> >::iterator i = playlists.begin(); i != playlists.end(); ++i) {
+	PlaylistSet playlists = selection->regions.playlists ();
+	for (PlaylistSet::iterator i = playlists.begin(); i != playlists.end(); ++i) {
 		(*i)->clear_owned_changes ();
 	}
 
@@ -2962,7 +2979,7 @@ Editor::do_layer_operation (LayerOperation op)
 		}
 	}
 
-	for (set<std::shared_ptr<Playlist> >::iterator i = playlists.begin(); i != playlists.end(); ++i) {
+	for (PlaylistSet::iterator i = playlists.begin(); i != playlists.end(); ++i) {
 		vector<Command*> cmds;
 		(*i)->rdiff (cmds);
 		_session->add_commands (cmds);
@@ -4868,8 +4885,8 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 
 	timepos_t first_position = timepos_t::max (Temporal::AudioTime);
 
-	typedef set<std::shared_ptr<Playlist> > FreezeList;
-	FreezeList freezelist;
+	PlaylistSet freezelist;
+	RegionList  exclude;
 
 	/* get ordering correct before we cut/copy */
 
@@ -4883,7 +4900,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 			std::shared_ptr<Playlist> pl = (*x)->region()->playlist();
 
 			if (pl) {
-				FreezeList::iterator fl;
+				PlaylistSet::iterator fl;
 
 				// only take state if this is a new playlist.
 				for (fl = freezelist.begin(); fl != freezelist.end(); ++fl) {
@@ -4964,7 +4981,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		case Delete:
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), std::shared_ptr<Region>(), false);
+				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
 			}
 			break;
 
@@ -4973,7 +4990,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 			npl->add_region (_xx, timepos_t (first_position.distance (r->position())));
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), std::shared_ptr<Region>(), false);
+				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
 			}
 			break;
 
@@ -4985,7 +5002,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		case Clear:
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), std::shared_ptr<Region>(), false);
+				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
 			}
 			break;
 		}
@@ -5017,7 +5034,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		}
 	}
 
-	for (FreezeList::iterator pl = freezelist.begin(); pl != freezelist.end(); ++pl) {
+	for (PlaylistSet::iterator pl = freezelist.begin(); pl != freezelist.end(); ++pl) {
 		(*pl)->thaw ();
 
 		/* We might have removed regions, which alters other regions' layering_index,
@@ -5253,7 +5270,7 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 	}
 
 	std::shared_ptr<Playlist> playlist;
-	std::set<std::shared_ptr<Playlist> > playlists; // list of unique playlists affected by duplication
+	PlaylistSet playlists; // list of unique playlists affected by duplication
 	RegionSelection sel = regions; // clear (below) may  clear the argument list if its the current region selection
 	RegionSelection foo;
 
@@ -5283,8 +5300,8 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 			}
 		}
 
-		for (set<std::shared_ptr<Playlist> >::iterator p = playlists.begin(); p != playlists.end(); ++p) {
-			do_ripple ((*p), start_time, span.scale (times), &exclude, false);
+		for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+			do_ripple ((*p), start_time, span.scale (times), &exclude, playlists, false);
 		}
 	}
 
@@ -5330,7 +5347,7 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 		foo.insert (foo.end(), latest_regionviews.begin(), latest_regionviews.end());
 	}
 
-	for (set<std::shared_ptr<Playlist> >::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
 		(*p)->rdiff_and_add_command (_session);
 	}
 
@@ -5956,7 +5973,7 @@ Editor::fork_regions_from_unselected ()
 		sources_list.insert(mrv->midi_region()->midi_source());
 	}
 
-	std::set<std::shared_ptr<Playlist> > affected_playlists;
+	PlaylistSet affected_playlists;
 	for (auto r : rs) {
 		const MidiRegionView* const mrv = dynamic_cast<const MidiRegionView*>(r);
 		if (mrv && sources_list.find(mrv->midi_region()->midi_source()) != sources_list.end()) {
@@ -8374,7 +8391,7 @@ Editor::insert_time (
 		 * than 1 track using playlists "from" a given track.
 		 */
 
-		set<std::shared_ptr<Playlist> > pl;
+		PlaylistSet pl;
 
 		if (all_playlists) {
 			RouteTimeAxisView* rtav = dynamic_cast<RouteTimeAxisView*> (*x);
@@ -8390,7 +8407,7 @@ Editor::insert_time (
 			}
 		}
 
-		for (set<std::shared_ptr<Playlist> >::iterator i = pl.begin(); i != pl.end(); ++i) {
+		for (PlaylistSet::iterator i = pl.begin(); i != pl.end(); ++i) {
 
 			(*i)->clear_changes ();
 			(*i)->clear_owned_changes ();
@@ -9527,7 +9544,7 @@ Editor::remove_gaps (timecnt_t const & gap_threshold, timecnt_t const & leave_ga
 		locations_before = &_session->locations()->get_state();
 	}
 
-	set<std::shared_ptr<Playlist> > pl;
+	PlaylistSet pl;
 
 	/* it will not be possible to infer this from the set<>, so keep track
 	 * of it explicitly
@@ -9550,7 +9567,7 @@ Editor::remove_gaps (timecnt_t const & gap_threshold, timecnt_t const & leave_ga
 		}
 	}
 
-	for (set<std::shared_ptr<Playlist> >::iterator i = pl.begin(); i != pl.end(); ++i) {
+	for (PlaylistSet::iterator i = pl.begin(); i != pl.end(); ++i) {
 
 		(*i)->clear_changes ();
 		(*i)->clear_owned_changes ();
@@ -9623,17 +9640,17 @@ void
 Editor::do_ripple (std::shared_ptr<ARDOUR::Playlist> target_playlist, timepos_t const & at, timecnt_t const & distance, std::shared_ptr<ARDOUR::Region> exclude, bool add_to_command)
 {
 	RegionList el;
+	PlaylistSet pls;
 	if (exclude) {
 		el.push_back (exclude);
 	}
-	do_ripple (target_playlist, at, distance, &el, add_to_command);
+	do_ripple (target_playlist, at, distance, &el, pls, add_to_command);
 }
 
 void
-Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & at, timecnt_t const & distance, RegionList* exclude, bool add_to_command)
+Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & at, timecnt_t const & distance, RegionList* exclude, PlaylistSet const &affected_pls, bool add_to_command)
 {
-	typedef std::set<std::shared_ptr<Playlist> > UniquePlaylists;
-	UniquePlaylists playlists;
+	PlaylistSet playlists;
 
 	playlists.insert (target_playlist);
 
@@ -9651,25 +9668,21 @@ Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & 
 	}
 
 	if (add_to_command) {
-		for (UniquePlaylists::iterator p = playlists.begin(); p != playlists.end(); ++p) {
-
-			(*p)->clear_changes ();
-			(*p)->clear_owned_changes ();
+		for (auto const& p : playlists) {
+			p->clear_changes ();
+			p->clear_owned_changes ();
 		}
 	}
 
-	for (UniquePlaylists::iterator p = playlists.begin(); p != playlists.end(); ++p) {
-		(*p)->freeze ();
+	for (auto const& p : playlists) {
+		p->freeze ();
 	}
 
-	for (UniquePlaylists::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
 
 		/* exclude list is only for the target */
 
 		if ((*p) == target_playlist) {
-
-			(*p)->clear_changes ();
-			(*p)->clear_owned_changes ();
 
 			(*p)->ripple (at, distance, exclude);
 
@@ -9680,9 +9693,7 @@ Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & 
 			if (add_to_command) {
 				(*p)->rdiff_and_add_command (_session);
 			}
-		} else {
-			/* all other playlists: do the ripple, and save to undo/redo */
-
+		} else if (affected_pls.find (*p) == affected_pls.end ()) {
 			(*p)->clear_changes ();
 			(*p)->clear_owned_changes ();
 			(*p)->ripple (at, distance, 0);
@@ -9691,7 +9702,7 @@ Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & 
 
 	}
 
-	for (UniquePlaylists::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
 		(*p)->thaw ();
 	}
 

@@ -689,7 +689,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	typedef std::shared_ptr<TempoMap const> SharedPtr;
 	typedef std::shared_ptr<TempoMap> WritableSharedPtr;
   private:
-	static thread_local WritableSharedPtr _tempo_map_p;
+	static thread_local SharedPtr _tempo_map_p;
 	static SerializedRCUManager<TempoMap> _map_mgr;
   public:
 	LIBTEMPORAL_API static void init ();
@@ -702,18 +702,14 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	 * tempo map only when it has changed.
 	 */
 
-	LIBTEMPORAL_API static WritableSharedPtr read() { return _map_mgr.reader(); }
-	LIBTEMPORAL_API static void              set (WritableSharedPtr new_map) { _tempo_map_p = new_map; /* new_map must have been fetched with read() */ }
+	LIBTEMPORAL_API static SharedPtr read() { return _map_mgr.reader(); }
+	LIBTEMPORAL_API static void      set (SharedPtr new_map) { _tempo_map_p = new_map; /* new_map must have been fetched with read() */ }
 
 	/* API for typical tempo map changes */
 
 	LIBTEMPORAL_API static WritableSharedPtr write_copy();
 	LIBTEMPORAL_API static int  update (WritableSharedPtr m);
 	LIBTEMPORAL_API static void abort_update ();
-
-	/* API to be reviewed */
-
-	LIBTEMPORAL_API static WritableSharedPtr fetch_writable() { _tempo_map_p = write_copy(); return _tempo_map_p; }
 
 	/* not part of public API */
 	timepos_t reftime(TempoMetric const &) const;
@@ -764,7 +760,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	LIBTEMPORAL_API int set_state (XMLNode const&, int version);
 
 	LIBTEMPORAL_API void twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
-	LIBTEMPORAL_API void stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sample, Beats const & start_qnote, Beats const & end_qnote);
+	LIBTEMPORAL_API void stretch_tempo (TempoPoint& ts, double new_npm);
 	LIBTEMPORAL_API void stretch_tempo_end (TempoPoint* ts, samplepos_t sample, samplepos_t end_sample);
 
 	/* END OF MODIFYING METHODS */

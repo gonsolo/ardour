@@ -60,6 +60,7 @@ setup_gtk_ardour_enums ()
 	StartupFSM::DialogID startup_dialog;
 	Gtk::ResponseType dialog_response;
 	AddRouteDialog::TypeWanted type_wanted;
+	TempoEditBehavior tempo_edit_behavior;
 
 #define REGISTER(e) enum_writer.register_distinct (typeid(e).name(), i, s); i.clear(); s.clear()
 #define REGISTER_BITS(e) enum_writer.register_bits (typeid(e).name(), i, s); i.clear(); s.clear()
@@ -162,7 +163,6 @@ setup_gtk_ardour_enums ()
 	REGISTER_ENUM (MeterBarItem);
 	REGISTER_ENUM (TempoBarItem);
 	REGISTER_ENUM (MappingBarItem);
-	REGISTER_ENUM (MappingCursorItem);
 	REGISTER_ENUM (RegionViewNameHighlight);
 	REGISTER_ENUM (RegionViewName);
 	REGISTER_ENUM (StartSelectionTrimItem);
@@ -228,4 +228,8 @@ setup_gtk_ardour_enums ()
 	REGISTER_CLASS_ENUM (AddRouteDialog, VCAMaster);
 	REGISTER_CLASS_ENUM (AddRouteDialog, FoldbackBus);
 	REGISTER (type_wanted);
+
+	REGISTER_ENUM (TempoMapping);
+	REGISTER_ENUM (TempoChanging);
+	REGISTER (tempo_edit_behavior);
 }

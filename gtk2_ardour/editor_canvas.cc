@@ -162,12 +162,14 @@ Editor::initialize_canvas ()
 	CANVAS_DEBUG_NAME (transport_marker_group, "transport marker group");
 	range_marker_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 3.0) + 1.0));
 	CANVAS_DEBUG_NAME (range_marker_group, "range marker group");
-	tempo_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 4.0) + 1.0));
+	tempo_meta_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 4.0) + 1.0));
+	CANVAS_DEBUG_NAME (tempo_meta_group, "tempo meta group");
+	tempo_group = new ArdourCanvas::Container (tempo_meta_group, ArdourCanvas::Duple (0.0, 0.0));
 	CANVAS_DEBUG_NAME (tempo_group, "tempo group");
+	mapping_group = new ArdourCanvas::Container (tempo_meta_group, ArdourCanvas::Duple (0.0, 0.0));
+	CANVAS_DEBUG_NAME (tempo_group, "mapping group");
 	meter_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 5.0) + 1.0));
 	CANVAS_DEBUG_NAME (meter_group, "meter group");
-	mapping_group = new ArdourCanvas::Container (_time_markers_group, ArdourCanvas::Duple (0.0, (timebar_height * 6.0) + 1.0));
-	CANVAS_DEBUG_NAME (mapping_group, "mapping group");
 
 	float timebar_thickness = timebar_height; //was 4
 	float timebar_top = (timebar_height - timebar_thickness)/2;
@@ -183,22 +185,12 @@ Editor::initialize_canvas ()
 	tempo_bar->set_outline(false);
 	tempo_bar->set_outline_what(ArdourCanvas::Rectangle::BOTTOM);
 
-	mapping_bar = new ArdourCanvas::Rectangle (mapping_group, ArdourCanvas::Rect (0.0, 0.0, ArdourCanvas::COORD_MAX, timebar_height));
+	mapping_bar = new ArdourCanvas::Rectangle (tempo_group, ArdourCanvas::Rect (0.0, 0.0, ArdourCanvas::COORD_MAX, timebar_height));
 	CANVAS_DEBUG_NAME (mapping_bar, "Mapping Bar");
 	mapping_bar->set_fill(true);
 	mapping_bar->set_outline(false);
 	mapping_bar->set_outline_what(ArdourCanvas::Rectangle::BOTTOM);
-
-	mapping_cursor = new ArdourCanvas::Arc (mapping_group);
-	CANVAS_DEBUG_NAME (mapping_cursor, "Mapping Cursor");
-	mapping_cursor->set_fill (false);
-	mapping_cursor->set_outline (true);
-	mapping_cursor->set_outline_color (0xff0000ff);
-	mapping_cursor->set_outline_width (3. * UIConfiguration::instance().get_ui_scale());
-	mapping_cursor->set_radius ((timebar_height-5.)/2);
-	mapping_cursor->set_arc (360);
-	mapping_cursor->set_position (ArdourCanvas::Duple (35., (timebar_height-5.)/2.0)); // x is arbitrary at this time
-	mapping_cursor->hide ();
+	mapping_bar->hide ();
 
 	range_marker_bar = new ArdourCanvas::Rectangle (range_marker_group, ArdourCanvas::Rect (0.0, timebar_top, ArdourCanvas::COORD_MAX, timebar_btm));
 	CANVAS_DEBUG_NAME (range_marker_bar, "Range Marker Bar");
@@ -261,7 +253,6 @@ Editor::initialize_canvas ()
 
 	tempo_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), tempo_bar, TempoBarItem, "tempo bar"));
 	mapping_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), mapping_bar, MappingBarItem, "mapping bar"));
-	mapping_cursor->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), mapping_cursor, MappingCursorItem, "mapping cursor"));
 	meter_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), meter_bar, MeterBarItem, "meter bar"));
 	marker_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), marker_bar, MarkerBarItem, "marker bar"));
 	cd_marker_bar->Event.connect (sigc::bind (sigc::mem_fun (*this, &Editor::canvas_ruler_bar_event), cd_marker_bar, CdMarkerBarItem, "cd marker bar"));
@@ -657,9 +648,9 @@ Editor::session_gui_extents (bool use_extra) const
 	 * NOTE: we should listen to playlists, and cache these values so we don't calculate them every time.
 	 */
 	{
-		std::shared_ptr<RouteList> rl = _session->get_routes();
-		for (RouteList::iterator r = rl->begin(); r != rl->end(); ++r) {
-			std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (*r);
+		std::shared_ptr<RouteList const> rl = _session->get_routes();
+		for (auto const& r : *rl) {
+			std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (r);
 
 			if (!tr) {
 				continue;
@@ -1367,6 +1358,9 @@ Editor::which_canvas_cursor(ItemType type) const
 		case AutomationTrackItem:
 			cursor = which_track_cursor ();
 			break;
+		case MappingBarItem:
+			cursor = _cursors->trimmer;
+			break;
 		case PlayheadCursorItem:
 			cursor = _cursors->grabber;
 			break;
@@ -1523,8 +1517,8 @@ Editor::choose_canvas_cursor_on_entry (ItemType type)
 void
 Editor::update_all_enter_cursors ()
 {
-	for (std::vector<EnterContext>::iterator i = _enter_stack.begin(); i != _enter_stack.end(); ++i) {
-		i->cursor_ctx->change(which_canvas_cursor(i->item_type));
+	for (auto & ec : _enter_stack) {
+		ec.cursor_ctx->change(which_canvas_cursor (ec.item_type));
 	}
 }
 

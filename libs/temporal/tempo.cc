@@ -17,6 +17,7 @@
 */
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include <inttypes.h>
@@ -47,7 +48,7 @@ std::string Tempo::xml_node_name = X_("Tempo");
 std::string Meter::xml_node_name = X_("Meter");
 
 SerializedRCUManager<TempoMap> TempoMap::_map_mgr (0);
-thread_local TempoMap::WritableSharedPtr TempoMap::_tempo_map_p;
+thread_local TempoMap::SharedPtr TempoMap::_tempo_map_p;
 PBD::Signal0<void> TempoMap::MapChanged;
 
 void
@@ -480,7 +481,7 @@ void
 TempoPoint::compute_omega_beats_from_quarter_duration (Beats const & quarter_duration, superclock_t end_scpqn)
 {
 	_omega_beats = ((1.0/end_scpqn) - (1.0/superclocks_per_quarter_note())) / DoubleableBeats (quarter_duration).to_double();
-	if (!isfinite (_omega_beats)) {
+	if (!std::isfinite (_omega_beats)) {
 		abort ();
 	}
 	DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("quarter-computed omega from qtr duration = %1 dur was %2 start speed %3 end speed [%4]\n", _omega_beats, quarter_duration.str(), superclocks_per_quarter_note(), end_scpqn));
@@ -3146,6 +3147,103 @@ TempoMap::set_continuing (TempoPoint& tp, bool yn)
 	return true;
 }
 
+#if 1
+void
+TempoMap::stretch_tempo (TempoPoint& focus, double tempo_value)
+{
+	/* Our goal is to alter the outound tempo at @param focus and at the same
+	 * time create & modify a ramp between the previous tempo and @param focus
+	 * so that @param remains in the same location. 
+	 *
+	 * The user has placed @param focus at the correct point, but wanfocus to
+	 * adjust the (outbound) tempo without creating an obvious step change
+	 * at @param focus. So we want to ramp from prev to focus
+	 */
+
+	TempoPoint* prev = const_cast<TempoPoint*> (previous_tempo (focus));
+
+	TempoPoint old_prev (*prev);
+	TempoPoint old_focus (focus);
+
+	std::cerr << "using " << tempo_value << " working on " << focus << std::endl;
+	std::cerr << "\twith prev " << *prev << std::endl;
+
+	std::cerr << "focus then " << focus << std::endl;
+	focus.set_note_types_per_minute (tempo_value);
+	focus.set_end_npm (tempo_value);
+	std::cerr << "focus now " << focus << std::endl;
+	prev->set_end_npm (tempo_value);
+	prev->compute_omega_beats_from_next_tempo (focus);
+
+	superclock_t err = prev->superclock_at (focus.beats()) - focus.sclock();
+	const superclock_t one_sample = superclock_ticks_per_second() / TEMPORAL_SAMPLE_RATE;
+	const Beats b (focus.beats() - prev->beats());
+	// const double end_scpqn = focus.superclocks_per_quarter_note();
+	double scpqn = focus.superclocks_per_quarter_note ();
+	double new_npm;
+	int cnt = 0;
+
+	std::cerr << "initial error = " << err / (double) one_sample << std::endl;
+	reset_starting_at (prev->sclock());;
+	return;
+
+	while (std::abs(err) >= one_sample) {
+
+		if (err > 0) {
+			/* estimated > actual: speed end tempo up a little aka
+			   reduce scpqn
+			*/
+			scpqn *= 0.99;
+		} else {
+			/* estimated < actual: reduce end tempo a little, aka
+			   increase scpqn
+			*/
+			scpqn *= 1.01;
+		}
+
+		if (scpqn < 1.0) {
+			/* mathematically too small, bail out */
+			*prev = old_prev;
+			focus = old_focus;
+			return;
+		}
+
+		/* Convert scpqn to notes-per-minute */
+
+		new_npm = ((superclock_ticks_per_second() * 60.0) / scpqn) * (focus.note_type() / 4.0);
+
+		/* limit range of possible discovered tempo */
+
+		if (new_npm < 4.0 && new_npm > 400) {
+			/* too low of a tempo for our taste, bail out */
+			*prev = old_prev;
+			focus = old_focus;
+			return;
+		}
+
+		/* set the (initial) tempo, recompute omega and then compute
+		 * the (new) error (distance between the predicted position of
+		 * the next marker and its actual (fixed) position.
+		 */
+
+		focus.set_note_types_per_minute (new_npm);
+		focus.set_end_npm (new_npm);
+		prev->set_end_npm (new_npm);
+		prev->compute_omega_beats_from_next_tempo (focus);
+		err = prev->superclock_at (focus.beats()) - focus.sclock();
+		++cnt;
+	}
+
+	std::cerr << "that took " << cnt << " iterations to get to < 1 sample\n";
+	std::cerr << "final focus: " << focus << std::endl;
+	std::cerr << "final prev: " << *prev << std::endl;
+
+	reset_starting_at (prev->sclock());
+	// dump (std::cerr);
+}
+
+#else
+
 /* Adjusts the outgoing tempo at @p ts so that the next Tempo point is at @p
  * end_sample, while keeping the beat time positions of both the same.
  *
@@ -3225,6 +3323,9 @@ TempoMap::stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sam
 
 		new_bpm = std::min (new_bpm, 1000.0);
 	}
+
+	std::cerr << "new bpm: " << new_bpm << std::endl;
+
 	/* don't clamp and proceed here.
 	   testing has revealed that this can go negative,
 	   which is an entirely different thing to just being too low.
@@ -3245,6 +3346,8 @@ TempoMap::stretch_tempo (TempoPoint* ts, samplepos_t sample, samplepos_t end_sam
 
 	reset_starting_at (ts->sclock() + 1);
 }
+
+#endif
 
 void
 TempoMap::stretch_tempo_end (TempoPoint* ts, samplepos_t sample, samplepos_t end_sample)
@@ -3294,6 +3397,7 @@ TempoMap::stretch_tempo_end (TempoPoint* ts, samplepos_t sample, samplepos_t end
 
 	reset_starting_at (prev_t->sclock());
 }
+
 void
 TempoMap::twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_value)
 {

@@ -307,7 +307,10 @@ ARDOUR::module_path_vst3 (string const& path)
 			/* Ignore *.vst3 dll if it resides inside a bundle with the same name.
 			 * Ardour will instead use the bundle.
 			 */
-			return "";
+#ifndef NDEBUG
+		cerr << "Ignore .vst3 file inside bundle '" << path << "'\n";
+#endif
+			return "-1";
 		}
 #endif
 		module_path = path;
@@ -399,15 +402,21 @@ ARDOUR::vst3_valid_cache_file (std::string const& module_path, bool verbose, boo
 			/* check file format version */
 			XMLTree tree;
 			if (!tree.read (cache_file)) {
-				PBD::info << "Cache file is not valid XML." << endmsg;
+				if (verbose) {
+					PBD::info << "Cache file is not valid XML." << endmsg;
+				}
 				return "";
 			}
 			int cf_version = 0;
 			if (!tree.root()->get_property ("version", cf_version) || cf_version < ARDOUR_VST3_CACHE_FILE_VERSION) {
-				PBD::info << "Cache file version is too old." << endmsg;
+				if (verbose) {
+					PBD::info << "Cache file version is too old." << endmsg;
+				}
 				return "";
 			}
-			PBD::info << "Cache file is valid and up-to-date." << endmsg;
+			if (verbose) {
+				PBD::info << "Cache file is valid and up-to-date." << endmsg;
+			}
 			return cache_file;
 		} else if  (verbose) {
 			PBD::info << "Stale cache." << endmsg;

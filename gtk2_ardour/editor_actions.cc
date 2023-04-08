@@ -128,6 +128,7 @@ Editor::register_actions ()
 	ActionManager::register_action (editor_menu_actions, X_("AutomationMenu"), _("Automation"));
 	ActionManager::register_action (editor_menu_actions, X_("Crossfades"), _("Crossfades"));
 	ActionManager::register_action (editor_menu_actions, X_("Edit"), _("Edit"));
+	ActionManager::register_action (editor_menu_actions, X_("Tempo"), _("Tempo"));
 	ActionManager::register_action (editor_menu_actions, X_("EditCursorMovementOptions"), _("Move Selected Marker"));
 	ActionManager::register_action (editor_menu_actions, X_("EditSelectRangeOptions"), _("Select Range Operations"));
 	ActionManager::register_action (editor_menu_actions, X_("EditSelectRegionOptions"), _("Select Regions"));
@@ -204,6 +205,10 @@ Editor::register_actions ()
 	   when required. Editor::unlock() must be invoked directly.
 	*/
 	ActionManager::register_action (editor_actions, "lock", S_("Session|Lock"), sigc::mem_fun (*this, &Editor::lock));
+
+	RadioAction::Group tempo_edit_group;
+	ActionManager::register_radio_action (editor_actions, tempo_edit_group, "tempo-edit-is-mapping", _("Map Tempo"), sigc::bind (sigc::mem_fun (*this, &Editor::tempo_edit_behavior_toggled), Editing::TempoMapping));
+	ActionManager::register_radio_action (editor_actions, tempo_edit_group, "tempo-edit-is-changing", _("Change Tempo"), sigc::bind (sigc::mem_fun (*this, &Editor::tempo_edit_behavior_toggled), Editing::TempoChanging));
 
 	toggle_reg_sens (editor_actions, "show-editor-mixer", _("Show Editor Mixer"), sigc::mem_fun (*this, &Editor::editor_mixer_button_toggled));
 	toggle_reg_sens (editor_actions, "show-editor-list", _("Show Editor List"), sigc::mem_fun (*this, &Editor::editor_list_button_toggled));
@@ -362,6 +367,9 @@ Editor::register_actions ()
 	reg_sens (editor_actions, "set-loop-from-edit-range", _("Set Loop from Selection"), sigc::bind (sigc::mem_fun(*this, &Editor::set_loop_from_selection), false));
 	reg_sens (editor_actions, "set-punch-from-edit-range", _("Set Punch from Selection"), sigc::mem_fun(*this, &Editor::set_punch_from_selection));
 	reg_sens (editor_actions, "set-session-from-edit-range", _("Set Session Start/End from Selection"), sigc::mem_fun(*this, &Editor::set_session_extents_from_selection));
+
+	reg_sens (editor_actions, "copy-paste-section", _("Copy/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), true));
+	reg_sens (editor_actions, "cut-paste-section", _("Cut/Paste Range Section to Edit Point"), sigc::bind (sigc::mem_fun(*this, &Editor::cut_copy_section), false));
 
 	/* this is a duplicated action so that the main menu can use a different label */
 	reg_sens (editor_actions, "main-menu-play-selected-regions", _("Play Selected Regions"), sigc::mem_fun (*this, &Editor::play_selected_region));
@@ -710,7 +718,6 @@ Editor::register_actions ()
 	ruler_bbt_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-bbt-ruler"), _("Bars:Beats"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
 	ruler_meter_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-meter-ruler"), _("Time Signature"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
 	ruler_tempo_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-tempo-ruler"), _("Tempo"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
-	ruler_mapping_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-mapping-ruler"), _("Tempo Mapping"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
 	ruler_range_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-range-ruler"), _("Range Markers"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
 	ruler_loop_punch_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-loop-punch-ruler"), _("Loop/Punch Ranges"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
 	ruler_cd_marker_action = Glib::RefPtr<ToggleAction>::cast_static (ActionManager::register_toggle_action (ruler_actions, X_("toggle-cd-marker-ruler"), _("CD Markers"), sigc::mem_fun(*this, &Editor::toggle_ruler_visibility)));
