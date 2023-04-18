@@ -4886,7 +4886,6 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 	timepos_t first_position = timepos_t::max (Temporal::AudioTime);
 
 	PlaylistSet freezelist;
-	RegionList  exclude;
 
 	/* get ordering correct before we cut/copy */
 
@@ -4931,6 +4930,16 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 			pmap.push_back (PlaylistMapping (tv));
 		}
 	}
+
+	struct Ripple {
+		std::shared_ptr<Playlist> playlist;
+		timepos_t position;
+		timecnt_t length;
+
+		Ripple (std::shared_ptr<Playlist> pl, timepos_t const & pos, timecnt_t const & len) : playlist (pl), position (pos), length (len) {}
+	};
+
+	std::list<Ripple> ripple_list;
 
 	for (RegionSelection::iterator x = rs.begin(); x != rs.end(); ) {
 
@@ -4981,7 +4990,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		case Delete:
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
+				ripple_list.push_front (Ripple (pl, r->position(), -r->length()));
 			}
 			break;
 
@@ -4990,7 +4999,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 			npl->add_region (_xx, timepos_t (first_position.distance (r->position())));
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
+				ripple_list.push_front (Ripple (pl, r->position(), -r->length()));
 			}
 			break;
 
@@ -5002,12 +5011,27 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		case Clear:
 			pl->remove_region (r);
 			if (should_ripple()) {
-				do_ripple (pl, r->position(), -r->length(), &exclude, freezelist, false);
+				ripple_list.push_front (Ripple (pl, r->position(), -r->length()));
 			}
 			break;
 		}
 
 		x = tmp;
+	}
+
+	if (!ripple_list.empty()) {
+
+		/* The regions were sorted into (track, position) order. We
+		 * need to run the rippling in reverse order, so that later
+		 * cut/delete operations cause rippling further down the
+		 * timeline and then work towards zero.
+		 */
+
+		for (auto const & ripple : ripple_list) {
+			do_ripple (ripple.playlist, ripple.position, ripple.length, nullptr, freezelist, false);
+		}
+
+		ripple_list.clear ();
 	}
 
 	if (op != Delete) {
@@ -5034,14 +5058,15 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		}
 	}
 
-	for (PlaylistSet::iterator pl = freezelist.begin(); pl != freezelist.end(); ++pl) {
-		(*pl)->thaw ();
+	for (auto const & pl : freezelist) {
+
+		pl->thaw ();
 
 		/* We might have removed regions, which alters other regions' layering_index,
 		   so we need to do a recursive diff here.
 		*/
 
-		(*pl)->rdiff_and_add_command (_session);
+		pl->rdiff_and_add_command (_session);
 	}
 }
 
@@ -5980,7 +6005,7 @@ Editor::fork_regions_from_unselected ()
 			affected_playlists.insert(mrv->region()->playlist());
 		}
 	}
-	for (auto p : affected_playlists) {
+	for (auto const & p : affected_playlists) {
 		p->clear_changes ();
 		p->freeze ();
 	}
@@ -9668,42 +9693,42 @@ Editor::do_ripple (std::shared_ptr<Playlist> target_playlist, timepos_t const & 
 	}
 
 	if (add_to_command) {
-		for (auto const& p : playlists) {
+		for (auto const & p : playlists) {
 			p->clear_changes ();
 			p->clear_owned_changes ();
 		}
 	}
 
-	for (auto const& p : playlists) {
+	for (auto const & p : playlists) {
 		p->freeze ();
 	}
 
-	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+	for (auto const & p : playlists) {
 
 		/* exclude list is only for the target */
 
-		if ((*p) == target_playlist) {
+		if (p == target_playlist) {
 
-			(*p)->ripple (at, distance, exclude);
+			p->ripple (at, distance, exclude);
 
 			/* caller may put the target playlist into the undo
 			 * history, so only do this if asked
 			 */
 
 			if (add_to_command) {
-				(*p)->rdiff_and_add_command (_session);
+				p->rdiff_and_add_command (_session);
 			}
-		} else if (affected_pls.find (*p) == affected_pls.end ()) {
-			(*p)->clear_changes ();
-			(*p)->clear_owned_changes ();
-			(*p)->ripple (at, distance, 0);
-			(*p)->rdiff_and_add_command (_session);
+		} else if (affected_pls.find (p) == affected_pls.end ()) {
+			p->clear_changes ();
+			p->clear_owned_changes ();
+			p->ripple (at, distance, 0);
+			p->rdiff_and_add_command (_session);
 		}
 
 	}
 
-	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
-		(*p)->thaw ();
+	for (auto & p : playlists) {
+		p->thaw ();
 	}
 
 	/* Ripple marks & ranges if appropriate */

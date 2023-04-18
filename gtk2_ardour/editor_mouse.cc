@@ -2357,7 +2357,7 @@ Editor::motion_handler (ArdourCanvas::Item* item, GdkEvent* event, bool from_aut
 
 						ctx->cursor_ctx->change (cursors()->time_fx);
 					} else {
-						ctx->cursor_ctx->change (cursors()->trimmer);
+						ctx->cursor_ctx->change (cursors()->grabber);
 					}
 				}
 			}
@@ -2928,6 +2928,11 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		return;
 	}
 
+	if (_cursor_stack.empty() || _cursor_stack.back() != cursors()->time_fx) {
+		/* Not close enough to a beat line to start any mapping drag */
+		return;
+	}
+
 	Temporal::TempoMap::WritableSharedPtr map = begin_tempo_mapping ();
 
 	/* Decide between a tempo twist drag, which we do if the
@@ -2941,47 +2946,24 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 
 	TempoPoint* after = const_cast<TempoPoint*> (map->next_tempo (tempo));
 
-	std::cerr << "is there an after ? " << after << " for " << tempo <<std::endl;
+	/* Create a new marker, or use the under the mouse */
 
-	if (!after || dynamic_cast<MusicTimePoint*>(after)) {
-		/* Drag on the bar, not the cursor: just adjust tempo up or
-		 * down.
-		 */
-		_drags->set (new MappingLinearDrag (this, item, map), event);
-		std::cerr << ":Linear\n";
-		return;
-	}
-
-	std::cerr << " cursor stack: " << _cursor_stack.size() << std::endl;
-
-	if (_cursor_stack.empty() || _cursor_stack.back() != cursors()->grabber) {
-		/* This is the final tempo, or the next one is a BBT marker.
-		 * No twisting, just stretch this one.
-		*/
-		std::cerr << "stretch!\n";
-		begin_reversible_command (_("map tempo/stretch"));
-		XMLNode* before_state = &map->get_state();
-		_drags->set (new MappingStretchDrag (this, item, map, *after, *before_state), event);
-		std::cerr << ":Stretch\n";
-		return;
-	}
-
-	std::cerr << "Pointer time: " << pointer_time << std::endl;
-
-	BBT_Argument bbt = map->bbt_at (pointer_time);
-	std::cerr << " bbt " << bbt << std::endl;
-	bbt = BBT_Argument (bbt.reference(), bbt.round_to_beat ());
-	std::cerr << "rounded to " << bbt << " vs. " << tempo.bbt() << std::endl;
-
+	XMLNode* before_state = &map->get_state();
 	TempoPoint* before;
 	TempoPoint* focus;
 
-	/* Reversible command starts here, must be ended/aborted in drag */
+	bool stretch = false;
 
-	begin_reversible_command (_("map tempo/twist"));
-	XMLNode* before_state = &map->get_state();
+	if (!after || dynamic_cast<MusicTimePoint*>(after)) {
+		stretch = true;
+	}
 
-	if (tempo.bbt() < bbt) {
+	BBT_Argument bbt = map->bbt_at (pointer_time);
+	bbt = BBT_Argument (bbt.reference(), bbt.round_to_beat ());
+
+	if (tempo.bbt() != bbt) {
+
+		std::cerr << "ADD TEMPO MARKER " << bbt << " != " << tempo.bbt() << "\n";
 
 		/* Add a new tempo marker at the nearest beat point
 		   (essentially the snapped grab point for the drag), so that
@@ -2995,17 +2977,33 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		focus = &added;
 		reset_tempo_marks ();
 
+		map->dump (std::cerr);
+
 	} else {
+
+		std::cerr << "USE TEMPO MARKER\n";
 
 		before = const_cast<TempoPoint*> (map->previous_tempo (tempo));
 
 		if (!before) {
+			delete before_state;
 			return;
 		}
 
 		focus = &tempo;
 	}
 
-	_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state), event);
+	/* Reversible commands start here, must be ended/aborted in drag */
 
+	if (stretch) {
+		begin_reversible_command (_("map tempo/stretch"));
+		std::cerr << "STRETCH\n";
+		_drags->set (new MappingLinearDrag (this, item, map, tempo, *focus, *before_state), event);
+		return;
+	}
+
+
+	std::cerr << "TWIST\n";
+	begin_reversible_command (_("map tempo/twist"));
+	_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state), event);
 }

@@ -703,7 +703,12 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	 */
 
 	LIBTEMPORAL_API static SharedPtr read() { return _map_mgr.reader(); }
-	LIBTEMPORAL_API static void      set (SharedPtr new_map) { _tempo_map_p = new_map; /* new_map must have been fetched with read() */ }
+
+	/* Because WritableSharedPtr can be implicitly cast to SharedPtr, this
+	 * can be used on either a write_copy()'ed map, or one obtained via the
+	 * RCU reader() method.
+	 */
+	LIBTEMPORAL_API static void      set (SharedPtr new_map) { _tempo_map_p = new_map; }
 
 	/* API for typical tempo map changes */
 
@@ -1109,6 +1114,8 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 
 	Temporal::BBT_Time bbt_lookup (superclock_t, bool & found) const;
 	Temporal::BBT_Time bbt_lookup (Temporal::Beats const & b, bool & found) const;
+
+	bool iteratively_solve_ramp (TempoPoint&, TempoPoint&);
 
 	/* These are not really const, but the lookup tables are marked mutable
 	 * to allow time domain conversions to store their results while being

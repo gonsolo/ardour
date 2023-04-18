@@ -187,7 +187,7 @@ Editor::make_tempo_marker (Temporal::TempoPoint const * ts, double& min_tempo, d
 	const std::string tname (X_(""));
 	char const * color_name = X_("tempo marker");
 
-	tempo_marks.insert (before, new TempoMarker (*this, *tempo_group, UIConfiguration::instance().color (color_name), tname, *ts, ts->sample (sr), tc_color));
+	tempo_marks.insert (before, new TempoMarker (*this, *tempo_group, *mapping_group, UIConfiguration::instance().color (color_name), tname, *ts, ts->sample (sr), tc_color));
 
 	/* XXX the point of this code was "a jump in tempo by more than 1 ntpm results in a red
 	   tempo mark pointer."  (3a7bc1fd3f32f0)
@@ -476,7 +476,7 @@ Editor::maybe_draw_grid_lines ()
 		metric_get_minsec (grid_marks, _leftmost_sample, rightmost_sample, 12);
 	}
 
-	grid_lines->draw ( grid_marks );
+	grid_lines->draw (grid_marks);
 	grid_lines->show();
 }
 
@@ -757,6 +757,7 @@ Temporal::TempoMap::WritableSharedPtr
 Editor::begin_tempo_mapping ()
 {
 	TempoMap::WritableSharedPtr wmap = TempoMap::write_copy ();
+	TempoMap::set (wmap);
 	reassociate_metric_markers (wmap);
 	(void) Temporal::DomainSwapInformation::start (Temporal::BeatTime);
 	_session->globally_change_time_domain (Temporal::BeatTime, Temporal::AudioTime);
@@ -788,6 +789,7 @@ Temporal::TempoMap::WritableSharedPtr
 Editor::begin_tempo_map_edit ()
 {
 	TempoMap::WritableSharedPtr wmap = TempoMap::write_copy ();
+	TempoMap::set (wmap);
 	reassociate_metric_markers (wmap);
 	return wmap;
 }
