@@ -299,7 +299,7 @@ public:
 	void process (pframes_t nframes);
 
 	void send_ltc_for_cycle (samplepos_t, samplepos_t, pframes_t);
-	void send_mclk_for_cycle (pframes_t, samplecnt_t);
+	void send_mclk_for_cycle (samplepos_t, samplepos_t, pframes_t, samplecnt_t);
 
 	BufferSet& get_silent_buffers (ChanCount count = ChanCount::ZERO);
 	BufferSet& get_noinplace_buffers (ChanCount count = ChanCount::ZERO);
@@ -1387,12 +1387,6 @@ public:
 	bool unbang_trigger_at(int32_t route_index, int32_t row_index);
 
 	void globally_change_time_domain (Temporal::TimeDomain from, Temporal::TimeDomain to);
-
-	/* Can be accessed only in process() context, and only after
-	 * Session::process() has returned.
-	 */
-
-	ProcessedRanges processed_ranges;
 
 protected:
 	friend class AudioEngine;
