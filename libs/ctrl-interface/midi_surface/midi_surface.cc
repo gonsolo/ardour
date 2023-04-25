@@ -186,7 +186,8 @@ MIDISurface::port_registration_handler ()
 bool
 MIDISurface::connection_handler (std::weak_ptr<ARDOUR::Port>, std::string name1, std::weak_ptr<ARDOUR::Port>, std::string name2, bool yn)
 {
-	DEBUG_TRACE (DEBUG::MIDISurface, "FaderPort::connection_handler start\n");
+	DEBUG_TRACE (DEBUG::MIDISurface, "MIDISurface::connection_handler start\n");
+
 	if (!_input_port || !_output_port) {
 		return false;
 	}
@@ -434,16 +435,5 @@ MIDISurface::bundles ()
 	}
 
 	return b;
-}
-
-void*
-MIDISurface::request_factory (uint32_t num_requests)
-{
-	/* AbstractUI<T>::request_buffer_factory() is a template method only
-	   instantiated in this source module. To provide something visible for
-	   use in the interface/descriptor, we have this static method that is
-	   template-free.
-	*/
-	return request_buffer_factory (num_requests);
 }
 

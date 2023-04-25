@@ -48,8 +48,6 @@ class MIDISurface : public ARDOUR::ControlProtocol
 	MIDISurface (ARDOUR::Session&, std::string const & name, std::string const & port_name_prefix, bool use_pad_filter);
 	~MIDISurface ();
 
-	static void* request_factory (uint32_t num_requests);
-
 	std::shared_ptr<ARDOUR::Port> input_port();
 	std::shared_ptr<ARDOUR::Port> output_port();
 
@@ -118,7 +116,6 @@ class MIDISurface : public ARDOUR::ControlProtocol
 
 	int _connection_state;
 
-	virtual bool connection_handler (std::weak_ptr<ARDOUR::Port>, std::string name1, std::weak_ptr<ARDOUR::Port>, std::string name2, bool yn);
 	PBD::ScopedConnectionList port_connections;
 
 	virtual int ports_acquire ();
@@ -131,4 +128,7 @@ class MIDISurface : public ARDOUR::ControlProtocol
 
 	void drop ();
 	void port_setup ();
+
+  private:
+	bool connection_handler (std::weak_ptr<ARDOUR::Port>, std::string name1, std::weak_ptr<ARDOUR::Port>, std::string name2, bool yn);
 };
