@@ -88,13 +88,22 @@ ContourDesignControlProtocol::~ContourDesignControlProtocol ()
 }
 
 bool
-ContourDesignControlProtocol::probe ()
+ContourDesignControlProtocol::available ()
 {
 	bool rv = LIBUSB_SUCCESS == libusb_init (0);
 	if (rv) {
 		libusb_exit (0);
 	}
 	return rv;
+}
+
+bool
+ContourDesignControlProtocol::match_usb (uint16_t vendor, uint16_t p)
+{
+	if (vendor != ContourDesign) {
+		return false;
+	}
+	return (p == ShuttlePRO_id || p == ShuttlePRO_v2_id || p == ShuttleXpress_id);
 }
 
 int

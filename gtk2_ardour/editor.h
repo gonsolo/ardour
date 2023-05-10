@@ -1408,6 +1408,7 @@ private:
 	void split_region ();
 
 	void delete_ ();
+	void alt_delete_ ();
 	void cut ();
 	void copy ();
 	void paste (float times, bool from_context_menu);
@@ -2546,8 +2547,7 @@ private:
 	friend class RegionMoveDrag;
 	friend class TrimDrag;
 	friend class MappingTwistDrag;
-	friend class MappingLinearDrag;
-	friend class MappingStretchDrag;
+	friend class MappingEndDrag;
 	friend class MeterMarkerDrag;
 	friend class BBTMarkerDrag;
 	friend class TempoMarkerDrag;

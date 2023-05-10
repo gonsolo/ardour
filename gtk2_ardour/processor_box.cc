@@ -1941,6 +1941,10 @@ ProcessorBox::ProcessorBox (ARDOUR::Session* sess, boost::function<PluginSelecto
 	, processor_display (drop_targets())
 	, _redisplay_pending (false)
 {
+	if (!processor_box_actions) {
+		register_actions ();
+	}
+
 	set_session (sess);
 
 	/* ProcessorBox actions and bindings created statically by call to
@@ -2548,6 +2552,10 @@ ProcessorBox::leave_notify (GdkEventCrossing* ev)
 	if (top->get_is_toplevel()) {
 		Window* win = dynamic_cast<Window*> (top);
 		gtk_window_set_focus (win->gobj(), 0);
+	}
+
+	if (ev->detail != GDK_NOTIFY_NONLINEAR && ev->detail != GDK_NOTIFY_NONLINEAR_VIRTUAL) {
+		processor_display.select_none ();
 	}
 
 	return false;

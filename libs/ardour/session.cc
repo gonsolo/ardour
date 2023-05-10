@@ -597,7 +597,7 @@ Session::immediately_post_engine ()
 
 	/* TODO, connect in different thread. (PortRegisteredOrUnregistered may be in RT context)
 	 * can we do that? */
-	 _engine.PortRegisteredOrUnregistered.connect_same_thread (*this, boost::bind (&Session::setup_bundles, this));
+	 _engine.PortRegisteredOrUnregistered.connect_same_thread (*this, boost::bind (&Session::port_registry_changed, this));
 	 _engine.PortPrettyNameChanged.connect_same_thread (*this, boost::bind (&Session::setup_bundles, this));
 
 	// set samplerate for plugins added early
@@ -871,6 +871,21 @@ Session::destroy ()
 	BOOST_SHOW_POINTERS ();
 }
 
+void
+Session::port_registry_changed()
+{
+	setup_bundles ();
+	_butler->delegate (boost::bind (&Session::probe_ctrl_surfaces, this));
+}
+
+void
+Session::probe_ctrl_surfaces()
+{
+	if (!_engine.running() || deletion_in_progress ()) {
+		return;
+	}
+	ControlProtocolManager::instance ().probe_midi_control_protocols ();
+}
 
 void
 Session::block_processing()
@@ -6922,7 +6937,6 @@ Session::update_latency (bool playback)
 
 		/* prevent any concurrent latency updates */
 		Glib::Threads::Mutex::Lock lx (_update_latency_lock);
-		set_worst_output_latency ();
 		update_route_latency (true, /*apply_to_delayline*/ true, NULL);
 
 		/* release before emitting signals */
@@ -6932,7 +6946,6 @@ Session::update_latency (bool playback)
 		/* process lock is not needed to update worst-case latency */
 		lm.release ();
 		Glib::Threads::Mutex::Lock lx (_update_latency_lock);
-		set_worst_input_latency ();
 		update_route_latency (false, false, NULL);
 	}
 
@@ -6946,6 +6959,14 @@ Session::update_latency (bool playback)
 
 	/* now handle non-route ports that we are responsible for */
 	set_owned_port_public_latency (playback);
+
+	if (playback) {
+		Glib::Threads::Mutex::Lock lx (_update_latency_lock);
+		set_worst_output_latency ();
+	} else {
+		Glib::Threads::Mutex::Lock lx (_update_latency_lock);
+		set_worst_input_latency ();
+	}
 
 
 	DEBUG_TRACE (DEBUG::LatencyCompensation, "Engine latency callback: DONE\n");
@@ -7200,12 +7221,12 @@ Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos
 			pl->clear_owned_changes ();
 
 			std::shared_ptr<Playlist> p = copy ? pl->copy (ltr) : pl->cut (ltr);
-			// TODO copy interpolated MIDI events
 			if (!copy) {
 				pl->ripple (start, end.distance(start), NULL);
 			}
 
 			/* now make space at the insertion-point */
+			pl->split (to);
 			pl->ripple (to, start.distance(end), NULL);
 
 			pl->paste (p, to, 1);
@@ -7223,11 +7244,30 @@ Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos
 		Config->set_automation_follows_regions (automation_follows);
 	}
 
+	/* automation */
 	for (auto& r : *(routes.reader())) {
 		r->cut_copy_section (start, end, to, copy);
 	}
 
-	// TODO: update ranges and Tempo-Map
+	{
+		XMLNode &before = _locations->get_state();
+		_locations->cut_copy_section (start, end, to, copy);
+		XMLNode &after = _locations->get_state();
+		add_command (new MementoCommand<Locations> (*_locations, &before, &after));
+	}
+
+#if 0 // TODO - enable once tempo-map cut/copy/paste works
+	TempoMap::WritableSharedPtr wmap = TempoMap::write_copy ();
+	TempoMapCutBuffer* tmcb;
+	if (copy) {
+		tmcb = wmap->copy (start, end);
+	} else {
+		tmcb = wmap->cut (start, end, true);
+	}
+	wmap->paste (*tmcb, to, !copy);
+	TempoMap::update (wmap);
+	delete tmcb;
+#endif
 
 	if (!abort_empty_reversible_command ()) {
 		commit_reversible_command ();

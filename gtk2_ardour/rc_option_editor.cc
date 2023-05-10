@@ -1629,14 +1629,11 @@ class ControlSurfacesOptions : public OptionEditorMiniPage
 			_store->clear ();
 
 			ControlProtocolManager& m = ControlProtocolManager::instance ();
-			for (list<ControlProtocolInfo*>::iterator i = m.control_protocol_info.begin(); i != m.control_protocol_info.end(); ++i) {
-
-				if (!(*i)->mandatory) {
-					TreeModel::Row r = *_store->append ();
-					r[_model.name] = (*i)->name;
-					r[_model.enabled] = 0 != (*i)->protocol;
-					r[_model.protocol_info] = *i;
-				}
+			for (auto const& i : m.control_protocol_info) {
+				TreeModel::Row r = *_store->append ();
+				r[_model.name] = i->name;
+				r[_model.enabled] = 0 != i->protocol;
+				r[_model.protocol_info] = i;
 			}
 		}
 
@@ -3391,6 +3388,14 @@ These settings will only take effect after %1 is restarted.\n\
 		     _("Markers"),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_snap_to_marks),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_snap_to_marks)
+		     ));
+
+	add_option (_("Editor/Snap"),
+	     new BoolOption (
+		     "snap-to-playhead",
+		     _("Playhead"),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_snap_to_playhead),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_snap_to_playhead)
 		     ));
 
 	add_option (_("Editor/Snap"),

@@ -96,6 +96,47 @@ row_interval_semitones (const Push2::RowInterval row_interval, const bool inkey)
 	return 5;
 }
 
+bool
+Push2::available ()
+{
+	bool rv = LIBUSB_SUCCESS == libusb_init (0);
+	if (rv) {
+		libusb_exit (0);
+	}
+	return rv;
+}
+
+bool
+Push2::match_usb (uint16_t vendor, uint16_t device)
+{
+	return vendor == ABLETON && device == PUSH2;
+}
+
+bool
+Push2::probe (std::string& i, std::string& o)
+{
+	vector<string> midi_inputs;
+	vector<string> midi_outputs;
+	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsOutput|IsTerminal), midi_inputs);
+	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsInput|IsTerminal), midi_outputs);
+
+	auto has_fp8 = [](string const& s) {
+		std::string pn = AudioEngine::instance()->get_hardware_port_name_by_name (s);
+		return pn.find ("Ableton Push 2 MIDI 1") != string::npos;
+	};
+
+	auto pi = std::find_if (midi_inputs.begin (), midi_inputs.end (), has_fp8);
+	auto po = std::find_if (midi_outputs.begin (), midi_outputs.end (), has_fp8);
+
+	if (pi == midi_inputs.end () || po == midi_outputs.end ()) {
+		return false;
+	}
+
+	i = *pi;
+	o = *po;
+	return true;
+}
+
 Push2::Push2 (ARDOUR::Session& s)
 	: MIDISurface (s, X_("Ableton Push 2"), X_("Push 2"), true)
 	, _handle (0)
@@ -139,11 +180,19 @@ Push2::Push2 (ARDOUR::Session& s)
 
 	run_event_loop ();
 	port_setup ();
+
+	std::string  pn_in, pn_out;
+	if (probe (pn_in, pn_out)) {
+		_async_in->connect (pn_in);
+		_async_out->connect (pn_out);
+	}
 }
 
 Push2::~Push2 ()
 {
 	DEBUG_TRACE (DEBUG::Push2, "push2 control surface object being destroyed\n");
+
+	stop_event_loop ();
 
 	MIDISurface::drop ();
 
@@ -162,10 +211,7 @@ Push2::~Push2 ()
 	_track_mix_layout = 0;
 	delete _cue_layout;
 	_cue_layout = 0;
-
-	stop_event_loop ();
 }
-
 
 void
 Push2::run_event_loop ()
@@ -340,12 +386,6 @@ Push2::init_buttons (bool startup)
 			write (b.second->state_msg());
 		}
 	}
-}
-
-bool
-Push2::probe ()
-{
-	return true;
 }
 
 void

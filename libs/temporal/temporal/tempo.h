@@ -61,6 +61,7 @@ namespace Temporal {
 
 class Meter;
 class TempoMap;
+class TempoMapCutBuffer;
 
 class MapOwned {
  protected:
@@ -764,7 +765,9 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 
 	LIBTEMPORAL_API int set_state (XMLNode const&, int version);
 
-	LIBTEMPORAL_API void twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
+	LIBTEMPORAL_API void linear_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
+	LIBTEMPORAL_API void ramped_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
+
 	LIBTEMPORAL_API void stretch_tempo (TempoPoint& ts, double new_npm);
 	LIBTEMPORAL_API void stretch_tempo_end (TempoPoint* ts, samplepos_t sample, samplepos_t end_sample);
 
@@ -794,6 +797,9 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	LIBTEMPORAL_API TempoPoint const* previous_tempo (TempoPoint const &) const;
 	LIBTEMPORAL_API TempoPoint const* next_tempo (TempoPoint const &) const;
 
+	LIBTEMPORAL_API MeterPoint const* previous_meter (MeterPoint const &) const;
+	LIBTEMPORAL_API MeterPoint const* next_meter (MeterPoint const &) const;
+
 	LIBTEMPORAL_API bool tempo_exists_before (TempoPoint const & t) const { return (bool) previous_tempo (t); }
 	LIBTEMPORAL_API bool tempo_exists_after (TempoPoint const & t) const { return (bool) next_tempo (t); }
 
@@ -809,6 +815,10 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	LIBTEMPORAL_API	TempoMetric metric_at (superclock_t, bool can_match = true) const;
 	LIBTEMPORAL_API	TempoMetric metric_at (Beats const &, bool can_match = true) const;
 	LIBTEMPORAL_API	TempoMetric metric_at (BBT_Argument const &, bool can_match = true) const;
+
+	LIBTEMPORAL_API TempoMapCutBuffer* cut (timepos_t const & start, timepos_t const & end, bool ripple);
+	LIBTEMPORAL_API TempoMapCutBuffer* copy (timepos_t const & start, timepos_t const & end);
+	LIBTEMPORAL_API void paste (TempoMapCutBuffer const &, timepos_t const & position, bool ripple);
 
   private:
 	template<typename TimeType, typename Comparator> TempoPoint const & _tempo_at (TimeType when, Comparator cmp) const {
@@ -921,6 +931,8 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	LIBTEMPORAL_API	Beats quarters_at_superclock (superclock_t sc) const;
 
 	LIBTEMPORAL_API	void midi_clock_beat_at_or_after (samplepos_t const pos, samplepos_t& clk_pos, uint32_t& clk_beat) const;
+
+	static void map_assert (bool expr, char const * exprstr, char const * file, int line);
 
   private:
 	Tempos       _tempos;
@@ -1117,6 +1129,14 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 
 	bool iteratively_solve_ramp (TempoPoint&, TempoPoint&);
 
+	bool core_remove_meter (MeterPoint const &);
+	bool core_remove_tempo (TempoPoint const &);
+	bool core_remove_bartime (MusicTimePoint const &);
+
+	void reset_section (Points::iterator& begin, Points::iterator& end, superclock_t, TempoMetric& metric);
+
+	TempoMapCutBuffer* cut_copy (timepos_t const & start, timepos_t const & end, bool copy, bool ripple);
+
 	/* These are not really const, but the lookup tables are marked mutable
 	 * to allow time domain conversions to store their results while being
 	 * marked const (which is more semantically correct).
@@ -1128,6 +1148,45 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	void superclock_to_bbt_store (superclock_t, Temporal::BBT_Time const &) const;;
 
 	void drop_lookup_table ();
+};
+
+class LIBTEMPORAL_API TempoMapCutBuffer
+{
+  public:
+	TempoMapCutBuffer (timecnt_t const &, TempoMetric const &, TempoMetric const &);
+
+	timecnt_t duration() const { return _duration; }
+
+	TempoMetric const & metric_at_start () const { return _start_metric; }
+	TempoMetric const & metric_at_end () const { return _end_metric; }
+
+	typedef boost::intrusive::list<TempoPoint, boost::intrusive::base_hook<tempo_hook>> Tempos;
+	typedef boost::intrusive::list<MeterPoint, boost::intrusive::base_hook<meter_hook>> Meters;
+	typedef boost::intrusive::list<MusicTimePoint, boost::intrusive::base_hook<bartime_hook>> MusicTimes;
+	typedef boost::intrusive::list<Point, boost::intrusive::base_hook<point_hook>> Points;
+
+	void add (TempoPoint const &);
+	void add (MeterPoint const &);
+	void add (MusicTimePoint const &);
+	void add (Point const &);
+
+	void clear ();
+	void dump (std::ostream&);
+
+	Tempos const & tempos() const { return _tempos; }
+	Meters const & meters() const { return _meters; }
+	MusicTimes const & bartimes() const { return _bartimes; }
+	Points const & points() const { return _points; }
+
+  private:
+	TempoMetric _start_metric;
+	TempoMetric _end_metric;
+	timecnt_t   _duration;
+
+	Tempos       _tempos;
+	Meters       _meters;
+	MusicTimes   _bartimes;
+	Points       _points;
 };
 
 class LIBTEMPORAL_API TempoCommand : public Command {

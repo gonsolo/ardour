@@ -67,12 +67,9 @@ public:
 	FaderPort8 (ARDOUR::Session&);
 	virtual ~FaderPort8();
 
-	int set_active (bool yn);
+	static bool probe (std::string&, std::string&);
 
-	/* we probe for a device when our ports are connected. Before that,
-	 * there's no way to know if the device exists or not.
-	 */
-	static bool  probe() { return true; }
+	int set_active (bool yn);
 
 	XMLNode& get_state () const;
 	int set_state (const XMLNode&, int version);
