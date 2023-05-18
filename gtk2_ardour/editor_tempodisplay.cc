@@ -654,8 +654,7 @@ Editor::edit_meter_section (Temporal::MeterPoint& section)
 
 		/* Step 3: construct new BBT_Argument */
 
-		// original Temporal::BBT_Argument when (tm.reftime(), w);
-		auto when = w; // gonsolo
+		Temporal::BBT_Argument when (tm.reftime(), w);
 
 		/* Step 4: convert to quarters */
 
@@ -735,9 +734,7 @@ Editor::edit_tempo_section (TempoPoint& section)
 
 		/* Step 3: construct new BBT_Argument */
 
-		
-		auto when = w; // gonsolo
-		// original Temporal::BBT_Argument when (tm.reftime(), w);
+		Temporal::BBT_Argument when (tm.reftime(), w);
 
 		/* Step 4: convert to quarters */
 
