@@ -143,6 +143,12 @@ Editor::initialize_canvas ()
 	_time_markers_group = new ArdourCanvas::Container (h_scroll_group);
 	CANVAS_DEBUG_NAME (_time_markers_group, "time bars");
 
+	/* group above rulers, to show selection triangles */
+	_selection_marker_group = new ArdourCanvas::Container (h_scroll_group);
+	CANVAS_DEBUG_NAME (_selection_marker_group, "Canvas Selection Ruler");
+	_selection_marker.start = new SelectionMarker (*this, *_selection_marker_group, "play head", ArdourMarker::SelectionStart);
+	_selection_marker.end = new SelectionMarker (*this, *_selection_marker_group, "play head", ArdourMarker::SelectionEnd);
+	_selection_marker_group->raise_to_top ();
 
 	/* Note that because of ascending-y-axis coordinates, this order is
 	 * bottom-to-top. But further note that the actual order is set in
@@ -1107,12 +1113,6 @@ Editor::color_handler()
 	rubberband_rect->set_outline_color (UIConfiguration::instance().color ("rubber band rect"));
 	rubberband_rect->set_fill_color (UIConfiguration::instance().color_mod ("rubber band rect", "selection rect"));
 
-	location_marker_color = UIConfiguration::instance().color ("location marker");
-	location_range_color = UIConfiguration::instance().color ("location range");
-	location_cd_marker_color = UIConfiguration::instance().color ("location cd marker");
-	location_loop_color = UIConfiguration::instance().color ("location loop");
-	location_punch_color = UIConfiguration::instance().color ("location punch");
-
 	refresh_location_display ();
 
 	NoteBase::set_colors ();
@@ -1480,6 +1480,7 @@ Editor::which_canvas_cursor(ItemType type) const
 	case MinsecRulerItem:
 	case BBTRulerItem:
 	case SamplesRulerItem:
+	case SelectionMarkerItem:
 		cursor = _cursors->timebar;
 		break;
 

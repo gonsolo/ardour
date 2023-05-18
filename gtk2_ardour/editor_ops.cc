@@ -2715,7 +2715,36 @@ Editor::cut_copy_section (bool copy)
 	if (!get_selection_extents (start, end) || !_session) {
 		return;
 	}
-	_session->cut_copy_section (start, end, get_preferred_edit_position(), copy);
+#if 1
+	TempoMap::SharedPtr tmap (TempoMap::use());
+	if (tmap->tempos ().size () > 1 || tmap->meters ().size () > 1 || tmap->bartimes ().size () > 1) {
+		ArdourMessageDialog msg (_("Cut/Copy Section does not yet include the Tempo Map\nDo you still want to proceed?"), false, MESSAGE_QUESTION, BUTTONS_YES_NO, true)  ;
+		msg.set_title (_("Cut/Copy without Tempo Map"));
+		if (msg.run () != RESPONSE_YES) {
+			return;
+		}
+	}
+#endif
+	timepos_t to (get_preferred_edit_position ());
+	_session->cut_copy_section (start, end, to, copy);
+
+	timepos_t to_end (to + start.distance (end));
+
+	switch (UIConfiguration::instance().get_after_section_op ()) {
+		case SectionSelectNoop:
+			return;
+		case SectionSelectClear:
+			selection->clear ();
+			break;
+		case SectionSelectRetainAndMovePlayhead:
+			_session->request_locate (copy ? to_end.samples (): to.samples ());
+			/* fallthough */
+		case SectionSelectRetain:
+			if (!copy || to < end) {
+				selection->set (to, to_end);
+			}
+			break;
+	}
 }
 
 /* BUILT-IN EFFECTS */
@@ -5315,6 +5344,7 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 		return;
 	}
 
+	std::vector<sigc::connection> cl;
 	std::shared_ptr<Playlist> playlist;
 	PlaylistSet playlists; // list of unique playlists affected by duplication
 	RegionSelection sel = regions; // clear (below) may  clear the argument list if its the current region selection
@@ -5343,6 +5373,7 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 				/* successfully inserted into set, so it's the first time we've seen this playlist */
 				playlist->clear_changes ();
 				playlist->clear_owned_changes ();
+				playlist->freeze ();
 			}
 		}
 
@@ -5357,8 +5388,7 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 
 		TimeAxisView& tv = (*i)->get_time_axis_view();
 		RouteTimeAxisView* rtv = dynamic_cast<RouteTimeAxisView*> (&tv);
-		latest_regionviews.clear ();
-		sigc::connection c = rtv->view()->RegionViewAdded.connect (sigc::mem_fun(*this, &Editor::collect_new_region_view));
+		cl.push_back (rtv->view()->RegionViewAdded.connect (sigc::mem_fun(*this, &Editor::collect_new_region_view)));
 
 		/* XXX problem arew here. When duplicating audio regions, the
 		 * next one must be positioned 1 sample after the end of the
@@ -5383,18 +5413,23 @@ Editor::duplicate_some_regions (RegionSelection& regions, float times)
 			if (playlists.insert (playlist).second) {
 				playlist->clear_changes ();
 				playlist->clear_owned_changes ();
+				playlist->freeze ();
 			}
 		}
 
 		playlist->duplicate (r, position, span, times);
 
-		c.disconnect ();
-
-		foo.insert (foo.end(), latest_regionviews.begin(), latest_regionviews.end());
 	}
 
 	for (PlaylistSet::iterator p = playlists.begin(); p != playlists.end(); ++p) {
+		latest_regionviews.clear ();
+		(*p)->thaw ();
 		(*p)->rdiff_and_add_command (_session);
+		foo.insert (foo.end(), latest_regionviews.begin(), latest_regionviews.end());
+	}
+
+	for (auto& c: cl) {
+		c.disconnect ();
 	}
 
 	if (!foo.empty()) {

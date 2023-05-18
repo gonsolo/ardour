@@ -729,15 +729,10 @@ private:
 	void trigger_script_by_name (const std::string script_name, const std::string args = "");
 	void toggle_marker_lines ();
 	void set_marker_line_visibility (bool);
+	void update_selection_markers ();
 
 	void jump_forward_to_mark ();
 	void jump_backward_to_mark ();
-
-	uint32_t location_marker_color;
-	uint32_t location_range_color;
-	uint32_t location_loop_color;
-	uint32_t location_punch_color;
-	uint32_t location_cd_marker_color;
 
 	struct LocationMarkers {
 		ArdourMarker* start;
@@ -758,7 +753,7 @@ private:
 
 		void set_name (const std::string&);
 		void set_position (Temporal::timepos_t const & start, Temporal::timepos_t const & end = Temporal::timepos_t());
-		void set_color_rgba (uint32_t);
+		void set_color (std::string const&);
 	};
 
 	LocationMarkers*  find_location_markers (ARDOUR::Location*) const;
@@ -929,6 +924,10 @@ private:
 
 	/* parent for groups which themselves contain time markers */
 	ArdourCanvas::Container* _time_markers_group;
+
+	/* parent for group for selection marker (above ruler) */
+	ArdourCanvas::Container* _selection_marker_group;
+	LocationMarkers          _selection_marker;
 
 	/* The group containing all other groups that are scrolled vertically
 	   and horizontally.
@@ -1728,6 +1727,7 @@ private:
 
 	bool canvas_ruler_event (GdkEvent* event, ArdourCanvas::Item*, ItemType);
 	bool canvas_ruler_bar_event (GdkEvent* event, ArdourCanvas::Item*, ItemType, std::string const&);
+	bool canvas_selection_marker_event (GdkEvent* event, ArdourCanvas::Item*);
 
 	bool canvas_videotl_bar_event (GdkEvent* event, ArdourCanvas::Item*);
 	void update_video_timeline (bool flush = false);

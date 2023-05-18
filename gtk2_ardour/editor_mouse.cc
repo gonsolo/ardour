@@ -849,6 +849,7 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 	case SamplesRulerItem:
 	case MinsecRulerItem:
 	case MarkerBarItem:
+	case SelectionMarkerItem:
 		if (!Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)
 		    && !ArdourKeyboard::indicates_constraint (event->button.state)) {
 			_drags->set (new CursorDrag (this, *_playhead_cursor, false), event);
@@ -1698,6 +1699,7 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			case SamplesRulerItem:
 			case MinsecRulerItem:
 			case BBTRulerItem:
+			case SelectionMarkerItem:
 				popup_ruler_menu (where, item_type);
 				break;
 
@@ -1839,6 +1841,7 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		case SamplesRulerItem:
 		case MinsecRulerItem:
 		case BBTRulerItem:
+		case SelectionMarkerItem:
 			return true;
 			break;
 
@@ -2036,7 +2039,7 @@ Editor::enter_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemType item_
 		}
 		entered_marker = m_marker;
 		/* "music" currently serves as a stand-in for "entered". */
-		m_marker->set_color_rgba (UIConfiguration::instance().color ("meter marker music"));
+		m_marker->set_color ("meter marker music");
 		break;
 
 	case TempoMarkerItem:
@@ -2045,7 +2048,7 @@ Editor::enter_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemType item_
 		}
 		entered_marker = t_marker;
 		/* "music" currently serves as a stand-in for "entered". */
-		t_marker->set_color_rgba (UIConfiguration::instance().color ("tempo marker music"));
+		t_marker->set_color ("tempo marker music");
 		break;
 
 	case FadeInHandleItem:
@@ -2159,7 +2162,7 @@ Editor::leave_handler (ArdourCanvas::Item* item, GdkEvent*, ItemType item_type)
 		if ((m_marker = static_cast<MeterMarker *> (item->get_data ("marker"))) == 0) {
 			break;
 		}
-		m_marker->set_color_rgba (UIConfiguration::instance().color ("meter marker"));
+		m_marker->set_color ("meter marker");
 		entered_marker = 0;
 		break;
 
@@ -2167,7 +2170,7 @@ Editor::leave_handler (ArdourCanvas::Item* item, GdkEvent*, ItemType item_type)
 		if ((t_marker = static_cast<TempoMarker *> (item->get_data ("marker"))) == 0) {
 			break;
 		}
-		t_marker->set_color_rgba (UIConfiguration::instance().color ("tempo marker"));
+		t_marker->set_color ("tempo marker");
 		entered_marker = 0;
 		break;
 
@@ -2951,12 +2954,10 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 	timepos_t pointer_time (canvas_event_sample (event, nullptr, nullptr));
 	Temporal::TempoPoint& tempo = const_cast<Temporal::TempoPoint&>(map->tempo_at (pointer_time));
 
+	TempoPoint* before = const_cast<TempoPoint*> (map->previous_tempo (tempo));
 	TempoPoint* after = const_cast<TempoPoint*> (map->next_tempo (tempo));
 
-	/* Create a new marker, or use the under the mouse */
-
 	XMLNode* before_state = &map->get_state();
-	TempoPoint* before;
 	TempoPoint* focus;
 
 	bool at_end = false;
@@ -2974,20 +2975,34 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		bbt.bars++;
 	}
 
+	/* Create a new marker, or use the one under the mouse */
+
 	if (tempo.bbt() == bbt) {
 		std::cerr << "we are on the RIGHT side of an EXISTING tempo marker" << bbt << " == " << tempo.bbt() << "\n";
 
-		before = const_cast<TempoPoint*> (map->previous_tempo (tempo));
+		/* special case 1: we are on the right side of the FIRST marker: do not allow the user to manipulate the very first (session global) tempo */
+		if (!before) {
+			abort_tempo_mapping ();
+			return;
+		}
+
 		focus = &tempo;
+
+		/* special case 2: if we are on the right side of the LAST marker: behave as if we clicked the marker prior*/
+		if (at_end) {
+			focus = before;
+		}
 
 	} else if ((after && after->bbt() == bbt )) {
 		std::cerr << "we are on the LEFT side of an EXISTING tempo marker" << bbt << " == " << after->bbt() << "\n";
 
 		before = const_cast<TempoPoint*> (&tempo);
 		focus = after;
-		after = const_cast<TempoPoint*> (map->next_tempo (*focus));
-		if (!after) {
-			at_end = true;  //but it's the last one, so we're operating on the last 
+
+		/* special case 3: if we are on the left side of the LAST marker: behave as if we clicked the marker prior*/
+		TempoPoint* after_after = const_cast<TempoPoint*> (map->next_tempo (*focus));
+		if (!after_after) {
+			at_end = true; 
 		}
 
 	} else {

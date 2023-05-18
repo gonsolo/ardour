@@ -2642,6 +2642,14 @@ RCOptionEditor::RCOptionEditor ()
 			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_region_name)
 			));
 
+	add_option (_("Appearance/Editor"),
+			new BoolOption (
+			"show-selection-marker",
+			_("Show Selection Marker"),
+			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_selection_marker),
+			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_selection_marker)
+			));
+
 
 	HSliderOption *gui_hs;
 
@@ -2690,60 +2698,6 @@ RCOptionEditor::RCOptionEditor ()
 	gap->add (2, _("Small"));
 	gap->add (4, _("Large"));
 	add_option (_("Appearance/Editor"), gap);
-
-	add_option (_("Appearance/Editor"), new OptionEditorHeading (_("Waveforms")));
-
-	if (!Profile->get_mixbus()) {
-		add_option (_("Appearance/Editor"),
-				new BoolOption (
-					"show-waveforms",
-					_("Show waveforms in regions"),
-					sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveforms),
-					sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveforms)
-					));
-	}  // !mixbus
-
-	add_option (_("Appearance/Editor"),
-	     new BoolOption (
-		     "show-waveforms-while-recording",
-		     _("Show waveforms while recording"),
-		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveforms_while_recording),
-		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveforms_while_recording)
-		     ));
-
-	add_option (_("Appearance/Editor"),
-			new BoolOption (
-			"show-waveform-clipping",
-			_("Show waveform clipping"),
-			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveform_clipping),
-			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveform_clipping)
-			));
-
-	add_option (_("Appearance/Editor"), new ClipLevelOptions ());
-
-	ComboOption<WaveformScale>* wfs = new ComboOption<WaveformScale> (
-		"waveform-scale",
-		_("Waveform scale"),
-		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_waveform_scale),
-		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_waveform_scale)
-		);
-
-	wfs->add (Linear, _("linear"));
-	wfs->add (Logarithmic, _("logarithmic"));
-
-	add_option (_("Appearance/Editor"), wfs);
-
-	ComboOption<WaveformShape>* wfsh = new ComboOption<WaveformShape> (
-		"waveform-shape",
-		_("Waveform shape"),
-		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_waveform_shape),
-		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_waveform_shape)
-		);
-
-	wfsh->add (Traditional, _("traditional"));
-	wfsh->add (Rectified, _("rectified"));
-
-	add_option (_("Appearance/Editor"), wfsh);
 
 	add_option (_("Appearance/Editor"), new OptionEditorHeading (_("Editor Meters")));
 
@@ -2799,6 +2753,61 @@ RCOptionEditor::RCOptionEditor ()
 		            ));
 
 	add_option (_("Appearance/Editor"), new OptionEditorBlank ());
+
+	add_option (_("Appearance/Waveform"), new OptionEditorHeading (_("Editor Waveforms")));
+
+	if (!Profile->get_mixbus()) {
+		add_option (_("Appearance/Waveform"),
+				new BoolOption (
+					"show-waveforms",
+					_("Show waveforms in regions"),
+					sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveforms),
+					sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveforms)
+					));
+	}  // !mixbus
+
+	add_option (_("Appearance/Waveform"),
+	     new BoolOption (
+		     "show-waveforms-while-recording",
+		     _("Show waveforms while recording"),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveforms_while_recording),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveforms_while_recording)
+		     ));
+
+	add_option (_("Appearance/Waveform"),
+			new BoolOption (
+			"show-waveform-clipping",
+			_("Show waveform clipping"),
+			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_waveform_clipping),
+			sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_waveform_clipping)
+			));
+
+	add_option (_("Appearance/Waveform"), new ClipLevelOptions ());
+
+	ComboOption<WaveformScale>* wfs = new ComboOption<WaveformScale> (
+		"waveform-scale",
+		_("Waveform scale"),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_waveform_scale),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_waveform_scale)
+		);
+
+	wfs->add (Linear, _("linear"));
+	wfs->add (Logarithmic, _("logarithmic"));
+
+	add_option (_("Appearance/Waveform"), wfs);
+
+	ComboOption<WaveformShape>* wfsh = new ComboOption<WaveformShape> (
+		"waveform-shape",
+		_("Waveform shape"),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_waveform_shape),
+		sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_waveform_shape)
+		);
+
+	wfsh->add (Traditional, _("traditional"));
+	wfsh->add (Rectified, _("rectified"));
+
+	add_option (_("Appearance/Waveform"), wfsh);
+	add_option (_("Appearance/Waveform"), new OptionEditorBlank ());
 
 	/* The names of these controls must be the same as those given in MixerStrip
 	   for the actual widgets being controlled.
@@ -2945,13 +2954,25 @@ RCOptionEditor::RCOptionEditor ()
 
 	bo = new BoolOption (
 		     "use-palette-for-new-route",
-		     _("Use color-palette to assign color for new tracks/busses"),
-		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_use_palette_for_new_route),
-		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_use_palette_for_new_route)
+		     _("Use color-palette to assign color for new Tracks"),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_use_palette_for_new_track),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_use_palette_for_new_track)
 		     );
 	Gtkmm2ext::UI::instance()->set_tip (bo->tip_widget (),
-				_("<b>When enabled</b> new Routes are assigned a color from the stripable-color-palette in round-robin fashion.\n"
-				  "<b>When disabled</b> all new Routes will have a neutral color from the theme."
+				_("<b>When enabled</b> new Tracks are assigned a color from the stripable-color-palette in round-robin fashion.\n"
+				  "<b>When disabled</b> all new Tracks will use the FIRST color from the stripable-color-palette."
+					));
+	add_option (_("Appearance/Colors"), bo);
+
+	bo = new BoolOption (
+		     "use-palette-for-new-route",
+		     _("Use color-palette to assign color for new Busses"),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_use_palette_for_new_bus),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_use_palette_for_new_bus)
+		     );
+	Gtkmm2ext::UI::instance()->set_tip (bo->tip_widget (),
+				_("<b>When enabled</b> new Buses are assigned a color from the stripable-color-palette in round-robin fashion.\n"
+				  "<b>When disabled</b> all new Buses will use the FIRST color from the stripable-color-palette."
 					));
 	add_option (_("Appearance/Colors"), bo);
 

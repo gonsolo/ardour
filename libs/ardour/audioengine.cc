@@ -260,7 +260,7 @@ AudioEngine::process_callback (pframes_t nframes)
 	if (!tm.locked()) {
 		/* return having done nothing */
 		if (_session) {
-			Xrun();
+			Xrun (); /* EMIT SIGNAL */
 		}
 		/* only JACK requires this (other backends clear the
 		 * output buffers before the process_callback.
@@ -339,7 +339,13 @@ AudioEngine::process_callback (pframes_t nframes)
 				}
 				/* release latency lock, **before** reacquiring process-lock */
 				ll.release ();
-				tm.acquire ();
+				/* this should not be able to fail, but it is good practice
+				 * to only use try-lock in the process callback.
+				 */
+				if (!tm.try_acquire ()) {
+					Xrun (); /* EMIT SIGNAL */
+					return 0; // XXX or spin?
+				}
 			}
 		}
 	}
