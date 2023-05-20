@@ -16,17 +16,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_progress_h__
-#define __ardour_progress_h__
+#ifndef _libpbd_progress_h_
+#define _libpbd_progress_h_
 
 #include <list>
 
-#include "ardour/libardour_visibility.h"
+#include "pbd/libpbd_visibility.h"
 
-namespace ARDOUR {
+namespace PBD {
 
 /** A class to handle reporting of progress of something */
-class LIBARDOUR_API Progress
+class LIBPBD_API Progress
 {
 public:
 	Progress ();

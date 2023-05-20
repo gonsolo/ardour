@@ -84,6 +84,7 @@
 #include "pbd/file_utils.h"
 #include "pbd/pathexpand.h"
 #include "pbd/pthread_utils.h"
+#include "pbd/progress.h"
 #include "pbd/scoped_file_descriptor.h"
 #include "pbd/types_convert.h"
 #include "pbd/localtime_r.h"
@@ -118,7 +119,6 @@
 #include "ardour/playlist_source.h"
 #include "ardour/port.h"
 #include "ardour/processor.h"
-#include "ardour/progress.h"
 #include "ardour/profile.h"
 #include "ardour/proxy_controllable.h"
 #include "ardour/recent_sessions.h"
@@ -5552,11 +5552,6 @@ Session::save_as (SaveAs& saveas)
 	return 0;
 }
 
-static void set_progress (Progress* p, size_t n, size_t t)
-{
-	p->set_progress (float (n) / float(t));
-}
-
 int
 Session::archive_session (const std::string& dest,
                           const std::string& name,
@@ -5566,6 +5561,7 @@ Session::archive_session (const std::string& dest,
                           Progress* progress)
 {
 	if (dest.empty () || name.empty ()) {
+		error << _("Cannot archive session: invalid destination path/name") << endmsg;
 		return -1;
 	}
 
@@ -5592,6 +5588,7 @@ Session::archive_session (const std::string& dest,
 		}
 	}
 	if (!ok) {
+		error << _("Cannot archive: session media-search path does not include current session-path.") << endmsg;
 		return -1;
 	}
 
@@ -5613,6 +5610,7 @@ Session::archive_session (const std::string& dest,
 	if (!_session_dir->create()) {
 		(*_session_dir) = old_sd;
 		remove_directory (to_dir);
+		error << string_compose(_("Session archive failed to create SessionDirectory `%1'"), to_dir) << endmsg;
 		return -1;
 	}
 
@@ -5620,10 +5618,7 @@ Session::archive_session (const std::string& dest,
 	string archive = Glib::build_filename (dest, name + session_archive_suffix);
 
 	PBD::ScopedConnectionList progress_connection;
-	PBD::FileArchive ar (archive);
-	if (progress) {
-		ar.progress.connect_same_thread (progress_connection, boost::bind (&set_progress, progress, _1, _2));
-	}
+	PBD::FileArchive ar (archive, progress);
 
 	/* collect files to archive */
 	std::map<string,string> filemap;
@@ -5738,6 +5733,14 @@ Session::archive_session (const std::string& dest,
 		}
 	}
 
+	vector<string> extra_files;
+	size_t prefix_len;
+	int rv = 0;
+
+	if (progress && progress->cancelled ()) {
+		goto out;
+	}
+
 	/* encode audio */
 	if (compress_audio != NO_ENCODE) {
 		if (progress) {
@@ -5798,17 +5801,28 @@ Session::archive_session (const std::string& dest,
 				delete ns;
 			} catch (...) {
 				error << "failed to encode " << afs->path() << " to " << new_path << endmsg;
+				rv = -1;
+				break;
 			}
 
 			if (progress) {
 				progress->ascend ();
+				if (progress->cancelled ()) {
+					break;
+				}
 			}
 		}
 	}
 
+	if (rv) {
+		goto out;
+	}
 	if (progress) {
 		progress->set_progress (-1); // set to "archiving"
 		progress->set_progress (0);
+		if (progress->cancelled ()) {
+			goto out;
+		}
 	}
 
 	/* index files relevant for this session */
@@ -5869,26 +5883,28 @@ Session::archive_session (const std::string& dest,
 	_path = to_dir;
 	g_mkdir_with_parents (externals_dir ().c_str (), 0755);
 
-	save_state (name, false, false, false, true, only_used_sources);
+	if (save_state (name, false, false, false, true, only_used_sources)) {
+		error << string_compose(_("Session archive failed to save state `%1'"), to_dir) << endmsg;
+		rv = -1;
+		goto out;
+	}
 
 	save_default_options ();
 
-	size_t prefix_len = _path.size();
+	prefix_len = _path.size();
 	if (prefix_len > 0 && _path.at (prefix_len - 1) != G_DIR_SEPARATOR) {
 		++prefix_len;
 	}
 
 	/* collect session-state files */
-	vector<string> files;
 	do_not_copy_extensions.clear ();
 	do_not_copy_extensions.push_back (history_suffix);
 
 	blacklist_dirs.clear ();
 	blacklist_dirs.push_back (string (externals_dir_name) + G_DIR_SEPARATOR);
 
-	find_files_matching_filter (files, to_dir, accept_all_files, 0, false, true, true);
-	for (vector<string>::const_iterator i = files.begin (); i != files.end (); ++i) {
-		std::string from = *i;
+	find_files_matching_filter (extra_files, to_dir, accept_all_files, 0, false, true, true);
+	for (auto const& from : extra_files) {
 		bool do_copy = true;
 		for (vector<string>::iterator v = blacklist_dirs.begin(); v != blacklist_dirs.end(); ++v) {
 			if (from.find (*v) != string::npos) {
@@ -5906,6 +5922,8 @@ Session::archive_session (const std::string& dest,
 			filemap[from] = name + G_DIR_SEPARATOR + from.substr (prefix_len);
 		}
 	}
+
+out:
 
 	/* restore original values */
 	_path = old_path;
@@ -5928,7 +5946,13 @@ Session::archive_session (const std::string& dest,
 		i->first->set_channel (i->second);
 	}
 
-	int rv = ar.create (filemap, compression_level);
+	if (0 == rv && !(progress && progress->cancelled ())) {
+		rv = ar.create (filemap, compression_level);
+		if (rv) {
+			error << string_compose(_("Session archive failed write output: `%1'"), archive) << endmsg;
+		}
+	}
+
 	remove_directory (to_dir);
 
 	return rv;
