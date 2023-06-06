@@ -75,6 +75,7 @@ PortAudioBackend::PortAudioBackend (AudioEngine& e, AudioBackendInfo& info)
 	, _freewheel_ack (false)
 	, _reinit_thread_callback (false)
 	, _measure_latency (false)
+	, _freewheel_processed (0)
 	, _cycle_count(0)
 	, _total_deviation_us(0)
 	, _max_deviation_us(0)
@@ -681,12 +682,14 @@ PortAudioBackend::_start (bool for_latency_measurement)
 		if (!start_blocking_process_thread()) {
 			return ProcessThreadStartError;
 		}
+		PBD::MMTIMERS::set_min_resolution();
 	} else {
 		if (_pcmio->start_stream() != paNoError) {
 			DEBUG_AUDIO("Unable to start stream\n");
 			return AudioDeviceOpenError;
 		}
 
+		PBD::MMTIMERS::set_min_resolution();
 		if (!start_freewheel_process_thread()) {
 			DEBUG_AUDIO("Unable to start freewheel thread\n");
 			stop();
@@ -702,6 +705,7 @@ PortAudioBackend::_start (bool for_latency_measurement)
 			stop ();
 			return ProcessThreadStartError;
 		}
+		_port_change_flag.store (1);
 	}
 
 	return NoError;
@@ -832,6 +836,7 @@ PortAudioBackend::stop ()
 	}
 
 	_midiio->stop();
+	PBD::MMTIMERS::reset_resolution();
 
 	_run = false;
 
@@ -945,6 +950,7 @@ PortAudioBackend::freewheel_process_thread()
 			// tell the engine we're ready to GO.
 			engine.freewheel_callback (_freewheeling);
 			first_run = false;
+			_freewheel_processed = 0;
 			_main_thread = pthread_self();
 			AudioEngine::thread_init_callback (this);
 			_midiio->set_enabled(false);
@@ -1483,6 +1489,8 @@ PortAudioBackend::blocking_process_thread ()
 			engine.freewheel_callback (_freewheel);
 			if (!_freewheel) {
 				_dsp_calc.reset ();
+			} else {
+				_freewheel_processed = 0;
 			}
 		}
 
@@ -1659,7 +1667,11 @@ PortAudioBackend::blocking_process_freewheel()
 	}
 
 	_dsp_load = 1.0;
-	Glib::usleep(100); // don't hog cpu
+	_freewheel_processed += _samples_per_period;
+	if (_freewheel_processed > _samplerate) {
+		_freewheel_processed = 0;
+		Glib::usleep(100); // don't hog cpu
+	}
 	return true;
 }
 

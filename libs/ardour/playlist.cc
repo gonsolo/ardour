@@ -598,7 +598,6 @@ Playlist::flush_notifications (bool from_undo)
 	std::shared_ptr<RegionList> rl (new RegionList);
 	for (s = pending_removes.begin (); s != pending_removes.end (); ++s) {
 		crossfade_ranges.push_back ((*s)->range ());
-		remove_dependents (*s);
 		RegionRemoved (std::weak_ptr<Region> (*s)); /* EMIT SIGNAL */
 		rl->push_back (*s);
 	}
@@ -661,6 +660,18 @@ Playlist::clear_pending ()
 	pending_region_extensions.clear ();
 	pending_contents_change = false;
 	pending_layering        = false;
+}
+
+void
+Playlist::region_going_away (std::weak_ptr<Region> region)
+{
+	if (_session.deletion_in_progress ()) {
+		return;
+	}
+	std::shared_ptr<Region> r = region.lock();
+	if (r) {
+		remove_region (r);
+	}
 }
 
 /*************************************************************
@@ -824,13 +835,26 @@ Playlist::remove_region_internal (std::shared_ptr<Region> region, ThawList& thaw
 
 			if (!holding_state ()) {
 				relayer ();
-				remove_dependents (region);
 			}
 
 			notify_region_removed (region);
 			break;
 		}
 	}
+
+#if 0
+	for (set<std::shared_ptr<Region> >::iterator x = all_regions.begin(); x != all_regions.end(); ++x) {
+		if ((*x) == region) {
+			all_regions.erase (x);
+			break;
+		}
+	}
+#else /* sync_all_regions_with_regions */
+	all_regions.clear ();
+	for (auto const& r: regions) {
+		all_regions.insert (r);
+	}
+#endif
 
 	return -1;
 }
@@ -1711,10 +1735,6 @@ Playlist::clear (bool with_signals)
 		}
 
 		regions.clear ();
-
-		for (auto & r : pending_removes) {
-			remove_dependents (r);
-		}
 	}
 
 	if (with_signals) {
@@ -1735,7 +1755,7 @@ FINDING THINGS
 std::shared_ptr<RegionList>
 Playlist::region_list ()
 {
-	RegionReadLock                rlock (this);
+	RegionReadLock              rlock (this);
 	std::shared_ptr<RegionList> rlist (new RegionList (regions.rlist ()));
 	return rlist;
 }
@@ -1896,7 +1916,7 @@ Playlist::find_regions_at (timepos_t const & pos)
 std::shared_ptr<RegionList>
 Playlist::regions_with_start_within (Temporal::Range range)
 {
-	RegionReadLock                rlock (this);
+	RegionReadLock              rlock (this);
 	std::shared_ptr<RegionList> rlist (new RegionList);
 
 	for (auto & r : regions) {
@@ -1911,7 +1931,7 @@ Playlist::regions_with_start_within (Temporal::Range range)
 std::shared_ptr<RegionList>
 Playlist::regions_with_end_within (Temporal::Range range)
 {
-	RegionReadLock                rlock (this);
+	RegionReadLock              rlock (this);
 	std::shared_ptr<RegionList> rlist (new RegionList);
 
 	for (auto & r : regions) {
@@ -2005,7 +2025,7 @@ Playlist::find_next_transient (timepos_t const & from, int dir)
 std::shared_ptr<Region>
 Playlist::find_next_region (timepos_t const & pos, RegionPoint point, int dir)
 {
-	RegionReadLock            rlock (this);
+	RegionReadLock          rlock (this);
 	std::shared_ptr<Region> ret;
 	timecnt_t closest = timecnt_t::max (pos.time_domain());
 

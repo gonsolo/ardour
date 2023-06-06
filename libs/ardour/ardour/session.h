@@ -161,6 +161,7 @@ class PluginInsert;
 class PluginInfo;
 class Port;
 class PortInsert;
+class PortManager;
 class ProcessThread;
 class Processor;
 class Region;
@@ -852,7 +853,7 @@ public:
 	static PBD::Signal4<void, std::string, std::string, bool, samplepos_t> Exported;
 
 	void add_source (std::shared_ptr<Source>);
-	void remove_source (std::weak_ptr<Source>);
+	void remove_source (std::weak_ptr<Source>, bool drop_references = true);
 
 	void cleanup_regions();
 	bool can_cleanup_peakfiles () const;
@@ -1168,7 +1169,7 @@ public:
 	void clear_range_selection ();
 	void clear_object_selection ();
 
-	void cut_copy_section (Temporal::timepos_t const& start, Temporal::timepos_t const& end, Temporal::timepos_t const& to, bool const copy = false);
+	void cut_copy_section (Temporal::timepos_t const& start, Temporal::timepos_t const& end, Temporal::timepos_t const& to, SectionOperation const op);
 
 	/* buffers for gain and pan */
 
@@ -2192,7 +2193,9 @@ private:
 	std::shared_ptr<Route> _master_out;
 	std::shared_ptr<Route> _monitor_out;
 
+	friend class PortManager;
 	void auto_connect_master_bus ();
+	void auto_connect_monitor_bus ();
 
 	void setup_route_monitor_sends (bool enable, bool need_process_lock);
 

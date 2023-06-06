@@ -1149,58 +1149,7 @@ Session::add_monitor_section ()
 		}
 	}
 
-	/* if monitor section is not connected, connect it to physical outs */
-
-	if ((Config->get_auto_connect_standard_busses () || Profile->get_mixbus ()) && !_monitor_out->output()->connected ()) {
-
-		if (!Config->get_monitor_bus_preferred_bundle().empty()) {
-
-			std::shared_ptr<Bundle> b = bundle_by_name (Config->get_monitor_bus_preferred_bundle());
-
-			if (b) {
-				_monitor_out->output()->connect_ports_to_bundle (b, true, this);
-			} else {
-				warning << string_compose (_("The preferred I/O for the monitor bus (%1) cannot be found"),
-							   Config->get_monitor_bus_preferred_bundle())
-					<< endmsg;
-			}
-
-		} else {
-
-			/* Monitor bus is audio only */
-
-			vector<string> outputs[DataType::num_types];
-
-			for (uint32_t i = 0; i < DataType::num_types; ++i) {
-				_engine.get_physical_outputs (DataType (DataType::Symbol (i)), outputs[i]);
-			}
-
-			uint32_t mod = outputs[DataType::AUDIO].size();
-			uint32_t limit = _monitor_out->n_outputs().get (DataType::AUDIO);
-
-			if (mod != 0) {
-
-				for (uint32_t n = 0; n < limit; ++n) {
-
-					std::shared_ptr<Port> p = _monitor_out->output()->ports().port(DataType::AUDIO, n);
-					string connect_to;
-					if (outputs[DataType::AUDIO].size() > (n % mod)) {
-						connect_to = outputs[DataType::AUDIO][n % mod];
-					}
-
-					if (!connect_to.empty()) {
-						if (_monitor_out->output()->connect (p, connect_to, this)) {
-							error << string_compose (
-								_("cannot connect control output %1 to %2"),
-								n, connect_to)
-							      << endmsg;
-							break;
-						}
-					}
-				}
-			}
-		}
-	}
+	auto_connect_monitor_bus ();
 
 	/* Hold process lock while doing this so that we don't hear bits and
 	 * pieces of audio as we work on each route.
@@ -1209,6 +1158,68 @@ Session::add_monitor_section ()
 	setup_route_monitor_sends (true, true);
 
 	MonitorBusAddedOrRemoved (); /* EMIT SIGNAL */
+}
+
+void
+Session::auto_connect_monitor_bus ()
+{
+	if (!_master_out || !_monitor_out) {
+		return;
+	}
+
+	if ((!Config->get_auto_connect_standard_busses () && !Profile->get_mixbus ()) || _monitor_out->output()->connected ()) {
+		return;
+	}
+
+	/* if monitor section is not connected, connect it to physical outs */
+
+	if (!Config->get_monitor_bus_preferred_bundle().empty()) {
+
+		std::shared_ptr<Bundle> b = bundle_by_name (Config->get_monitor_bus_preferred_bundle());
+
+		if (b) {
+			_monitor_out->output()->connect_ports_to_bundle (b, true, this);
+		} else {
+			warning << string_compose (_("The preferred I/O for the monitor bus (%1) cannot be found"),
+					Config->get_monitor_bus_preferred_bundle())
+				<< endmsg;
+		}
+
+	} else {
+
+		/* Monitor bus is audio only */
+
+		vector<string> outputs[DataType::num_types];
+
+		for (uint32_t i = 0; i < DataType::num_types; ++i) {
+			_engine.get_physical_outputs (DataType (DataType::Symbol (i)), outputs[i]);
+		}
+
+		uint32_t mod = outputs[DataType::AUDIO].size();
+		uint32_t limit = _monitor_out->n_outputs().get (DataType::AUDIO);
+
+		if (mod != 0) {
+
+			for (uint32_t n = 0; n < limit; ++n) {
+
+				std::shared_ptr<Port> p = _monitor_out->output()->ports().port(DataType::AUDIO, n);
+				string connect_to;
+				if (outputs[DataType::AUDIO].size() > (n % mod)) {
+					connect_to = outputs[DataType::AUDIO][n % mod];
+				}
+
+				if (!connect_to.empty()) {
+					if (_monitor_out->output()->connect (p, connect_to, this)) {
+						error << string_compose (
+								_("cannot connect control output %1 to %2"),
+								n, connect_to)
+							<< endmsg;
+						break;
+					}
+				}
+			}
+		}
+	}
 }
 
 void
@@ -4602,14 +4613,18 @@ Session::add_source (std::shared_ptr<Source> source)
 			}
 		}
 
-		source->DropReferences.connect_same_thread (*this, boost::bind (&Session::remove_source, this, std::weak_ptr<Source> (source)));
+		source->DropReferences.connect_same_thread (*this, boost::bind (&Session::remove_source, this, std::weak_ptr<Source> (source), false));
 
 		SourceAdded (std::weak_ptr<Source> (source)); /* EMIT SIGNAL */
+	} else {
+		/* If this happens there is a duplicate PBD::ID */
+		assert (0);
+		fatal << string_compose (_("programming error: %1"), "Failed to add source to source-list") << endmsg;
 	}
 }
 
 void
-Session::remove_source (std::weak_ptr<Source> src)
+Session::remove_source (std::weak_ptr<Source> src, bool drop_references)
 {
 	if (deletion_in_progress ()) {
 		return;
@@ -4627,10 +4642,20 @@ Session::remove_source (std::weak_ptr<Source> src)
 
 		if ((i = sources.find (source->id())) != sources.end()) {
 			sources.erase (i);
-			SourceRemoved (src); /* EMIT SIGNAL */
 		} else {
 			return;
 		}
+	}
+
+	SourceRemoved (src); /* EMIT SIGNAL */
+	if (drop_references) {
+		printf ("Source->drop_references!\n");
+		source->drop_references ();
+		/* Removing a Source cannot be undone.
+		 * We need to clear all undo commands that reference the
+		 * removed source - or just clear all of the undo history.
+		 */
+		_history.clear();
 	}
 
 	if (source->empty ()) {
@@ -4640,6 +4665,8 @@ Session::remove_source (std::weak_ptr<Source> src)
 		 */
 		return;
 	}
+
+	assert (!source->used ());
 
 	if (!in_cleanup () && !loading ()) {
 		/* save state so we don't end up with a session file
@@ -7198,16 +7225,25 @@ Session::clear_object_selection ()
 }
 
 void
-Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos_t const& to, bool const copy)
+Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos_t const& to, SectionOperation const op)
 {
 	std::list<TimelineRange> ltr;
 	TimelineRange tlr (start, end, 0);
 	ltr.push_back (tlr);
 
-	if (copy) {
-		begin_reversible_command (_("Copy Section"));
-	} else {
-		begin_reversible_command (_("Move Section"));
+	switch (op) {
+		case CopyPasteSection:
+			begin_reversible_command (_("Copy Section"));
+			break;
+		case CutPasteSection:
+			begin_reversible_command (_("Move Section"));
+			break;
+		case InsertSection:
+			begin_reversible_command (_("Insert Section"));
+			break;
+		case DeleteSection:
+			begin_reversible_command (_("Delete Section"));
+			break;
 	}
 
 	{
@@ -7220,16 +7256,26 @@ Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos
 			pl->clear_changes ();
 			pl->clear_owned_changes ();
 
-			std::shared_ptr<Playlist> p = copy ? pl->copy (ltr) : pl->cut (ltr);
-			if (!copy) {
+			std::shared_ptr<Playlist> p;
+			if (op == CopyPasteSection) {
+				p = pl->copy (ltr);
+			} else if (op == CutPasteSection || op == DeleteSection) {
+				p = pl->cut (ltr);
+			}
+
+			if (op == CutPasteSection || op == DeleteSection) {
 				pl->ripple (start, end.distance(start), NULL);
 			}
 
-			/* now make space at the insertion-point */
-			pl->split (to);
-			pl->ripple (to, start.distance(end), NULL);
+			if (op != DeleteSection) {
+				/* now make space at the insertion-point */
+				pl->split (to);
+				pl->ripple (to, start.distance(end), NULL);
+			}
 
-			pl->paste (p, to, 1);
+			if (op == CopyPasteSection || op == CutPasteSection) {
+				pl->paste (p, to, 1);
+			}
 
 			vector<Command*> cmds;
 			pl->rdiff (cmds);
@@ -7246,12 +7292,12 @@ Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos
 
 	/* automation */
 	for (auto& r : *(routes.reader())) {
-		r->cut_copy_section (start, end, to, copy);
+		r->cut_copy_section (start, end, to, op);
 	}
 
 	{
 		XMLNode &before = _locations->get_state();
-		_locations->cut_copy_section (start, end, to, copy);
+		_locations->cut_copy_section (start, end, to, op);
 		XMLNode &after = _locations->get_state();
 		add_command (new MementoCommand<Locations> (*_locations, &before, &after));
 	}

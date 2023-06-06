@@ -240,7 +240,7 @@ MidiTracer::port_changed ()
 		if (0 == tracer_port->connect (pn)) {
 			_midi_parser = std::shared_ptr<MIDI::Parser> (new MIDI::Parser);
 			_midi_parser->any.connect_same_thread (_parser_connection, boost::bind (&MidiTracer::tracer, this, _1, _2, _3, _4));
-			tracer_port->set_trace (_midi_parser.get ());
+			tracer_port->set_trace (_midi_parser);
 		} else {
 			std::cerr << "CANNOT TRACE PORT " << pn << "\n";
 		}
@@ -275,7 +275,7 @@ MidiTracer::port_changed ()
 			} else {
 				_midi_parser = std::shared_ptr<MIDI::Parser> (new MIDI::Parser);
 				_midi_parser->any.connect_same_thread (_parser_connection, boost::bind (&MidiTracer::tracer, this, _1, _2, _3, _4));
-				mp->set_trace (_midi_parser.get ());
+				mp->set_trace (_midi_parser);
 				traced_port = mp;
 			}
 		}
@@ -291,10 +291,10 @@ MidiTracer::disconnect ()
 	_parser_connection.disconnect ();
 
 	tracer_port->disconnect_all ();
-	tracer_port->set_trace (0);
+	tracer_port->set_trace (std::weak_ptr<MIDI::Parser>());
 
 	if (traced_port) {
-		traced_port->set_trace (0);
+		traced_port->set_trace (std::weak_ptr<MIDI::Parser>());
 		traced_port.reset ();
 	}
 	_midi_parser.reset ();
@@ -415,18 +415,63 @@ MidiTracer::tracer (Parser&, MIDI::byte* msg, size_t len, samplecnt_t now)
 					&buf[s], bufsize, " MMC locate to %02d:%02d:%02d:%02d.%02d\n",
 					msg[7], msg[8], msg[9], msg[10], msg[11]
 					);
+			} else if (cmd == 0x47 && msg[5] == 0x03) {
+				uint8_t sh = msg[6];
+				uint8_t sm = msg[7];
+				uint8_t sl = msg[8];
+
+				bool   forward    = sh & (1<<6) ? false : true;
+				size_t left_shift = sh & 0x38;
+				size_t integral   = ((sh & 0x7) << left_shift) | (sm >> (7 - left_shift));
+				size_t fractional = ((sm << left_shift) << 7) | sl;
+
+				float shuttle_speed = integral + ((float)fractional / (1 << (14 - left_shift)));
+
+				s += snprintf (&buf[s], bufsize, " MMC Shuttle %s%f\n", forward ? "+" : "-", shuttle_speed);
 			} else {
 				std::string name;
-				if (cmd == 0x1) {
-					name = "STOP";
-				} else if (cmd == 0x3) {
-					name = "DEFERRED PLAY";
-				} else if (cmd == 0x6) {
-					name = "RECORD STROBE";
-				} else if (cmd == 0x7) {
-					name = "RECORD EXIT";
-				} else if (cmd == 0x8) {
-					name = "RECORD PAUSE";
+				switch (cmd) {
+					case 0x01:
+						name = "Stop";
+						break;
+					case 0x02:
+						name = "Play";
+						break;
+					case 0x03:
+						name = "Deferred Play";
+						break;
+					case 0x04:
+						name = "Fast Forward";
+						break;
+					case 0x05:
+						name = "Rewind";
+						break;
+					case 0x06:
+						name = "Record Strobe";
+						break;
+					case 0x07:
+						name = "Record Exit";
+						break;
+					case 0x08:
+						name = "Record Pause";
+						break;
+					case 0x09:
+						name = "Pause";
+						break;
+					case 0x0a:
+						name = "Eject";
+						break;
+					case 0x0b:
+						name = "Chase";
+						break;
+					case 0x40:
+						name = "Write (ARM Tracks)";
+						break;
+					case 0x0d:
+						name = "MMC Reset";
+						break;
+					default:
+						break;
 				}
 				if (!name.empty()) {
 					s += snprintf (&buf[s], bufsize, " MMC command %s\n", name.c_str());

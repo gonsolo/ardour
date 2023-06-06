@@ -220,6 +220,10 @@ public:
 		return true;
 	}
 
+	virtual bool allow_horizontal_autoscroll () const {
+		return true;
+	}
+
 	/** @return true if x movement matters to this drag */
 	virtual bool x_movement_matters () const {
 		return true;
@@ -926,6 +930,10 @@ public:
 		return false;
 	}
 
+	bool allow_horizontal_autoscroll () const {
+		return false;
+	}
+
 	bool y_movement_matters () const {
 		return false;
 	}
@@ -949,7 +957,8 @@ public:
 	                  Temporal::TempoPoint& prev,
 	                  Temporal::TempoPoint& focus,
 	                  Temporal::TempoPoint& next,
-	                  XMLNode&);
+	                  XMLNode&,
+	                  bool ramped);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -957,6 +966,10 @@ public:
 	void aborted (bool);
 
 	bool allow_vertical_autoscroll () const {
+		return false;
+	}
+
+	bool allow_horizontal_autoscroll () const {
 		return false;
 	}
 
@@ -970,7 +983,6 @@ private:
 	Temporal::TempoPoint& prev;
 	Temporal::TempoPoint& focus;
 	Temporal::TempoPoint& next;
-	double _grab_bpm;
 	Temporal::TempoMap::WritableSharedPtr map;
 
 	double direction;
@@ -980,6 +992,7 @@ private:
 
 	XMLNode* _before_state;
 	bool     _drag_valid;
+	bool     _do_ramp;
 };
 
 
@@ -1007,7 +1020,6 @@ public:
 private:
 	Temporal::Beats _grab_qn;
 	Temporal::TempoPoint* _tempo;
-	Temporal::TempoPoint*  _grab_tempo;
 	Temporal::TempoPoint const * _next_tempo;
 	Temporal::TempoMap::WritableSharedPtr map;
 	bool _drag_valid;
@@ -1185,7 +1197,6 @@ private:
 	ControlPoint* _point;
 	double _fixed_grab_x;
 	double _fixed_grab_y;
-	double _cumulative_x_drag;
 	double _cumulative_y_drag;
 	bool     _pushing;
         uint32_t _final_index;
@@ -1365,6 +1376,23 @@ private:
 	bool _time_selection_at_start;
 	Temporal::timepos_t start_at_start;
 	Temporal::timepos_t end_at_start;
+};
+
+/** Drag time-selection markers */
+class SelectionMarkerDrag : public Drag
+{
+public:
+	SelectionMarkerDrag (Editor*, ArdourCanvas::Item*);
+
+	void start_grab (GdkEvent*, Gdk::Cursor* c = 0);
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool);
+
+private:
+	bool                _edit_start;
+	Temporal::timepos_t _start_at_start;
+	Temporal::timepos_t _end_at_start;
 };
 
 /** Range marker drag */

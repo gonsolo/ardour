@@ -510,6 +510,7 @@ public:
 	void begin_selection_op_history ();
 	void begin_reversible_selection_op (std::string cmd_name);
 	void commit_reversible_selection_op ();
+	void abort_reversible_selection_op ();
 	void undo_selection_op ();
 	void redo_selection_op ();
 	void begin_reversible_command (std::string cmd_name);
@@ -1440,7 +1441,7 @@ private:
 
 	std::shared_ptr<ARDOUR::Playlist> current_playlist () const;
 	void insert_source_list_selection (float times);
-	void cut_copy_section (bool copy);
+	void cut_copy_section (ARDOUR::SectionOperation const op);
 
 	/* import & embed */
 

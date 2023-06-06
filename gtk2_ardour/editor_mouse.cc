@@ -800,6 +800,10 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		_drags->set (new BBTMarkerDrag (this, item), event);
 		return true;
 
+	case SelectionMarkerItem:
+		_drags->set (new SelectionMarkerDrag (this, item), event);
+		return true;
+
 	case MeterMarkerItem:
 		_drags->set (
 			new MeterMarkerDrag (
@@ -849,7 +853,6 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 	case SamplesRulerItem:
 	case MinsecRulerItem:
 	case MarkerBarItem:
-	case SelectionMarkerItem:
 		if (!Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier)
 		    && !ArdourKeyboard::indicates_constraint (event->button.state)) {
 			_drags->set (new CursorDrag (this, *_playhead_cursor, false), event);
@@ -1794,6 +1797,7 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		case AutomationLineItem:
 		case StartSelectionTrimItem:
 		case EndSelectionTrimItem:
+		case SelectionMarkerItem:
 			return true;
 
 		case MarkerBarItem:
@@ -1841,7 +1845,6 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		case SamplesRulerItem:
 		case MinsecRulerItem:
 		case BBTRulerItem:
-		case SelectionMarkerItem:
 			return true;
 			break;
 
@@ -2348,6 +2351,7 @@ Editor::motion_handler (ArdourCanvas::Item* item, GdkEvent* event, bool from_aut
 
 				if (ctx) {
 					timepos_t snapped = _snap_to_bbt (t, RoundNearest, SnapToGrid_Unscaled, GridTypeBeat);
+					timepos_t snapped_to_bar = _snap_to_bbt (t, RoundNearest, SnapToGrid_Unscaled, GridTypeBar);
 					const double unsnapped_pos = time_to_pixel_unrounded (t);
 					const double snapped_pos = time_to_pixel_unrounded (snapped);
 
@@ -2358,7 +2362,12 @@ Editor::motion_handler (ArdourCanvas::Item* item, GdkEvent* event, bool from_aut
 						 * the beat.
 						 */
 
-						ctx->cursor_ctx->change (cursors()->time_fx);
+						if (snapped == snapped_to_bar) {
+							ctx->cursor_ctx->change (cursors()->time_fx);
+						} else {
+							/* snapped to a beat, not a bar .... we'll implement a TWIST here */
+							ctx->cursor_ctx->change (cursors()->expand_left_right);
+						}
 					} else {
 						ctx->cursor_ctx->change (cursors()->grabber);
 					}
@@ -2938,7 +2947,18 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		return;
 	}
 
-	if (_cursor_stack.empty() || _cursor_stack.back() != cursors()->time_fx) {
+	if (_cursor_stack.empty()) {
+		return;
+	}
+
+	bool ramped = false;
+	if (_cursor_stack.back() == cursors()->time_fx) {
+		/* We are on a BAR line  ... the user can drag the line exactly where it's needed */
+		ramped = false;
+	} else if (_cursor_stack.back() == cursors()->expand_left_right) {
+		/* We are on a BEAT line  ... we will nudge the beat line via ramping, without moving any tempo markers */
+		ramped = true;
+	} else {
 		/* Not close enough to a beat line to start any mapping drag */
 		return;
 	}
@@ -3001,9 +3021,16 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 
 		/* special case 3: if we are on the left side of the LAST marker: behave as if we clicked the marker prior*/
 		TempoPoint* after_after = const_cast<TempoPoint*> (map->next_tempo (*focus));
-		if (!after_after) {
+		if (after_after) {
+			after = after_after;
+		} else {
 			at_end = true; 
 		}
+
+	} else if (ramped) {
+
+		/* User is dragging on a BEAT line (not a bar line) ... try to implement a tempo twist on the prior marker */
+		focus = &tempo;
 
 	} else {
 		std::cerr << "ADD TEMPO MARKER " << bbt << " != " << tempo.bbt() << "\n";
@@ -3035,6 +3062,14 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 	if (before && focus && after) {
 		std::cerr << "TWIST\n";
 		begin_reversible_command (_("tempo mapping: mid-twist"));
-		_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state), event);
+		_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state, ramped), event);
+	} else if (ramped && focus && after) {
+		/* special case 4: user is manipulating a beat line after the INITIAL tempo marker, so there is no prior marker*/
+		std::cerr << "TWIST ON START\n";
+		begin_reversible_command (_("tempo mapping: mid-twist"));
+		before = focus; /* this is unused in MappingTwistDrag, when ramped is true, but let's not pass in garbage */
+		_drags->set (new MappingTwistDrag (this, item, map, *before, *focus, *after, *before_state, ramped), event);
+	} else {
+		abort_tempo_mapping ();  /* NOTREACHED */
 	}
 }

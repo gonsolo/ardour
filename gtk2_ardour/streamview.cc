@@ -193,6 +193,23 @@ StreamView::remove_region_view (std::weak_ptr<Region> weak_r)
 		return;
 	}
 
+	bool clear_rec_rects = false;
+	for (list<pair<std::shared_ptr<Region>,RegionView*> >::iterator i = rec_regions.begin(); i != rec_regions.end();) {
+		if (i->first == r) {
+			i = rec_regions.erase (i);
+			clear_rec_rects = true;
+		} else {
+			++i;
+		}
+	}
+
+	if (clear_rec_rects) {
+		for (auto const& i : rec_rects) {
+			delete i.rectangle;
+		}
+		rec_rects.clear();
+	}
+
 	for (list<RegionView *>::iterator i = region_views.begin(); i != region_views.end(); ++i) {
 		if (((*i)->region()) == r) {
 			RegionView* rv = *i;
@@ -461,6 +478,36 @@ StreamView::update_rec_box ()
 		rect.rectangle->set_x0 (xstart);
 		rect.rectangle->set_x1 (xend);
 	}
+}
+
+void
+StreamView::cleanup_rec_box ()
+{
+	if (rec_rects.empty() && rec_regions.empty()) {
+		return;
+	}
+
+	/* disconnect rapid update */
+	screen_update_connection.disconnect();
+	rec_data_ready_connections.drop_connections ();
+	rec_updating = false;
+	rec_active = false;
+
+	/* remove temp regions */
+	auto rr (rec_regions);
+	for (auto const& i : rr) {
+		i.first->drop_references ();
+	}
+
+	rec_regions.clear();
+
+	// cerr << "\tclear " << rec_rects.size() << " rec rects\n";
+
+	/* transport stopped, clear boxes */
+	for (auto const& i : rec_rects) {
+		delete i.rectangle;
+	}
+	rec_rects.clear();
 }
 
 RegionView*

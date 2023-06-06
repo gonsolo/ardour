@@ -767,7 +767,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 
 	LIBTEMPORAL_API int set_state (XMLNode const&, int version);
 
-	LIBTEMPORAL_API void linear_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
+	LIBTEMPORAL_API void constant_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
 	LIBTEMPORAL_API void ramped_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint& next, double tempo_delta);
 
 	LIBTEMPORAL_API void stretch_tempo (TempoPoint& ts, double new_npm);
@@ -1129,7 +1129,8 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	Temporal::BBT_Time bbt_lookup (superclock_t, bool & found) const;
 	Temporal::BBT_Time bbt_lookup (Temporal::Beats const & b, bool & found) const;
 
-	bool iteratively_solve_ramp (TempoPoint&, TempoPoint&);
+	bool solve_ramped_twist (TempoPoint&, TempoPoint&);  /* this is implemented by iteration, and it might fail. */
+	bool solve_constant_twist (TempoPoint&, TempoPoint&);  //TODO:  currently also done by iteration; should be possible to calculate directly
 
 	bool core_remove_meter (MeterPoint const &);
 	bool core_remove_tempo (TempoPoint const &);
@@ -1155,12 +1156,21 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 class LIBTEMPORAL_API TempoMapCutBuffer
 {
   public:
-	TempoMapCutBuffer (timecnt_t const &, TempoMetric const &, TempoMetric const &);
+	TempoMapCutBuffer (timecnt_t const &);
+	~TempoMapCutBuffer ();
 
 	timecnt_t duration() const { return _duration; }
 
-	TempoMetric const & metric_at_start () const { return _start_metric; }
-	TempoMetric const & metric_at_end () const { return _end_metric; }
+	void add_start_tempo (Tempo const & t);
+	void add_end_tempo (Tempo const & t);
+	void add_start_meter (Meter const & t);
+	void add_end_meter (Meter const & t);
+	
+	Tempo const * tempo_at_start () const { return _start_tempo; }
+	Tempo const * tempo_at_end () const { return _end_tempo; }
+
+	Meter const * meter_at_start () const { return _start_meter; }
+	Meter const * meter_at_end () const { return _end_meter; }
 
 	typedef boost::intrusive::list<TempoPoint, boost::intrusive::base_hook<tempo_hook>> Tempos;
 	typedef boost::intrusive::list<MeterPoint, boost::intrusive::base_hook<meter_hook>> Meters;
@@ -1181,8 +1191,10 @@ class LIBTEMPORAL_API TempoMapCutBuffer
 	Points const & points() const { return _points; }
 
   private:
-	TempoMetric _start_metric;
-	TempoMetric _end_metric;
+	Tempo* _start_tempo;
+	Tempo* _end_tempo;
+	Meter* _start_meter;
+	Meter* _end_meter;
 	timecnt_t   _duration;
 
 	Tempos       _tempos;

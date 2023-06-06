@@ -162,10 +162,6 @@ Editor::undo (uint32_t n)
 
 	if (_session) {
 		_session->undo (n);
-		if (_session->undo_depth() == 0) {
-			undo_action->set_sensitive(false);
-		}
-		redo_action->set_sensitive(true);
 		begin_selection_op_history ();
 	}
 }
@@ -186,11 +182,7 @@ Editor::redo (uint32_t n)
 	paste_count = 0;
 
 	if (_session) {
-	_session->redo (n);
-		if (_session->redo_depth() == 0) {
-			redo_action->set_sensitive(false);
-		}
-		undo_action->set_sensitive(true);
+		_session->redo (n);
 		begin_selection_op_history ();
 	}
 }
@@ -2709,7 +2701,7 @@ Editor::insert_source_list_selection (float times)
 }
 
 void
-Editor::cut_copy_section (bool copy)
+Editor::cut_copy_section (ARDOUR::SectionOperation const op)
 {
 	timepos_t start, end;
 	if (!get_selection_extents (start, end) || !_session) {
@@ -2717,16 +2709,27 @@ Editor::cut_copy_section (bool copy)
 	}
 #if 1
 	TempoMap::SharedPtr tmap (TempoMap::use());
-	if (tmap->tempos ().size () > 1 || tmap->meters ().size () > 1 || tmap->bartimes ().size () > 1) {
+	if ((tmap->tempos ().size () > 1 || tmap->meters ().size () > 1 || tmap->bartimes ().size () > 1) && UIConfiguration::instance().get_ask_cut_copy_section_tempo_map ()) {
 		ArdourMessageDialog msg (_("Cut/Copy Section does not yet include the Tempo Map\nDo you still want to proceed?"), false, MESSAGE_QUESTION, BUTTONS_YES_NO, true)  ;
 		msg.set_title (_("Cut/Copy without Tempo Map"));
+		Gtk::CheckButton cb (_("Do not show this dialog again."));
+		msg.get_vbox()->pack_start (cb);
+		cb.show ();
 		if (msg.run () != RESPONSE_YES) {
 			return;
+		}
+		if (cb.get_active ()) {
+			UIConfiguration::instance().set_ask_cut_copy_section_tempo_map (false);
 		}
 	}
 #endif
 	timepos_t to (get_preferred_edit_position ());
-	_session->cut_copy_section (start, end, to, copy);
+	_session->cut_copy_section (start, end, to, op);
+
+	if (op == DeleteSection) {
+		selection->clear ();
+		return;
+	}
 
 	timepos_t to_end (to + start.distance (end));
 
@@ -2737,10 +2740,10 @@ Editor::cut_copy_section (bool copy)
 			selection->clear ();
 			break;
 		case SectionSelectRetainAndMovePlayhead:
-			_session->request_locate (copy ? to_end.samples (): to.samples ());
+			_session->request_locate (op != CutPasteSection ? to_end.samples (): to.samples ());
 			/* fallthough */
 		case SectionSelectRetain:
-			if (!copy || to < end) {
+			if (op == CutPasteSection || to < end) {
 				selection->set (to, to_end);
 			}
 			break;
