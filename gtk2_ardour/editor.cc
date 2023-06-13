@@ -290,6 +290,7 @@ Editor::Editor ()
 	, cd_marker_group (0)
 	, _time_markers_group (0)
 	, _selection_marker_group (0)
+	, _selection_marker (new LocationMarkers)
 	, hv_scroll_group (0)
 	, h_scroll_group (0)
 	, cursor_scroll_group (0)
@@ -887,6 +888,7 @@ Editor::~Editor()
 	delete new_transport_marker_menu;
 	delete editor_ruler_menu;
 	delete _popup_region_menu_item;
+	delete _selection_marker;
 
 	delete button_bindings;
 	delete _routes;
@@ -2738,6 +2740,7 @@ Editor::set_snapped_cursor_position (timepos_t const & pos)
 {
 	if (_edit_point == EditAtMouse) {
 		_snapped_cursor->set_position (pos.samples());
+		_snapped_cursor->show ();
 	}
 }
 
@@ -6398,7 +6401,9 @@ Editor::super_rapid_screen_update ()
 		}
 	} else if (_edit_point == EditAtMouse && mouse_sample (where.sample, ignored)) {
 		/* cursor is in the editing canvas. show it. */
-		_snapped_cursor->show ();
+		if (!_drags->active()) {
+			_snapped_cursor->show ();
+		}
 	} else {
 		/* mouse is out of the editing canvas, or edit-point isn't mouse. Hide the snapped_cursor */
 		_snapped_cursor->hide ();

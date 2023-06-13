@@ -142,8 +142,10 @@ Session::realtime_stop (bool abort, bool clear_state)
 		add_post_transport_work (todo);
 	}
 
-	_clear_event_type (SessionEvent::RangeStop);
-	_clear_event_type (SessionEvent::RangeLocate);
+	if (clear_state) {
+		_clear_event_type (SessionEvent::RangeStop);
+		_clear_event_type (SessionEvent::RangeLocate);
+	}
 
 	/* if we're going to clear loop state, then force disabling record BUT only if we're not doing latched rec-enable */
 	disable_record (true, (!Config->get_latched_record_enable() && clear_state));
@@ -558,7 +560,7 @@ Session::start_transport (bool after_loop)
 			 * - use [fixed] tempo/meter at _transport_sample
 			 * - calc duration of 1 bar + time-to-beat before or at transport_sample
 			 */
-			TempoMetric const & tempometric = tmap->metric_at (_transport_sample);
+			TempoMetric const & tempometric = tmap->metric_at (timepos_t (_transport_sample));
 
 			const double num = tempometric.divisions_per_bar ();
 			/* XXX possible optimization: get meter and BBT time in one call */
@@ -939,6 +941,10 @@ Session::request_locate (samplepos_t target_sample, bool force, LocateTransportD
 	default:
 		/* impossible, but gcc -O3 can't figure it out */
 		return;
+	}
+
+	if (type == SessionEvent::LocateRoll) {
+		request_cancel_play_range ();
 	}
 
 	SessionEvent *ev = new SessionEvent (type, SessionEvent::Add, SessionEvent::Immediate, target_sample, 0, force);
@@ -1499,11 +1505,13 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 	clear_clicks();
 	unset_preroll_record_trim ();
 
-	/* do this before seeking, because otherwise the tracks will do the wrong thing in seamless loop mode.
-	*/
+	/* do these before seeking, because otherwise the tracks will do the wrong thing in seamless loop mode. */
+
+	if (ptw & PostTransportClearSubstate) {
+		unset_play_range ();
+	}
 
 	if (ptw & (PostTransportClearSubstate|PostTransportStop)) {
-		unset_play_range ();
 		if (!Config->get_loop_is_mode() && get_play_loop() && !loop_changing) {
 			unset_play_loop ();
 		}

@@ -217,63 +217,61 @@ Playlist::Playlist (std::shared_ptr<const Playlist> other, timepos_t const & sta
 
 	in_set_state++;
 
-	ThawList thawlist;
-	for (RegionList::const_iterator i = other->regions.begin (); i != other->regions.end (); ++i) {
-		std::shared_ptr<Region> region;
-		std::shared_ptr<Region> new_region;
-		timecnt_t offset;
-		timepos_t position;
-		timecnt_t len;
-		string    new_name;
-		Temporal::OverlapType overlap;
+	{
+		RegionWriteLock rlock (this);
+		for (auto const& region : other->regions) {
+			std::shared_ptr<Region> new_region;
+			timecnt_t offset;
+			timepos_t position;
+			timecnt_t len;
+			string    new_name;
+			Temporal::OverlapType overlap;
 
-		region = *i;
+			overlap = region->coverage (start, end);
 
-		overlap = region->coverage (start, end);
+			switch (overlap) {
+				case Temporal::OverlapNone:
+					continue;
 
-		switch (overlap) {
-		case Temporal::OverlapNone:
-			continue;
+				case Temporal::OverlapInternal:
+					offset = region->position().distance (start);
+					position = timepos_t(start.time_domain());
+					len = timecnt_t (cnt);
+					break;
 
-		case Temporal::OverlapInternal:
-			offset = region->position().distance (start);
-			position = timepos_t(start.time_domain());
-			len = timecnt_t (cnt);
-			break;
+				case Temporal::OverlapStart:
+					offset = timecnt_t (start.time_domain());
+					position = start.distance(region->position());
+					len = region->position().distance (end);
+					break;
 
-		case Temporal::OverlapStart:
-			offset = timecnt_t (start.time_domain());
-			position = start.distance(region->position());
-			len = region->position().distance (end);
-			break;
+				case Temporal::OverlapEnd:
+					offset = region->position().distance (start);
+					position = timepos_t (start.time_domain());
+					len = region->length() - offset;
+					break;
 
-		case Temporal::OverlapEnd:
-			offset = region->position().distance (start);
-			position = timepos_t (start.time_domain());
-			len = region->length() - offset;
-			break;
+				case Temporal::OverlapExternal:
+					offset = timecnt_t (start.time_domain());
+					position = start.distance(region->position());
+					len = region->length();
+					break;
+			}
 
-		case Temporal::OverlapExternal:
-			offset = timecnt_t (start.time_domain());
-			position = start.distance(region->position());
-			len = region->length();
-			break;
+			RegionFactory::region_name (new_name, region->name (), false);
+
+			PropertyList plist (region->derive_properties ());
+
+			plist.add (Properties::start, region->start() + offset);
+			plist.add (Properties::length, len);
+			plist.add (Properties::name, new_name);
+
+			new_region = RegionFactory::create (region, offset, plist, true, &rlock.thawlist);
+
+			add_region_internal (new_region, position, rlock.thawlist);
 		}
-
-		RegionFactory::region_name (new_name, region->name (), false);
-
-		PropertyList plist (region->derive_properties ());
-
-		plist.add (Properties::start, region->start() + offset);
-		plist.add (Properties::length, len);
-		plist.add (Properties::name, new_name);
-
-		new_region = RegionFactory::create (region, offset, plist, true, &thawlist);
-
-		add_region_internal (new_region, position, thawlist);
 	}
 
-	thawlist.release ();
 
 	/* keep track of any dead space at end (for pasting into Ripple or
 	 * RippleAll mode) at the end of construction, any length of cnt beyond
@@ -289,18 +287,23 @@ Playlist::Playlist (std::shared_ptr<const Playlist> other, timepos_t const & sta
 void
 Playlist::use ()
 {
-	++_refcnt;
-	InUse (true); /* EMIT SIGNAL */
+	if (0 == _refcnt.fetch_add (1)) {
+		InUse (true); /* EMIT SIGNAL */
+	}
 }
 
 void
 Playlist::release ()
 {
-	if (_refcnt > 0) {
-		_refcnt--;
+	int oldval = _refcnt.fetch_sub (1);
+#ifndef NDEBUG
+	if (oldval <= 0) {
+		cerr << "Bad Playlist::release for " << name() << endl;
 	}
+	assert (oldval > 0);
+#endif
 
-	if (_refcnt == 0) {
+	if (oldval == 1) {
 		InUse (false); /* EMIT SIGNAL */
 	}
 }
@@ -325,7 +328,6 @@ Playlist::init (bool hide)
 	pending_contents_change     = false;
 	pending_layering            = false;
 	first_set_state             = true;
-	_refcnt                     = 0;
 	_hidden                     = hide;
 	_rippling                   = false;
 	_shuffling                  = false;
@@ -337,7 +339,10 @@ Playlist::init (bool hide)
 	subcnt                      = 0;
 	_frozen                     = false;
 	_capture_insertion_underway = false;
-	_combine_ops = 0;
+	_combine_ops                = 0;
+
+	_refcnt.store (0);
+
 	_end_space = timecnt_t (_type == DataType::AUDIO ? Temporal::AudioTime : Temporal::BeatTime);
 	_playlist_shift_active = false;
 
@@ -1177,11 +1182,11 @@ Playlist::partition_internal (timepos_t const & start, timepos_t const & end, bo
 	/* keep track of any dead space at end (for pasting into Ripple or RippleAll mode) */
 	const timecnt_t wanted_length = start.distance (end);
 	_end_space = wanted_length - _get_extent().first.distance (_get_extent().second);
-	cout << "PL: " << name() << " END SPACE: " << _end_space << " WANTED LEN: " << wanted_length << " EXT: " << _get_extent().first << " to " << get_extent().second << "\n";
+	// cout << "PL: " << name() << " END SPACE: " << _end_space << " WANTED LEN: " << wanted_length << " EXT: " << _get_extent().first << " to " << _get_extent().second << "\n";
 }
 
 std::shared_ptr<Playlist>
-Playlist::cut_copy (std::shared_ptr<Playlist> (Playlist::*pmf)(timepos_t const &, timecnt_t const &,bool), list<TimelineRange>& ranges, bool result_is_hidden)
+Playlist::cut_copy (std::shared_ptr<Playlist> (Playlist::*pmf)(timepos_t const &, timecnt_t const &), list<TimelineRange>& ranges)
 {
 	std::shared_ptr<Playlist> ret;
 	std::shared_ptr<Playlist> pl;
@@ -1195,7 +1200,7 @@ Playlist::cut_copy (std::shared_ptr<Playlist> (Playlist::*pmf)(timepos_t const &
 
 	for (list<TimelineRange>::iterator i = ranges.begin(); i != ranges.end(); ++i) {
 
-		pl = (this->*pmf)((*i).start(), (*i).length(), result_is_hidden);
+		pl = (this->*pmf)((*i).start(), (*i).length());
 
 		if (i == ranges.begin ()) {
 			ret = pl;
@@ -1213,21 +1218,21 @@ Playlist::cut_copy (std::shared_ptr<Playlist> (Playlist::*pmf)(timepos_t const &
 }
 
 std::shared_ptr<Playlist>
-Playlist::cut (list<TimelineRange>& ranges, bool result_is_hidden)
+Playlist::cut (list<TimelineRange>& ranges)
 {
-	std::shared_ptr<Playlist> (Playlist::*pmf) (timepos_t const & , timecnt_t const &, bool) = &Playlist::cut;
-	return cut_copy (pmf, ranges, result_is_hidden);
+	std::shared_ptr<Playlist> (Playlist::*pmf) (timepos_t const & , timecnt_t const &) = &Playlist::cut;
+	return cut_copy (pmf, ranges);
 }
 
 std::shared_ptr<Playlist>
-Playlist::copy (list<TimelineRange>& ranges, bool result_is_hidden)
+Playlist::copy (list<TimelineRange>& ranges )
 {
-	std::shared_ptr<Playlist> (Playlist::*pmf) (timepos_t const &, timecnt_t const &, bool) = &Playlist::copy;
-	return cut_copy (pmf, ranges, result_is_hidden);
+	std::shared_ptr<Playlist> (Playlist::*pmf) (timepos_t const &, timecnt_t const &) = &Playlist::copy;
+	return cut_copy (pmf, ranges);
 }
 
 std::shared_ptr<Playlist>
-Playlist::cut (timepos_t const & start, timecnt_t const & cnt, bool result_is_hidden)
+Playlist::cut (timepos_t const & start, timecnt_t const & cnt)
 {
 	std::shared_ptr<Playlist> the_copy;
 	char                        buf[32];
@@ -1237,7 +1242,7 @@ Playlist::cut (timepos_t const & start, timecnt_t const & cnt, bool result_is_hi
 	new_name += '.';
 	new_name += buf;
 
-	if ((the_copy = PlaylistFactory::create (shared_from_this(), start, timepos_t (cnt), new_name, result_is_hidden)) == 0) {
+	if ((the_copy = PlaylistFactory::create (shared_from_this(), start, timepos_t (cnt), new_name, true)) == 0) {
 		return std::shared_ptr<Playlist>();
 	}
 
@@ -1250,7 +1255,7 @@ Playlist::cut (timepos_t const & start, timecnt_t const & cnt, bool result_is_hi
 }
 
 std::shared_ptr<Playlist>
-Playlist::copy (timepos_t const & start, timecnt_t const & cnt, bool result_is_hidden)
+Playlist::copy (timepos_t const & start, timecnt_t const & cnt)
 {
 	char buf[32];
 
@@ -1261,7 +1266,7 @@ Playlist::copy (timepos_t const & start, timecnt_t const & cnt, bool result_is_h
 
 	// cnt = min (_get_extent().second - start, cnt);  (We need the full range length when copy/pasting in Ripple.  Why was this limit here?  It's not in CUT... )
 
-	return PlaylistFactory::create (shared_from_this (), start, timepos_t (cnt), new_name, result_is_hidden);
+	return PlaylistFactory::create (shared_from_this (), start, timepos_t (cnt), new_name, true);
 }
 
 int
@@ -1275,7 +1280,7 @@ Playlist::paste (std::shared_ptr<Playlist> other, timepos_t const & position, fl
 		int itimes = (int) floor (times);
 		timepos_t pos = position;
 		timecnt_t const shift (other->_get_extent().second, other->_get_extent().first);
-		layer_t top = top_layer ();
+		layer_t top = top_layer () + 1;
 
 		{
 			RegionWriteLock rl1 (this);
@@ -1367,7 +1372,7 @@ Playlist::duplicate_until (std::shared_ptr<Region> region, timepos_t & position,
 void
 Playlist::duplicate_range (TimelineRange& range, float times)
 {
-	std::shared_ptr<Playlist> pl = copy (range.start(), range.length(), true);
+	std::shared_ptr<Playlist> pl = copy (range.start(), range.length());
 	paste (pl, range.end(), times);
 }
 
@@ -1394,7 +1399,7 @@ Playlist::duplicate_ranges (std::list<TimelineRange>& ranges, float times)
 	int itimes = (int)floor (times);
 	while (itimes--) {
 		for (list<TimelineRange>::iterator i = ranges.begin (); i != ranges.end (); ++i) {
-			std::shared_ptr<Playlist> pl = copy ((*i).start(), (*i).length (), true);
+			std::shared_ptr<Playlist> pl = copy ((*i).start(), (*i).length ());
 			paste (pl, (*i).start() + (offset.scale (count)), 1.0f);
 		}
 		++count;

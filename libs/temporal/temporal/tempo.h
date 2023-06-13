@@ -814,13 +814,15 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	   Meter at the given time. If can_match is false, the TempoMetric will
 	   only refer to the Tempo or Metric preceding the given time.
 	*/
-	LIBTEMPORAL_API	TempoMetric metric_at (superclock_t, bool can_match = true) const;
 	LIBTEMPORAL_API	TempoMetric metric_at (Beats const &, bool can_match = true) const;
 	LIBTEMPORAL_API	TempoMetric metric_at (BBT_Argument const &, bool can_match = true) const;
 
 	LIBTEMPORAL_API TempoMapCutBuffer* cut (timepos_t const & start, timepos_t const & end, bool ripple);
 	LIBTEMPORAL_API TempoMapCutBuffer* copy (timepos_t const & start, timepos_t const & end);
 	LIBTEMPORAL_API void paste (TempoMapCutBuffer const &, timepos_t const & position, bool ripple);
+
+	LIBTEMPORAL_API void shift (timepos_t const & at, BBT_Offset const & by);
+	LIBTEMPORAL_API void shift (timepos_t const & at, timecnt_t const & by);
 
   private:
 	template<typename TimeType, typename Comparator> TempoPoint const & _tempo_at (TimeType when, Comparator cmp) const {
@@ -1088,6 +1090,13 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 		return _get_tempo_and_meter<const_traits<Beats const &, Beats> > (t, m, &Point::beats, b, _points.begin(), _points.end(), &_tempos.front(), &_meters.front(), can_match, ret_iterator_after_not_at);
 	}
 
+	/* This is private, and should not be callable from outside the map
+	   because of potential confusion between samplepos_t and
+	   superclock_t. The timepos_t variant of ::metric_at() handles any
+	   samplepos_t-passing call.
+	*/
+	TempoMetric metric_at (superclock_t, bool can_match = true) const;
+
 	/* parsing legacy tempo maps */
 
 	struct LegacyTempoState
@@ -1165,12 +1174,12 @@ class LIBTEMPORAL_API TempoMapCutBuffer
 	void add_end_tempo (Tempo const & t);
 	void add_start_meter (Meter const & t);
 	void add_end_meter (Meter const & t);
-	
-	Tempo const * tempo_at_start () const { return _start_tempo; }
-	Tempo const * tempo_at_end () const { return _end_tempo; }
 
-	Meter const * meter_at_start () const { return _start_meter; }
-	Meter const * meter_at_end () const { return _end_meter; }
+	Tempo const * start_tempo () const { return _start_tempo; }
+	Tempo const * end_tempo () const { return _end_tempo; }
+
+	Meter const * start_meter () const { return _start_meter; }
+	Meter const * end_meter () const { return _end_meter; }
 
 	typedef boost::intrusive::list<TempoPoint, boost::intrusive::base_hook<tempo_hook>> Tempos;
 	typedef boost::intrusive::list<MeterPoint, boost::intrusive::base_hook<meter_hook>> Meters;
