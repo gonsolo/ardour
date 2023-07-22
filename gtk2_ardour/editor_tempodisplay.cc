@@ -110,7 +110,7 @@ Editor::reassociate_metric_markers (TempoMap::SharedPtr const& tmap)
 }
 
 void
-Editor::reassociate_tempo_marker (TempoMap::SharedPtr const & tmap, TempoMap::Tempos const & tempos, TempoMarker& marker)
+Editor::reassociate_tempo_marker (TempoMap::SharedPtr const & tmap, Tempos const & tempos, TempoMarker& marker)
 {
 	Temporal::MusicTimePoint const * mtp;
 
@@ -131,7 +131,7 @@ Editor::reassociate_tempo_marker (TempoMap::SharedPtr const & tmap, TempoMap::Te
 }
 
 void
-Editor::reassociate_meter_marker (TempoMap::SharedPtr const & tmap, TempoMap::Meters const & meters, MeterMarker& marker)
+Editor::reassociate_meter_marker (TempoMap::SharedPtr const & tmap, Meters const & meters, MeterMarker& marker)
 {
 	Temporal::MusicTimePoint const * mtp;
 
@@ -151,7 +151,7 @@ Editor::reassociate_meter_marker (TempoMap::SharedPtr const & tmap, TempoMap::Me
 }
 
 void
-Editor::reassociate_bartime_marker (TempoMap::SharedPtr const & tmap, TempoMap::MusicTimes const & bartimes, BBTMarker& marker)
+Editor::reassociate_bartime_marker (TempoMap::SharedPtr const & tmap, MusicTimes const & bartimes, BBTMarker& marker)
 {
 	for (auto const & bartime : bartimes) {
 		if (marker.point().sclock() == bartime.sclock()) {
@@ -164,7 +164,7 @@ Editor::reassociate_bartime_marker (TempoMap::SharedPtr const & tmap, TempoMap::
 void
 Editor::make_bbt_marker (MusicTimePoint const  * mtp, Marks::iterator before)
 {
-	bbt_marks.insert (before, new BBTMarker (*this, *bbt_ruler, "meter marker", *mtp));
+	bbt_marks.insert (before, new BBTMarker (*this, *bbt_ruler, "meter marker", *mtp, *tempo_group, *mapping_group, *meter_group));
 }
 
 void
@@ -220,7 +220,7 @@ Editor::reset_tempo_marks ()
 	const uint32_t tc_color = UIConfiguration::instance().color ("tempo curve");
 	const samplecnt_t sr (_session->sample_rate());
 
-	TempoMap::Tempos const & tempi (TempoMap::use()->tempos());
+	Tempos const & tempi (TempoMap::use()->tempos());
 	TempoPoint const * prev_ts = 0;
 	double max_tempo = 0.0;
 	double min_tempo = DBL_MAX;
@@ -251,7 +251,7 @@ Editor::reset_meter_marks ()
 		return;
 	}
 
-	TempoMap::Meters const & meters (TempoMap::use()->meters());
+	Meters const & meters (TempoMap::use()->meters());
 
 	for (auto & m : meter_marks) {
 		delete m;
@@ -277,7 +277,7 @@ Editor::reset_bbt_marks ()
 	}
 
 	Temporal::TempoMap::SharedPtr tmap (TempoMap::use());
-	TempoMap::MusicTimes const & bartimes (tmap->bartimes());
+	MusicTimes const & bartimes (tmap->bartimes());
 
 	for (auto & b : bbt_marks) {
 		delete b;
@@ -343,6 +343,7 @@ Editor::tempo_map_changed ()
 
 	 reset_metric_marks ();
 	 update_tempo_based_rulers ();
+	 update_all_marker_lanes ();
 	 maybe_draw_grid_lines ();
 }
 
@@ -519,7 +520,7 @@ Editor::mouse_add_new_meter_event (timepos_t pos)
 
 	Temporal::BBT_Time r;
 	meter_dialog.get_bbt_time (r);
-	Temporal::BBT_Argument requested (timepos_t::zero (Temporal::BeatTime), r);
+	Temporal::BBT_Argument requested (superclock_t (0), r);
 
 	TempoMapChange tmc (*this, _("add time signature"));
 	pos = timepos_t (tmc.map().quarters_at (requested));
@@ -1018,4 +1019,47 @@ Editor::tempo_edit_behavior_toggled (TempoEditBehavior teb)
 		mapping_group->hide ();
 		break;
 	}
+}
+
+void
+Editor::clear_tempo_markers_before (timepos_t where, bool stop_at_music_times)
+{
+	if (!_session) {
+		return;
+	}
+
+	TempoMap::WritableSharedPtr wmap = begin_tempo_map_edit ();
+	XMLNode* before_state = &wmap->get_state ();
+
+	if (!wmap->clear_tempos_before (where, stop_at_music_times)) {
+		abort_tempo_map_edit ();
+		return;
+	}
+
+	begin_reversible_command (_("clear earlier tempos"));
+	commit_tempo_map_edit (wmap, true);
+	XMLNode& after = wmap->get_state ();
+	_session->add_command (new Temporal::TempoCommand (_("clear earlier tempos"), before_state, &after));
+	commit_reversible_command ();
+}
+
+void
+Editor::clear_tempo_markers_after (timepos_t where, bool stop_at_music_times)
+{
+	if (!_session) {
+		return;
+	}
+
+	TempoMap::WritableSharedPtr wmap = begin_tempo_map_edit ();
+	XMLNode* before_state = &wmap->get_state ();
+	if (!wmap->clear_tempos_after (where, stop_at_music_times)) {
+		abort_tempo_map_edit ();
+		return;
+	}
+
+	begin_reversible_command (_("clear later tempos"));
+	commit_tempo_map_edit (wmap, true);
+	XMLNode& after = wmap->get_state ();
+	_session->add_command (new Temporal::TempoCommand (_("clear later tempos"), before_state, &after));
+	commit_reversible_command ();
 }

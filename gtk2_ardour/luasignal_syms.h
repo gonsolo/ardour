@@ -91,9 +91,19 @@ STATIC(LuaTimerDS, &LuaInstance::LuaTimerDS, 0)
 // Session load
 STATIC(SetSession, &LuaInstance::SetSession, 0)
 
+// Editor Selection Changed
+STATIC(SelectionChanged, &LuaInstance::SelectionChanged, 0)
+
 // TODO per track/route signals,
 // TODO per plugin actions / controllables
 // TODO per region actions
 //SESSIONOBJECT(PropertyChanged, &ARDOUR::Stateful::PropertyChanged, 1)
 
 // TODO any location action
+
+// /////////////////////////////////////////////////////////////////////
+// NOTE: WHEN ADDING/REMOVING SIGNALS, UPDATE libs/ardour/luabindings.cc
+// TO MATCH THE TOTAL NUMBER OF SIGNALS.
+//
+// CLASSKEYS(std::bitset<50ul>); // LuaSignal::LAST_SIGNAL
+// /////////////////////////////////////////////////////////////////////

@@ -92,19 +92,18 @@ AutomationStreamView::add_region_view_internal (std::shared_ptr<Region> region, 
 		}
 	}
 
-	AutomationRegionView *region_view;
-	std::list<RegionView *>::iterator i;
+	RegionView *region_view;
 
-	for (i = region_views.begin(); i != region_views.end(); ++i) {
-		if ((*i)->region() == region) {
+	for (auto const & rv : region_views) {
+		if (rv->region() == region) {
 
 			/* great. we already have an AutomationRegionView for this Region. use it again. */
-			AutomationRegionView* arv = dynamic_cast<AutomationRegionView*>(*i);;
+			AutomationRegionView* arv = dynamic_cast<AutomationRegionView*>(rv);;
 
 			if (arv->line()) {
 				arv->line()->set_list (list);
 			}
-			(*i)->set_valid (true);
+			rv->set_valid (true);
 			display_region (arv);
 
 			return 0;
@@ -128,9 +127,11 @@ AutomationStreamView::add_region_view_internal (std::shared_ptr<Region> region, 
 	region->DropReferences.connect (*this, invalidator (*this), boost::bind (&AutomationStreamView::remove_region_view, this, std::weak_ptr<Region>(region)), gui_context());
 
 	/* setup automation state for this region */
-	std::shared_ptr<AutomationLine> line = region_view->line ();
-	if (line && line->the_list()) {
-		line->the_list()->set_automation_state (automation_state ());
+	if (_automation_view.parameter().type() != MidiVelocityAutomation) {
+		std::shared_ptr<AutomationLine> line = dynamic_cast<AutomationRegionView*>(region_view)->line ();
+		if (line && line->the_list()) {
+			line->the_list()->set_automation_state (automation_state ());
+		}
 	}
 
 	RegionViewAdded (region_view);
@@ -139,9 +140,11 @@ AutomationStreamView::add_region_view_internal (std::shared_ptr<Region> region, 
 }
 
 void
-AutomationStreamView::display_region(AutomationRegionView* region_view)
+AutomationStreamView::display_region (RegionView* region_view)
 {
-	region_view->line().reset();
+	if (_automation_view.parameter().type() != MidiVelocityAutomation) {
+		dynamic_cast<AutomationRegionView*>(region_view)->line().reset();
+	}
 }
 
 void

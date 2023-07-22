@@ -234,7 +234,7 @@ CLASSINFO(UIConfiguration);
 
 
 /* this needs to match gtk2_ardour/luasignal.h */
-CLASSKEYS(std::bitset<49ul>); // LuaSignal::LAST_SIGNAL
+CLASSKEYS(std::bitset<50ul>); // LuaSignal::LAST_SIGNAL
 
 CLASSKEYS(void);
 CLASSKEYS(float);
@@ -794,6 +794,24 @@ LuaBindings::common (lua_State* L)
 		.addCast<Temporal::Point> ("to_point")
 		.endClass ()
 
+		.beginClass <Temporal::TempoMetric> ("TempoMetric")
+		.addFunction ("tempo", &Temporal::TempoMetric::tempo)
+		.addFunction ("meter", &Temporal::TempoMetric::meter)
+		.addFunction ("sample_at", &Temporal::TempoMetric::sample_at)
+		.addFunction ("quarters_at", &Temporal::TempoMetric::quarters_at)
+		.addFunction ("note_type", &Temporal::TempoMetric::note_type)
+		.addFunction ("note_value", &Temporal::TempoMetric::note_value)
+		.addFunction ("divisions_per_bar", &Temporal::TempoMetric::divisions_per_bar)
+		.endClass ()
+
+		.deriveClass <Temporal::TempoMapPoint, Temporal::Point> ("TempoMapPoint")
+		.addCast<Temporal::TempoMetric> ("to_tempometric")
+		.addFunction ("time", &Temporal::TempoMapPoint::time)
+		.endClass ()
+
+		.beginStdVector <Temporal::TempoMapPoint> ("TempoMapPoints")
+		.endClass ()
+
 		.beginWSPtrClass <Temporal::TempoMap> ("TempoMap")
 		/* we cannot use ::fetch or ::use because LuaBridge cannot overload
 		 * shared_ptr<const T> and shared_ptr<T> in the same class.
@@ -840,7 +858,9 @@ LuaBindings::common (lua_State* L)
 
 		.addFunction ("convert_duration", &Temporal::TempoMap::convert_duration)
 		.addFunction ("bbt_walk", &Temporal::TempoMap::bbt_walk)
-		.addFunction ("count_bars", &Temporal::TempoMap::count_bars)
+#ifdef WITH_SUPERCLOCK_BINDINGS
+		.addRefFunction ("grid", &Temporal::TempoMap::grid)
+#endif
 
 		.addFunction ("quarters_per_minute_at", &Temporal::TempoMap::quarters_per_minute_at)
 		.addFunction ("round_to_bar", &Temporal::TempoMap::round_to_bar)
@@ -2609,6 +2629,13 @@ LuaBindings::common (lua_State* L)
 		.addConst ("ForceSel", ARDOUR::RangeSelectionAfterSplit(ForceSel))
 		.endNamespace ()
 
+		.beginNamespace ("TimeSelectionAfterSectionPaste")
+		.addConst ("SectionSelectNoop", ARDOUR::TimeSelectionAfterSectionPaste(SectionSelectNoop))
+		.addConst ("SectionSelectClear", ARDOUR::TimeSelectionAfterSectionPaste(SectionSelectClear))
+		.addConst ("SectionSelectRetain", ARDOUR::TimeSelectionAfterSectionPaste(SectionSelectRetain))
+		.addConst ("SectionSelectRetainAndMovePlayhead", ARDOUR::TimeSelectionAfterSectionPaste(SectionSelectRetainAndMovePlayhead))
+		.endNamespace ()
+
 		.beginNamespace ("ScreenSaverMode")
 		.addConst ("InhibitNever", ARDOUR::ScreenSaverMode(InhibitNever))
 		.addConst ("InhibitWhileRecording", ARDOUR::ScreenSaverMode(InhibitWhileRecording))
@@ -2856,6 +2883,9 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("request_stop", &Session::request_stop)
 		.addFunction ("request_play_loop", &Session::request_play_loop)
 		.addFunction ("request_bounded_roll", &Session::request_bounded_roll)
+		.addFunction ("preroll_samples", &Session::preroll_samples)
+		.addFunction ("request_preroll_record_trim", &Session::request_preroll_record_trim)
+		.addFunction ("request_count_in_record", &Session::request_count_in_record)
 		.addFunction ("get_play_loop", &Session::get_play_loop)
 		.addFunction ("get_xrun_count", &Session::get_xrun_count)
 		.addFunction ("reset_xrun_count", &Session::reset_xrun_count)

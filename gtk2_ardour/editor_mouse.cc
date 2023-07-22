@@ -82,6 +82,7 @@
 #include "mouse_cursors.h"
 #include "editor_cursors.h"
 #include "region_peak_cursor.h"
+#include "velocity_ghost_region.h"
 #include "verbose_cursor.h"
 #include "note.h"
 
@@ -897,6 +898,21 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		return true;
 		break;
 
+	case VelocityItem:
+		_drags->set (new LollipopDrag (this, item), event);
+		return true;
+		break;
+
+	case VelocityBaseItem:
+		{
+			VelocityGhostRegion* grv = static_cast<VelocityGhostRegion*> (item->get_data ("ghostregionview"));
+			if (grv) {
+				_drags->set (new VelocityLineDrag (this, grv->base_item(), Temporal::BeatTime), event);
+			}
+		}
+		return true;
+		break;
+
 	default:
 		break;
 	}
@@ -1031,6 +1047,9 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 
 		case StreamItem:
 			/* in the past, we created a new midi region here, but perhaps that is best left to the Draw mode */
+			/* .. now we allow for rubberband selection (region gain) */
+			_drags->set (new EditorRubberbandSelectDrag (this, item), event);
+			return true;
 			break;
 
 		case AutomationTrackItem:
@@ -1040,11 +1059,9 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			break;
 
 		case RegionItem:
-			if (dynamic_cast<AutomationRegionView*>(clicked_regionview)) {
-				/* rubberband drag to select automation points */
-				_drags->set (new EditorRubberbandSelectDrag (this, item), event);
-				return true;
-			}
+			/* rubberband drag to select region gain points */
+			_drags->set (new EditorRubberbandSelectDrag (this, item), event);
+			return true;
 			break;
 
 		default:
@@ -1318,6 +1335,15 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				break;
 			}
 
+		case AutomationTrackItem:
+			{
+				AutomationTimeAxisView* atv = static_cast<AutomationTimeAxisView*> (item->get_data ("trackview"));
+				if (atv) {
+					_drags->set (new AutomationDrawDrag (this, atv->base_item(), Temporal::AudioTime), event);
+				}
+			}
+			break;
+
 		case AutomationLineItem:
 			_drags->set (new LineDrag (this, item), event);
 			break;
@@ -1554,6 +1580,7 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 		/* see if we're finishing a drag */
 
 		if (_drags->active ()) {
+
 			bool const r = _drags->end_grab (event);
 			if (r) {
 				/* grab dragged, so do nothing else */
@@ -2319,6 +2346,7 @@ Editor::motion_handler (ArdourCanvas::Item* item, GdkEvent* event, bool from_aut
 	update_join_object_range_location (event->motion.y);
 
 	if (_drags->active ()) {
+		_region_peak_cursor->hide ();
 		//drags change the snapped_cursor location, because we are snapping the thing being dragged, not the actual mouse cursor
 		return _drags->motion_handler (event, from_autoscroll);
 	} else {
@@ -2436,13 +2464,29 @@ Editor::edit_control_point (ArdourCanvas::Item* item)
 		abort(); /*NOTREACHED*/
 	}
 
-	ControlPointDialog d (p);
+	std::vector<ControlPoint*> cps;
+
+	for (auto const& cp : selection->points) {
+		if (&cp->line() == &p->line ()) {
+			cps.push_back (cp);
+		}
+	}
+
+	assert (cps.size() > 0);
+
+	ControlPointDialog d (p, cps.size() > 1);
 
 	if (d.run () != RESPONSE_ACCEPT) {
 		return;
 	}
 
-	p->line().modify_point_y (*p, d.get_y_fraction ());
+	if (d.all_selected_points ()) {
+		p->line().modify_points_y (cps, d.get_y_fraction ());
+	} else {
+		cps.clear ();
+		cps.push_back (p);
+		p->line().modify_points_y (cps, d.get_y_fraction ());
+	}
 }
 
 void
@@ -2851,6 +2895,11 @@ Editor::update_join_object_range_location (double y)
 	}
 
 	if (entered_regionview) {
+
+		if (dynamic_cast<AutomationRegionView*> (entered_regionview)) {
+			_join_object_range_state = JOIN_OBJECT_RANGE_NONE;
+			return;
+		}
 
 		/* TODO: there is currently a bug here(?)
 		 * when we are inside a region fade handle, it acts as though we are in range mode because it is in the top half of the region

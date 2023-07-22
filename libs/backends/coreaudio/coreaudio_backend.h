@@ -207,9 +207,6 @@ class CoreAudioBackend : public AudioBackend, public PortEngineSharedImpl {
 	uint32_t     systemic_midi_input_latency (std::string const) const { return 0; }
 	uint32_t     systemic_midi_output_latency (std::string const) const { return 0; }
 
-	uint32_t systemic_hw_input_latency () const;
-	uint32_t systemic_hw_output_latency () const;
-
 	bool can_set_systemic_midi_latencies () const { return false; /* XXX */}
 
 	/* External control app */
@@ -367,6 +364,9 @@ class CoreAudioBackend : public AudioBackend, public PortEngineSharedImpl {
 
 	uint32_t _systemic_audio_input_latency;
 	uint32_t _systemic_audio_output_latency;
+
+	uint32_t _hw_audio_input_latency;
+	uint32_t _hw_audio_output_latency;
 
 	/* coreaudio specific  */
 	enum DeviceFilter { All, Input, Output, Duplex };

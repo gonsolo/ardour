@@ -293,7 +293,7 @@ AutomationLine::nth (uint32_t n) const
 }
 
 void
-AutomationLine::modify_point_y (ControlPoint& cp, double y)
+AutomationLine::modify_points_y (std::vector<ControlPoint*> const& cps, double y)
 {
 	/* clamp y-coord appropriately. y is supposed to be a normalized fraction (0.0-1.0),
 	   and needs to be converted to a canvas unit distance.
@@ -307,13 +307,16 @@ AutomationLine::modify_point_y (ControlPoint& cp, double y)
 	trackview.editor().session()->add_command (
 		new MementoCommand<AutomationList> (memento_command_binder(), &get_state(), 0));
 
-	cp.move_to (cp.get_x(), y, ControlPoint::Full);
-
 	alist->freeze ();
-	sync_model_with_view_point (cp);
+	for (auto const& cp : cps) {
+		cp->move_to (cp->get_x(), y, ControlPoint::Full);
+		sync_model_with_view_point (*cp);
+	}
 	alist->thaw ();
 
-	reset_line_coords (cp);
+	for (auto const& cp : cps) {
+		reset_line_coords (*cp);
+	}
 
 	if (line_points.size() > 1) {
 		line->set_steps (line_points, is_stepped());
@@ -948,13 +951,12 @@ void
 AutomationLine::get_selectables (timepos_t const & start, timepos_t const & end, double botfrac, double topfrac, list<Selectable*>& results)
 {
 	/* convert fractions to display coordinates with 0 at the top of the track */
-	double const bot_track = (1 - topfrac) * trackview.current_height ();
-	double const top_track = (1 - botfrac) * trackview.current_height ();
+	double const bot_track = (1 - topfrac) * trackview.current_height (); // this should StreamView::child_height () for RegionGain
+	double const top_track = (1 - botfrac) * trackview.current_height (); //  --"--
 
 	for (auto const & cp : control_points) {
 
 		const timepos_t w = session_position ((*cp->model())->when);
-
 
 		if (w >= start && w <= end && cp->get_y() >= bot_track && cp->get_y() <= top_track) {
 			results.push_back (cp);

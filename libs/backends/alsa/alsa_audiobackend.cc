@@ -520,12 +520,12 @@ AlsaAudioBackend::update_systemic_audio_latencies ()
 	const uint32_t lcpp = (_periods_per_cycle - 2) * _samples_per_period;
 	LatencyRange   lr;
 
-	lr.min = lr.max = (_measure_latency ? 0 : _systemic_audio_output_latency);
+	lr.min = lr.max = lcpp + (_measure_latency ? 0 : _systemic_audio_output_latency);
 	for (std::vector<BackendPortPtr>::const_iterator it = _system_outputs.begin (); it != _system_outputs.end (); ++it) {
 		set_latency_range (*it, true, lr);
 	}
 
-	lr.min = lr.max = lcpp + (_measure_latency ? 0 : _systemic_audio_input_latency);
+	lr.min = lr.max = (_measure_latency ? 0 : _systemic_audio_input_latency);
 	for (std::vector<BackendPortPtr>::const_iterator it = _system_inputs.begin (); it != _system_inputs.end (); ++it) {
 		set_latency_range (*it, false, lr);
 	}
@@ -1052,6 +1052,7 @@ AlsaAudioBackend::_start (bool for_latency_measurement)
 
 	_midi_device_thread_active = listen_for_midi_device_changes ();
 
+	devices.clear ();
 	get_alsa_audio_device_names (devices, (AlsaDuplex)slave_duplex);
 
 	if (!slave_device.empty () && (di = devices.find (slave_device)) != devices.end ()) {

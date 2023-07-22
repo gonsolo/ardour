@@ -262,6 +262,9 @@ PluginPinWidget::PluginPinWidget (std::shared_ptr<ARDOUR::PluginInsert> pi)
 	_add_sc_audio.signal_clicked.connect (sigc::bind (sigc::mem_fun (*this, &PluginPinWidget::add_sidechain_port), DataType::AUDIO));
 	_add_sc_midi.signal_clicked.connect (sigc::bind (sigc::mem_fun (*this, &PluginPinWidget::add_sidechain_port), DataType::MIDI));
 
+	_route ()->PropertyChanged.connect (_plugin_connections, invalidator (*this), boost::bind (&PluginPinWidget::property_changed, this, _1), gui_context ());
+	_pi->PropertyChanged.connect (_plugin_connections, invalidator (*this), boost::bind (&PluginPinWidget::property_changed, this, _1), gui_context ());
+
 	AudioEngine::instance ()->PortConnectedOrDisconnected.connect (
 			_io_connection, invalidator (*this), boost::bind (&PluginPinWidget::port_connected_or_disconnected, this, _1, _3), gui_context ()
 			);
@@ -652,6 +655,12 @@ PluginPinWidget::add_port_to_table (std::shared_ptr<Port> p, uint32_t r, bool ca
 				 */
 				set<Evoral::Parameter> p = proc->what_can_be_automated ();
 				for (set<Evoral::Parameter>::iterator i = p.begin (); i != p.end (); ++i) {
+					/* Do not display send phase invert toggle here.
+					 * (strictly we should only show BusSendLevel).
+					 */
+					if (i->type () == PhaseAutomation) {
+						continue;
+					}
 					Control* c = new Control (proc->automation_control (*i), _("Send"));
 					_controls.push_back (c);
 					++r; ++rv;
@@ -844,11 +853,11 @@ PluginPinWidget::draw_plugin_pin (cairo_t* cr, const CtrlWidget& w)
 		layout->set_text (w.name);
 		layout->get_pixel_size (text_width, text_height);
 
-		rounded_rectangle (cr, w.x + dx - .5 * text_width - 2, w.y - text_height - 2,  text_width + 4, text_height + 2, 7);
+		rounded_rectangle (cr, w.x + dx + .5 * text_width - 2, w.y - text_height - 2,  text_width + 4, text_height + 2, 7);
 		cairo_set_source_rgba (cr, 0, 0, 0, .5);
 		cairo_fill (cr);
 
-		cairo_move_to (cr, w.x + dx - .5 * text_width, w.y - text_height - 1);
+		cairo_move_to (cr, w.x + dx + .5 * text_width, w.y - text_height - 1);
 		cairo_set_source_rgba (cr, 1., 1., 1., 1.);
 		pango_cairo_show_layout (cr, layout->gobj ());
 	}
@@ -871,7 +880,7 @@ double
 PluginPinWidget::pin_x_pos (uint32_t i, double x0, double width, uint32_t n_total, uint32_t n_midi, bool midi)
 {
 	if (!midi) { i += n_midi; }
-	return rint (x0 + (i + 1) * width / (1. + n_total)) - .5;
+	return rint (x0 + (i + 1) * width / (1. + n_total)) + .5;
 }
 
 const PluginPinWidget::CtrlWidget&
@@ -1990,6 +1999,14 @@ PluginPinWidget::port_pretty_name_changed (std::string pn)
 	}
 }
 
+void
+PluginPinWidget::property_changed (PBD::PropertyChange const& what_changed)
+{
+	if (what_changed.contains (ARDOUR::Properties::name)) {
+		darea.queue_draw ();
+	}
+}
+
 /* lifted from ProcessorEntry::Control */
 PluginPinWidget::Control::Control (std::shared_ptr<AutomationControl> c, string const & n)
 	: _control (c)
@@ -2126,6 +2143,8 @@ PluginPinDialog::PluginPinDialog (std::shared_ptr<ARDOUR::Route> r)
 	_route->DropReferences.connect (
 		_connections, invalidator (*this), boost::bind (&PluginPinDialog::going_away, this), gui_context()
 		);
+
+	_route->PropertyChanged.connect ( _connections, invalidator (*this), boost::bind (&PluginPinDialog::route_property_changed, this, _1), gui_context());
 }
 
 void
@@ -2147,8 +2166,11 @@ PluginPinDialog::map_height (Gtk::Allocation&)
 }
 
 void
-PluginPinDialog::route_processors_changed (ARDOUR::RouteProcessorChange)
+PluginPinDialog::route_processors_changed (ARDOUR::RouteProcessorChange c)
 {
+	if (c.type == RouteProcessorChange::CustomPinChange) {
+		return;
+	}
 	ppw.clear ();
 	_height_mapped = false;
 	scroller->remove ();
@@ -2164,6 +2186,14 @@ PluginPinDialog::processor_property_changed (PropertyChange const& what_changed)
 {
 	if (what_changed.contains (ARDOUR::Properties::name)) {
 	 set_title (string_compose (_("Pin Configuration: %1"), _pi->name ()));
+	}
+}
+
+void
+PluginPinDialog::route_property_changed (PropertyChange const& what_changed)
+{
+	if (what_changed.contains (ARDOUR::Properties::name)) {
+		set_title (string_compose (_("Pin Configuration: %1"), _route->name ()));
 	}
 }
 

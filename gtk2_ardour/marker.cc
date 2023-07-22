@@ -357,13 +357,14 @@ ArdourMarker::ArdourMarker (PublicEditor& ed, ArdourCanvas::Item& parent, std::s
 	int width;
 
 	layout->set_font_description (name_font);
-	Gtkmm2ext::get_ink_pixel_size (layout, width, name_height);
+	Gtkmm2ext::get_ink_pixel_size_with_descent (layout, width, name_height, name_descent);
 
 	_name_item = new ArdourCanvas::Text (group);
 	CANVAS_DEBUG_NAME (_name_item, string_compose ("ArdourMarker::_name_item for %1", annotation));
 	_name_item->set_font_description (name_font);
 	_name_item->set_color (RGBA_TO_UINT (0,0,0,255));
-	_name_item->set_position (ArdourCanvas::Duple (_label_offset, (marker_height - 4)*0.5 - (name_height) * .5 ));
+
+	_name_item->set_position (ArdourCanvas::Duple (_label_offset, floor (.5 * (name_height - name_descent - .5))));
 
 	apply_color ();
 
@@ -534,13 +535,17 @@ ArdourMarker::setup_name_display ()
 		limit = _right_label_limit;
 	}
 
-	float scale = UIConfiguration::instance().get_ui_scale();
+	double scale = UIConfiguration::instance().get_ui_scale();
 
-	const float padding =  std::max(2.f, rintf(2.f * scale));
-	const double M3 = std::max(1.f, rintf(3.f * scale));
+	const double padding =  std::max (2., rint (2. * scale));
+	const double M3 = std::max(1., rint (3. * scale));
 
 	/* Work out how wide the name can be */
-	int name_width = min ((double) pixel_width (_name, name_font) + padding, limit);
+	int name_width;
+	int name_height;
+
+	pixel_size (_name, name_font, name_width, name_height);
+	name_width = min ((double) name_width + padding, limit);
 
 	if (name_width == 0) {
 		_name_item->hide ();
@@ -607,7 +612,7 @@ ArdourMarker::setup_name_display ()
 
 	if (_name_flag) {
 		_name_flag->set_y0 (0);
-		_name_flag->set_y1 (marker_height - 2);
+		_name_flag->set_y1 (marker_height - padding);
 	}
 }
 
@@ -852,9 +857,13 @@ MeterMarker::point() const
 
 /***********************************************************************/
 
-BBTMarker::BBTMarker (PublicEditor& editor, ArdourCanvas::Item& parent, std::string const& color_name, Temporal::MusicTimePoint const & p)
+BBTMarker::BBTMarker (PublicEditor& editor, ArdourCanvas::Item& parent, std::string const& color_name, Temporal::MusicTimePoint const & p,
+                      ArdourCanvas::Item& tempo_parent,
+                      ArdourCanvas::Item& mapping_parent,
+                      ArdourCanvas::Item& meter_parent)
 	: MetricMarker (editor, parent, color_name, p.name(), BBTPosition, p.time(), false)
 	, _point (&p)
+	, tempo_marker (new TempoMarker (editor, tempo_parent, mapping_parent, X_("tempo marker"), "", p, p.sample (TEMPORAL_SAMPLE_RATE), UIConfiguration::instance().color (X_("tempo curve"))))
 {
 	std::stringstream full_tooltip;
 
@@ -865,16 +874,29 @@ BBTMarker::BBTMarker (PublicEditor& editor, ArdourCanvas::Item& parent, std::str
 
 	set_name (name(), full_tooltip.str());
 	group->Event.connect (sigc::bind (sigc::mem_fun (editor, &PublicEditor::canvas_bbt_marker_event), group, this));
+
+	char buf[64];
+
+	snprintf (buf, sizeof(buf), "%d/%d", p.divisions_per_bar(), p.note_value ());
+	meter_marker = new MeterMarker (editor, meter_parent, "meter marker", buf, p);
+
+	tempo_marker->the_item().set_ignore_events (true);
+	meter_marker->the_item().set_ignore_events (true);
 }
 
 BBTMarker::~BBTMarker ()
 {
+	delete tempo_marker;
+	delete meter_marker;
 }
 
 void
 BBTMarker::update ()
 {
 	set_position (_point->time());
+
+	tempo_marker->update ();
+	meter_marker->update ();
 }
 
 void
@@ -887,4 +909,12 @@ Temporal::Point const &
 BBTMarker::point() const
 {
 	return *_point;
+}
+
+void
+BBTMarker::set_position (Temporal::timepos_t const & pos)
+{
+	ArdourMarker::set_position (pos);
+	tempo_marker->set_position (pos);
+	meter_marker->set_position (pos);
 }

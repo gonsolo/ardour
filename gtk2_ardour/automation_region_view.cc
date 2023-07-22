@@ -134,10 +134,9 @@ AutomationRegionView::canvas_group_event (GdkEvent* ev)
 
 	PublicEditor& e = trackview.editor ();
 
-	if (trackview.editor().internal_editing() &&
-	    ev->type == GDK_BUTTON_RELEASE &&
+	if (ev->type == GDK_BUTTON_RELEASE &&
 	    ev->button.button == 1 &&
-	    e.current_mouse_mode() == Editing::MouseDraw &&
+	    (e.current_mouse_mode() == Editing::MouseDraw || e.current_mouse_mode() == Editing::MouseObject) &&
 	    !e.drags()->active()) {
 
 		double x = ev->button.x;
@@ -340,5 +339,16 @@ AutomationRegionView::exited ()
 {
 	if (_line) {
 		_line->track_exited();
+	}
+}
+void
+AutomationRegionView::set_selected (bool yn)
+{
+	/* don't call RegionView::set_selected() because for automation
+	 * regionviews, we don't use visual "clues" to indicate selection.
+	 */
+
+	if (yn && _parameter.type() == ARDOUR::MidiCCAutomation) {
+		group->raise_to_top ();
 	}
 }

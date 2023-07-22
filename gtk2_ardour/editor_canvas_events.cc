@@ -374,6 +374,13 @@ Editor::canvas_stream_view_event (GdkEvent *event, ArdourCanvas::Item* item, Rou
 bool
 Editor::canvas_automation_track_event (GdkEvent *event, ArdourCanvas::Item* item, AutomationTimeAxisView *atv)
 {
+	if (atv->parameter().type() == MidiVelocityAutomation) {
+		/* no event handling for velocity tracks until we can make the
+		   automation control affect note velocity.
+		*/
+		return false;
+	}
+
 	bool ret = false;
 
 	switch (event->type) {
@@ -401,6 +408,18 @@ Editor::canvas_automation_track_event (GdkEvent *event, ArdourCanvas::Item* item
 
 	case GDK_LEAVE_NOTIFY:
 		ret = leave_handler (item, event, AutomationTrackItem);
+		break;
+
+	case GDK_KEY_PRESS:
+		if (_drags->active()) {
+			return _drags->mid_drag_key_event (&event->key);
+		}
+		break;
+
+	case GDK_KEY_RELEASE:
+		if (_drags->active()) {
+			return _drags->mid_drag_key_event (&event->key);
+		}
 		break;
 
 	default:
@@ -669,6 +688,18 @@ Editor::canvas_control_point_event (GdkEvent *event, ArdourCanvas::Item* item, C
 	}
 
 	return typed_event (item, event, ControlPointItem);
+}
+
+bool
+Editor::canvas_velocity_event (GdkEvent *event, ArdourCanvas::Item* item)
+{
+	return typed_event (item, event, VelocityItem);
+}
+
+bool
+Editor::canvas_velocity_base_event (GdkEvent *event, ArdourCanvas::Item* item)
+{
+	return typed_event (item, event, VelocityBaseItem);
 }
 
 bool

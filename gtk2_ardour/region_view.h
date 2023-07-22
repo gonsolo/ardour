@@ -66,7 +66,7 @@ public:
 
 	~RegionView ();
 
-	void set_selected (bool yn);
+	virtual void set_selected (bool yn);
 
 	virtual void init (bool what_changed);
 
@@ -82,6 +82,7 @@ public:
 
 	void move (double xdelta, double ydelta);
 
+	void visual_layer_on_top();
 	void raise_to_top ();
 	void lower_to_bottom ();
 

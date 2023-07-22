@@ -175,6 +175,7 @@ enum AutomationType {
 	BusSendEnable,
 	InsertReturnLevel,
 	MainOutVolume,
+	MidiVelocityAutomation,
 
 	/* used only by Controllable Descriptor to access send parameters */
 
@@ -721,7 +722,8 @@ struct RouteProcessorChange {
 		MeterPointChange = 0x1,
 		RealTimeChange   = 0x2,
 		GeneralChange    = 0x4,
-		SendReturnChange = 0x8
+		SendReturnChange = 0x8,
+		CustomPinChange  = 0x10
 	};
 
 	RouteProcessorChange () : type (GeneralChange), meter_visibly_changed (true)

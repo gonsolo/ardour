@@ -2143,8 +2143,8 @@ private:
 	Clicks                        clicks;
 	bool                         _clicking;
 	bool                         _click_rec_only;
-	std::shared_ptr<IO>        _click_io;
-	std::shared_ptr<Amp>       _click_gain;
+	std::shared_ptr<IO>          _click_io;
+	std::shared_ptr<Amp>         _click_gain;
 	Sample*                       click_data;
 	Sample*                       click_emphasis_data;
 	samplecnt_t                   click_length;
@@ -2152,6 +2152,7 @@ private:
 	mutable Glib::Threads::RWLock click_lock;
 	samplecnt_t                  _click_io_latency;
 	PBD::ScopedConnection        _click_io_connection;
+	Temporal::GridIterator       _click_iterator;
 
 	static const Sample     default_click[];
 	static const samplecnt_t default_click_length;
@@ -2196,6 +2197,7 @@ private:
 	friend class PortManager;
 	void auto_connect_master_bus ();
 	void auto_connect_monitor_bus ();
+	void auto_connect_io (std::shared_ptr<IO>);
 
 	void setup_route_monitor_sends (bool enable, bool need_process_lock);
 

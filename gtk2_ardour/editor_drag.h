@@ -35,6 +35,8 @@
 #include "ardour/tempo.h"
 #include "ardour/types.h"
 
+#include "evoral/ControlList.h"
+
 #include "canvas/types.h"
 
 #include "gtkmm2ext/bindings.h"
@@ -56,6 +58,7 @@ namespace ArdourCanvas {
 	class Item;
 	class Line;
 	class Rectangle;
+	class Lollipop;
 }
 
 namespace PBD {
@@ -81,6 +84,7 @@ class ControlPoint;
 class AudioRegionView;
 class AutomationLine;
 class AutomationTimeAxisView;
+class VelocityGhostRegion;
 
 /** Class to manage current drags */
 class DragManager
@@ -91,7 +95,7 @@ public:
 	~DragManager ();
 
 	bool motion_handler (GdkEvent *, bool);
-
+	bool mid_drag_key_event (GdkEventKey*);
 	void abort ();
 	void add (Drag *);
 	void set (Drag *, GdkEvent *, Gdk::Cursor* c = MouseCursors::invalid_cursor());
@@ -233,6 +237,8 @@ public:
 	virtual bool y_movement_matters () const {
 		return true;
 	}
+
+	virtual bool mid_drag_key_event (GdkEventKey*)  { return false; }
 
 	bool initially_vertical() const {
 		return _initially_vertical;
@@ -1537,7 +1543,7 @@ class RegionMarkerDrag : public Drag
 		return false;
 	}
 
-	void setup_pointer_sample_offset ();
+	void setup_pointer_offset ();
 
   private:
 	RegionView* rv;
@@ -1545,5 +1551,88 @@ class RegionMarkerDrag : public Drag
 	ARDOUR::CueMarker model;
 	ARDOUR::CueMarker dragging_model;
 };
+
+
+class LollipopDrag : public Drag
+{
+  public:
+	LollipopDrag (Editor*, ArdourCanvas::Item*);
+	~LollipopDrag ();
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void motion (GdkEvent *, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool);
+
+	bool allow_vertical_autoscroll () const {
+		return false;
+	}
+
+	bool allow_horizontal_autoscroll () const {
+		return false;
+	}
+
+	bool x_movement_matters () const {
+		return false;
+	}
+
+	void setup_pointer_offset ();
+
+  private:
+	VelocityGhostRegion*      _region;
+	ArdourCanvas::Lollipop*   _primary;
+};
+
+template<typename OrderedPointList, typename OrderedPoint>
+class FreehandLineDrag : public Drag
+{
+  public:
+	FreehandLineDrag (Editor*, ArdourCanvas::Rectangle&, Temporal::TimeDomain);
+	~FreehandLineDrag ();
+
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent*, bool);
+	bool mid_drag_key_event (GdkEventKey*);
+	virtual void point_added  (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x) {}
+
+  protected:
+	ArdourCanvas::Rectangle& base_rect; /* we do not own this */
+	ArdourCanvas::PolyLine* dragging_line;
+	int direction;
+	int edge_x;
+	bool did_snap;
+	bool line_break_pending;
+	OrderedPointList drawn_points;
+
+	void maybe_add_point (GdkEvent*, Temporal::timepos_t const &, bool first_move);
+};
+
+class AutomationDrawDrag : public FreehandLineDrag<Evoral::ControlList::OrderedPoints, Evoral::ControlList::OrderedPoint>
+{
+  public:
+	AutomationDrawDrag (Editor*, ArdourCanvas::Rectangle&, Temporal::TimeDomain);
+	~AutomationDrawDrag ();
+
+	void finished (GdkEvent*, bool);
+	void aborted (bool) {}
+};
+
+class VelocityLineDrag : public FreehandLineDrag<Evoral::ControlList::OrderedPoints, Evoral::ControlList::OrderedPoint>
+{
+  public:
+	VelocityLineDrag (Editor*, ArdourCanvas::Rectangle&, Temporal::TimeDomain);
+	~VelocityLineDrag ();
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void finished (GdkEvent*, bool);
+	void aborted (bool);
+	void point_added  (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x);
+
+ private:
+	VelocityGhostRegion* grv;
+	bool drag_did_change;
+};
+
+
 
 #endif /* __gtk2_ardour_editor_drag_h_ */

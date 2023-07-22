@@ -54,10 +54,10 @@ namespace MIDI {
 };
 
 class SysEx;
-class NoteBase;
 class Note;
 class Hit;
 class MidiTimeAxisView;
+class NoteBase;
 class GhostRegion;
 class AutomationTimeAxisView;
 class AutomationRegionView;
@@ -67,6 +67,7 @@ class EditNoteDialog;
 class PatchChange;
 class ItemCounts;
 class CursorContext;
+class VelocityGhostRegion;
 
 class MidiRegionView : public RegionView
 {
@@ -179,6 +180,10 @@ public:
 	void end_write();
 	void extend_active_notes();
 
+	void begin_drag_edit (std::string const & why);
+	void mid_drag_edit ();
+	void end_drag_edit (bool apply);
+
 	void display_model(std::shared_ptr<ARDOUR::MidiModel> model);
 
 	/* note_diff commands should start here; this initiates an undo record */
@@ -286,6 +291,8 @@ public:
 	void goto_next_note (bool add_to_selection);
 	void change_note_lengths (bool, bool, Temporal::Beats beats, bool start, bool end);
 	void change_velocities (bool up, bool fine, bool allow_smush, bool all_together);
+	void set_velocity (NoteBase* primary, int velocity);
+	bool set_velocity_for_notes (std::vector<NoteBase*> notes, int velocity);
 	void transpose (bool up, bool fine, bool allow_smush);
 	void nudge_notes (bool forward, bool fine);
 	void channel_edit ();
@@ -294,7 +301,7 @@ public:
 	void show_list_editor ();
 
 	typedef std::set<NoteBase*> Selection;
-	Selection selection () const {
+	Selection const & selection () const {
 		return _selection;
 	}
 
@@ -502,6 +509,9 @@ public:
 	std::shared_ptr<PatchChange> find_canvas_patch_change (ARDOUR::MidiModel::PatchChangePtr p);
 	std::shared_ptr<SysEx> find_canvas_sys_ex (ARDOUR::MidiModel::SysExPtr s);
 
+	friend class VelocityGhostRegion;
+	void sync_velocity_drag (double factor);
+
 	void update_note (NoteBase*, bool update_ghost_regions = true);
 	void update_sustained (Note *, bool update_ghost_regions = true);
 	void update_hit (Hit *, bool update_ghost_regions = true);
@@ -550,7 +560,7 @@ public:
 	double    _last_event_y;
 	bool      _entered;
 	NoteBase* _entered_note;
-	bool      _pasting;
+	bool      _select_all_notes_after_add;
 
 	bool _mouse_changed_selection;
 
@@ -575,6 +585,9 @@ public:
 	void update_sysexes ();
 	void view_changed ();
 	void model_changed ();
+
+	void sync_ghost_selection (NoteBase*);
+	void drag_apply ();
 };
 
 

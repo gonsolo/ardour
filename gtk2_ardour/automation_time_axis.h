@@ -121,8 +121,8 @@ public:
 		return _parameter;
 	}
 
-	ArdourCanvas::Item* base_item () const {
-		return _base_rect;
+	ArdourCanvas::Rectangle& base_item () const {
+		return *_base_rect;
 	}
 
 	bool has_automation () const;
@@ -136,6 +136,18 @@ public:
 	}
 
 	void set_automation_state (ARDOUR::AutoState);
+
+	enum VelocityMode {
+		VelocityModeLollipops,
+		VelocityModeLine
+	};
+
+	VelocityMode velocity_mode () const { return _velocity_mode; }
+	void set_velocity_mode (VelocityMode, bool force = false);
+
+	void set_selected_regionviews (RegionSelection&);
+
+	void merge_drawn_line (Evoral::ControlList::OrderedPoints&, bool thin);
 
 protected:
 	/* Note that for MIDI controller "automation" (in regions), all of these
@@ -201,6 +213,7 @@ protected:
 	void automation_state_changed ();
 
 	void set_interpolation (ARDOUR::AutomationList::InterpolationStyle);
+
 	void interpolation_changed (ARDOUR::AutomationList::InterpolationStyle);
 
 	PBD::ScopedConnectionList _list_connections;
@@ -216,6 +229,12 @@ protected:
 	static bool have_name_font;
 
 	std::string automation_state_off_string () const;
+
+	virtual void add_contents (bool show_regions);
+
+	VelocityMode _velocity_mode;
+
+	bool show_automation_controls () const;
 
 private:
 	int set_state_2X (const XMLNode &, int);

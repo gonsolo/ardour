@@ -342,6 +342,7 @@ gtk2_ardour_sources = [
         'video_monitor.cc',
         'transcode_ffmpeg.cc',
         'transcode_video_dialog.cc',
+        'velocity_ghost_region.cc',
         'video_server_dialog.cc',
         'utils_videotl.cc',
         'export_video_dialog.cc'
@@ -427,6 +428,14 @@ def enoify (major, minor):
             return "\\n\\\"The Shutov Assembly\\\"" # 1992
         if minor == 5:
             return "\\n\\\"Neroli\\\"" # 1993
+        if minor == 6:
+            return "\\n\\\"Spinner\\\"" # 1995
+        if minor == 7:
+            return "\\n\\\"The Drop\\\"" # 1997
+        if minor == 8:
+            return "\\n\\\"Tracks and Traces\\\"" # 1997
+        if minor == 9:
+            return "\\n\\\"Music for White Cube\\\"" # 1997
     return "\\\"\\\""
 
 def options(opt):

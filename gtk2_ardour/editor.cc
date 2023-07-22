@@ -1412,7 +1412,7 @@ Editor::set_session (Session *t)
 	_session->locations()->added.connect (_session_connections, invalidator (*this), boost::bind (&Editor::add_new_location, this, _1), gui_context());
 	_session->locations()->removed.connect (_session_connections, invalidator (*this), boost::bind (&Editor::location_gone, this, _1), gui_context());
 	_session->locations()->changed.connect (_session_connections, invalidator (*this), boost::bind (&Editor::refresh_location_display, this), gui_context());
-	 _session->auto_loop_location_changed.connect (_session_connections, invalidator (*this), boost::bind (&Editor::loop_location_changed, this, _1), gui_context ());
+	_session->auto_loop_location_changed.connect (_session_connections, invalidator (*this), boost::bind (&Editor::loop_location_changed, this, _1), gui_context ());
 	_session->history().Changed.connect (_session_connections, invalidator (*this), boost::bind (&Editor::history_changed, this), gui_context());
 
 	_playhead_cursor->track_canvas_item().reparent ((ArdourCanvas::Item*) get_cursor_scroll_group());
@@ -1420,7 +1420,6 @@ Editor::set_session (Session *t)
 
 	_snapped_cursor->track_canvas_item().reparent ((ArdourCanvas::Item*) get_cursor_scroll_group());
 	_snapped_cursor->set_color (UIConfiguration::instance().color ("edit point"));
-	_snapped_cursor->show ();
 
 	boost::function<void (string)> pc (boost::bind (&Editor::parameter_changed, this, _1));
 	Config->map_parameters (pc);
@@ -1650,10 +1649,6 @@ Editor::popup_track_context_menu (int button, int32_t time, ItemType item_type, 
 			break;
 		}
 
-	}
-
-	if (item_type == StreamItem && clicked_routeview) {
-		clicked_routeview->build_underlay_menu(menu);
 	}
 
 	/* When the region menu is opened, we setup the actions so that they look right
@@ -2398,9 +2393,11 @@ Editor::set_edit_point_preference (EditPoint ep, bool force)
 	switch (_edit_point) {
 	case EditAtPlayhead:
 		action = "edit-at-playhead";
+		_snapped_cursor->hide ();
 		break;
 	case EditAtSelectedMarker:
 		action = "edit-at-selected-marker";
+		_snapped_cursor->hide ();
 		break;
 	case EditAtMouse:
 		action = "edit-at-mouse";
@@ -4256,6 +4253,7 @@ Editor::update_grid ()
 		hide_grid_lines ();
 	} else if (grid_musical()) {
 		Temporal::TempoMapPoints grid;
+		grid.reserve (4096);
 		if (bbt_ruler_scale != bbt_show_many) {
 			compute_current_bbt_points (grid, _leftmost_sample, _leftmost_sample + current_page_samples());
 		}

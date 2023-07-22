@@ -253,16 +253,19 @@ Editor::popup_ruler_menu (timepos_t const & where, ItemType t)
 		}
 		break;
 
-	case MappingBarItem:
-#warning paul fix mapping bar context menu
-		ruler_items.push_back (MenuElem (_("New BBT Marker"), sigc::bind (sigc::mem_fun(*this, &Editor::mouse_add_new_tempo_event), where)));
-		ruler_items.push_back (MenuElem (_("New Tempo Marker"), sigc::bind (sigc::mem_fun(*this, &Editor::mouse_add_new_tempo_event), where)));
-		ruler_items.push_back (MenuElem (_("Clear")));
-		break;
-
 	case TempoBarItem:
 	case TempoCurveItem:
-		ruler_items.push_back (MenuElem (_("New Tempo"), sigc::bind (sigc::mem_fun(*this, &Editor::mouse_add_new_tempo_event), where)));
+		ruler_items.push_back (MenuElem (_("Add New Tempo"), sigc::bind (sigc::mem_fun(*this, &Editor::mouse_add_new_tempo_event), where)));
+		ruler_items.push_back (SeparatorElem ());
+		/* fallthrough */
+	case MappingBarItem:
+		ruler_items.push_back (MenuElem (_("Clear All Tempos"), sigc::mem_fun (*this, &Editor::clear_tempo_markers)));
+		ruler_items.push_back (SeparatorElem ());
+		ruler_items.push_back (MenuElem (_("Clear All Earlier Tempos"), sigc::bind (sigc::mem_fun (*this, &Editor::clear_tempo_markers_before), where, true)));
+		ruler_items.push_back (MenuElem (_("Clear All Later Tempos"), sigc::bind (sigc::mem_fun (*this, &Editor::clear_tempo_markers_after), where, true)));
+		ruler_items.push_back (SeparatorElem ());
+		ruler_items.push_back (MenuElem (_("Clear All Earlier Tempos (w/BBT markers)"), sigc::bind (sigc::mem_fun (*this, &Editor::clear_tempo_markers_before), where, false)));
+		ruler_items.push_back (MenuElem (_("Clear All Later Tempos (w/BBT markers)"), sigc::bind (sigc::mem_fun (*this, &Editor::clear_tempo_markers_after), where, false)));
 		break;
 
 	case MeterBarItem:
@@ -1059,6 +1062,18 @@ Editor::metric_get_timecode (std::vector<ArdourCanvas::Ruler::Mark>& marks, int6
 	}
 }
 
+uint32_t
+Editor::count_bars (Beats const & start, Beats const & end) const
+{
+	TempoMapPoints bar_grid;
+	TempoMap::SharedPtr tmap (TempoMap::use());
+	bar_grid.reserve (4096);
+	superclock_t s (tmap->superclock_at (start));
+	superclock_t e (tmap->superclock_at (end));
+	tmap->get_grid (bar_grid, s, e, 1);
+	return bar_grid.size();
+}
+
 void
 Editor::compute_bbt_ruler_scale (samplepos_t lower, samplepos_t upper)
 {
@@ -1092,7 +1107,7 @@ Editor::compute_bbt_ruler_scale (samplepos_t lower, samplepos_t upper)
 		return;
 	}
 
-	bbt_bars = tmap->count_bars (floor_lower_beat, ceil_upper_beat);
+	bbt_bars = count_bars (floor_lower_beat, ceil_upper_beat);
 
 	double ruler_line_granularity = UIConfiguration::instance().get_ruler_granularity ();  //in pixels
 	ruler_line_granularity = _visible_canvas_width / (ruler_line_granularity*5);  //fudge factor '5' probably related to (4+1 beats)/measure, I think
@@ -1178,6 +1193,7 @@ Editor::metric_get_bbt (std::vector<ArdourCanvas::Ruler::Mark>& marks, int64_t l
 	const samplecnt_t sr (_session->sample_rate());
 
 	Temporal::TempoMapPoints grid;
+	grid.reserve (4096);
 
 	compute_current_bbt_points (grid, lower, upper);
 

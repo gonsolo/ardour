@@ -56,6 +56,7 @@
 
 #include "automation_time_axis.h"
 #include "automation_streamview.h"
+#include "ghostregion.h"
 #include "gui_thread.h"
 #include "route_time_axis.h"
 #include "automation_line.h"
@@ -112,6 +113,7 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 	, _view (show_regions ? new AutomationStreamView (*this) : 0)
 	, auto_dropdown ()
 	, _show_regions (show_regions)
+	, _velocity_mode (VelocityModeLollipops)
 {
 	//concatenate plugin name and param name into the tooltip
 	string tipname = nomparent;
@@ -230,8 +232,13 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 	/* add the buttons */
 	controls_table.set_border_width (0);
 	controls_table.attach (hide_button, 1, 2, 0, 1, Gtk::SHRINK, Gtk::SHRINK, 0, 0);
-	controls_table.attach (name_label,  2, 3, 1, 3, Gtk::FILL|Gtk::EXPAND, Gtk::FILL|Gtk::EXPAND, 2, 0);
-	controls_table.attach (auto_dropdown, 3, 4, 2, 3, Gtk::SHRINK, Gtk::SHRINK, 0, 0);
+
+	if (show_automation_controls()) {
+		controls_table.attach (name_label,  2, 3, 1, 3, Gtk::FILL|Gtk::EXPAND, Gtk::FILL|Gtk::EXPAND, 2, 0);
+		controls_table.attach (auto_dropdown, 3, 4, 2, 3, Gtk::SHRINK, Gtk::SHRINK, 0, 0);
+	} else {
+		controls_table.attach (name_label,  3, 4, 0, 1, Gtk::FILL|Gtk::EXPAND, Gtk::FILL|Gtk::EXPAND, 2, 0);
+	}
 
 	Gtk::DrawingArea *blank0 = manage (new Gtk::DrawingArea());
 	Gtk::DrawingArea *blank1 = manage (new Gtk::DrawingArea());
@@ -272,7 +279,7 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 	name_label.show ();
 	hide_button.show ();
 
-	if (_controller) {
+	if (show_automation_controls() && _controller) {
 		_controller->disable_vertical_scroll ();
 		controls_table.attach (*_controller.get(), 2, 4, 0, 1, Gtk::FILL|Gtk::EXPAND, Gtk::FILL|Gtk::EXPAND, 0, 0);
 	}
@@ -286,6 +293,39 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 
 	controls_ebox.set_name (controls_base_unselected_name);
 	time_axis_frame.set_name (controls_base_unselected_name);
+
+	add_contents (show_regions);
+
+	/* make sure labels etc. are correct */
+
+	automation_state_changed ();
+	UIConfiguration::instance().ColorsChanged.connect (sigc::mem_fun (*this, &AutomationTimeAxisView::color_handler));
+
+	_stripable->DropReferences.connect (
+		_stripable_connections, invalidator (*this), boost::bind (&AutomationTimeAxisView::route_going_away, this), gui_context ()
+		);
+
+	set_velocity_mode (_velocity_mode, true);
+}
+
+AutomationTimeAxisView::~AutomationTimeAxisView ()
+{
+	if (_stripable) {
+		cleanup_gui_properties ();
+	}
+	delete _view;
+	CatchDeletion (this);
+}
+
+bool
+AutomationTimeAxisView::show_automation_controls() const
+{
+	return (_parameter.type() != MidiVelocityAutomation) || (velocity_mode() != VelocityModeLollipops);
+}
+
+void
+AutomationTimeAxisView::add_contents (bool show_regions)
+{
 
 	/* ask for notifications of any new RegionViews */
 	if (show_regions) {
@@ -314,24 +354,6 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 		line->queue_reset ();
 		add_line (line);
 	}
-
-	/* make sure labels etc. are correct */
-
-	automation_state_changed ();
-	UIConfiguration::instance().ColorsChanged.connect (sigc::mem_fun (*this, &AutomationTimeAxisView::color_handler));
-
-	_stripable->DropReferences.connect (
-		_stripable_connections, invalidator (*this), boost::bind (&AutomationTimeAxisView::route_going_away, this), gui_context ()
-		);
-}
-
-AutomationTimeAxisView::~AutomationTimeAxisView ()
-{
-	if (_stripable) {
-		cleanup_gui_properties ();
-	}
-	delete _view;
-	CatchDeletion (this);
 }
 
 void
@@ -617,7 +639,7 @@ AutomationTimeAxisView::hide_clicked ()
 string
 AutomationTimeAxisView::automation_state_off_string () const
 {
-	if (parameter_is_midi(_parameter.type ())) {
+	if (parameter_is_midi(_parameter.type ()) || _parameter == Evoral::Parameter (MidiVelocityAutomation)) {
 		return S_("Automation|Off");
 	}
 
@@ -637,118 +659,202 @@ AutomationTimeAxisView::build_display_menu ()
 
 	MenuList& items = display_menu->items();
 
+	if (_parameter == Evoral::Parameter (MidiVelocityAutomation)) {
+		RadioMenuItem::Group mode_group;
+		items.push_back (RadioMenuElem (mode_group, _("Lollipops"), sigc::bind (sigc::mem_fun (*this, &AutomationTimeAxisView::set_velocity_mode), VelocityModeLollipops, false)));
+		if (velocity_mode() == VelocityModeLollipops) {
+			dynamic_cast<Gtk::CheckMenuItem*> (&items.back())->set_active (true);
+		}
+		items.push_back (RadioMenuElem (mode_group, _("Line"), sigc::bind (sigc::mem_fun (*this, &AutomationTimeAxisView::set_velocity_mode), VelocityModeLine, false)));
+		if (velocity_mode() == VelocityModeLine) {
+			dynamic_cast<Gtk::CheckMenuItem*> (&items.back())->set_active (true);
+		}
+		items.push_back (SeparatorElem());
+	}
+
 	items.push_back (MenuElem (_("Hide"), sigc::mem_fun(*this, &AutomationTimeAxisView::hide_clicked)));
 	items.push_back (SeparatorElem());
-	items.push_back (MenuElem (_("Clear"), sigc::mem_fun(*this, &AutomationTimeAxisView::clear_clicked)));
-	items.push_back (SeparatorElem());
 
-	/* state menu */
+	if (_parameter != Evoral::Parameter (MidiVelocityAutomation)) {
 
-	Menu* auto_state_menu = manage (new Menu);
-	auto_state_menu->set_name ("ArdourContextMenu");
-	MenuList& as_items = auto_state_menu->items();
+		items.push_back (MenuElem (_("Clear"), sigc::mem_fun(*this, &AutomationTimeAxisView::clear_clicked)));
+		items.push_back (SeparatorElem());
 
-	as_items.push_back (CheckMenuElem (automation_state_off_string(), sigc::bind (
-			sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
-			(AutoState) ARDOUR::Off)));
-	auto_off_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+		/* state menu */
 
-	as_items.push_back (CheckMenuElem (_("Play"), sigc::bind (
-			sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
-			(AutoState) Play)));
-	auto_play_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+		Menu* auto_state_menu = manage (new Menu);
+		auto_state_menu->set_name ("ArdourContextMenu");
+		MenuList& as_items = auto_state_menu->items();
 
-	if (!parameter_is_midi(_parameter.type ())) {
-		as_items.push_back (CheckMenuElem (_("Write"), sigc::bind (
+		as_items.push_back (CheckMenuElem (automation_state_off_string(), sigc::bind (
 			                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
-			                                   (AutoState) Write)));
-		auto_write_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+			                                   (AutoState) ARDOUR::Off)));
+		auto_off_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
 
-		as_items.push_back (CheckMenuElem (_("Touch"), sigc::bind (
+		as_items.push_back (CheckMenuElem (_("Play"), sigc::bind (
 			                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
-			(AutoState) Touch)));
-		auto_touch_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+			                                   (AutoState) Play)));
+		auto_play_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
 
-		as_items.push_back (CheckMenuElem (_("Latch"), sigc::bind (
-						sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
-						(AutoState) Latch)));
-		auto_latch_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+		if (!parameter_is_midi(_parameter.type ())) {
+			as_items.push_back (CheckMenuElem (_("Write"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
+				                                   (AutoState) Write)));
+			auto_write_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+
+			as_items.push_back (CheckMenuElem (_("Touch"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
+				                                   (AutoState) Touch)));
+			auto_touch_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+
+			as_items.push_back (CheckMenuElem (_("Latch"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_automation_state),
+				                                   (AutoState) Latch)));
+			auto_latch_item = dynamic_cast<Gtk::CheckMenuItem*>(&as_items.back());
+		}
+
+		items.push_back (MenuElem (_("State"), *auto_state_menu));
+
+		/* mode menu */
+
+		/* current interpolation state */
+		AutomationList::InterpolationStyle const s = _view ? _view->interpolation() : _control->list()->interpolation ();
+
+		if (ARDOUR::parameter_is_midi((AutomationType)_parameter.type())) {
+
+			Menu* auto_mode_menu = manage (new Menu);
+			auto_mode_menu->set_name ("ArdourContextMenu");
+			MenuList& am_items = auto_mode_menu->items();
+
+			RadioMenuItem::Group group;
+
+			am_items.push_back (RadioMenuElem (group, _("Discrete"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
+				                                   AutomationList::Discrete)));
+			mode_discrete_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
+
+			am_items.push_back (RadioMenuElem (group, _("Linear"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
+				                                   AutomationList::Linear)));
+			mode_line_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
+
+			items.push_back (MenuElem (_("Mode"), *auto_mode_menu));
+
+		} else {
+
+			Menu* auto_mode_menu = manage (new Menu);
+			auto_mode_menu->set_name ("ArdourContextMenu");
+			MenuList& am_items = auto_mode_menu->items();
+			bool have_options = false;
+
+			RadioMenuItem::Group group;
+
+			am_items.push_back (RadioMenuElem (group, _("Linear"), sigc::bind (
+				                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
+				                                   AutomationList::Linear)));
+			mode_line_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
+
+			if (_control->desc().logarithmic) {
+				am_items.push_back (RadioMenuElem (group, _("Logarithmic"), sigc::bind (
+					                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
+					                                   AutomationList::Logarithmic)));
+				mode_log_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
+				have_options = true;
+			} else {
+				mode_log_item = 0;
+			}
+
+			if (_line->get_uses_gain_mapping () && !_control->desc().logarithmic) {
+				am_items.push_back (RadioMenuElem (group, _("Exponential"), sigc::bind (
+					                                   sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
+					                                   AutomationList::Exponential)));
+				mode_exp_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
+				have_options = true;
+			} else {
+				mode_exp_item = 0;
+			}
+
+			if (have_options) {
+				items.push_back (MenuElem (_("Interpolation"), *auto_mode_menu));
+			} else {
+				mode_line_item = 0;
+				delete auto_mode_menu;
+				auto_mode_menu = 0;
+			}
+		}
+
+		/* make sure the automation menu state is correct */
+
+		automation_state_changed ();
+		interpolation_changed (s);
+	}
+}
+
+void
+AutomationTimeAxisView::merge_drawn_line (Evoral::ControlList::OrderedPoints& points, bool thin)
+{
+	if (points.empty()) {
+		return;
 	}
 
-	items.push_back (MenuElem (_("State"), *auto_state_menu));
-
-	/* mode menu */
-
-	/* current interpolation state */
-	AutomationList::InterpolationStyle const s = _view ? _view->interpolation() : _control->list()->interpolation ();
-
-	if (ARDOUR::parameter_is_midi((AutomationType)_parameter.type())) {
-
-		Menu* auto_mode_menu = manage (new Menu);
-		auto_mode_menu->set_name ("ArdourContextMenu");
-		MenuList& am_items = auto_mode_menu->items();
-
-		RadioMenuItem::Group group;
-
-		am_items.push_back (RadioMenuElem (group, _("Discrete"), sigc::bind (
-				sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
-				AutomationList::Discrete)));
-		mode_discrete_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
-
-		am_items.push_back (RadioMenuElem (group, _("Linear"), sigc::bind (
-				sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
-				AutomationList::Linear)));
-		mode_line_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
-
-		items.push_back (MenuElem (_("Mode"), *auto_mode_menu));
-
-	} else {
-
-		Menu* auto_mode_menu = manage (new Menu);
-		auto_mode_menu->set_name ("ArdourContextMenu");
-		MenuList& am_items = auto_mode_menu->items();
-		bool have_options = false;
-
-		RadioMenuItem::Group group;
-
-		am_items.push_back (RadioMenuElem (group, _("Linear"), sigc::bind (
-				sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
-				AutomationList::Linear)));
-		mode_line_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
-
-		if (_control->desc().logarithmic) {
-			am_items.push_back (RadioMenuElem (group, _("Logarithmic"), sigc::bind (
-							sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
-							AutomationList::Logarithmic)));
-			mode_log_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
-			have_options = true;
-		} else {
-			mode_log_item = 0;
-		}
-
-		if (_line->get_uses_gain_mapping () && !_control->desc().logarithmic) {
-			am_items.push_back (RadioMenuElem (group, _("Exponential"), sigc::bind (
-							sigc::mem_fun(*this, &AutomationTimeAxisView::set_interpolation),
-							AutomationList::Exponential)));
-			mode_exp_item = dynamic_cast<Gtk::CheckMenuItem*>(&am_items.back());
-			have_options = true;
-		} else {
-			mode_exp_item = 0;
-		}
-
-		if (have_options) {
-			items.push_back (MenuElem (_("Interpolation"), *auto_mode_menu));
-		} else {
-			mode_line_item = 0;
-			delete auto_mode_menu;
-			auto_mode_menu = 0;
-		}
+	if (!_line) {
+		return;
 	}
 
-	/* make sure the automation menu state is correct */
+	std::shared_ptr<AutomationList> list = _line->the_list ();
 
-	automation_state_changed ();
-	interpolation_changed (s);
+	if (list->in_write_pass()) {
+		/* do not allow the GUI to add automation events during an
+		   automation write pass.
+		*/
+		return;
+	}
+
+	XMLNode& before = list->get_state();
+	std::list<Selectable*> results;
+
+	Temporal::timepos_t earliest = points.front().when;
+	Temporal::timepos_t latest = points.back().when;
+
+	if (earliest > latest) {
+		swap (earliest, latest);
+	}
+
+	/* Convert each point's "value" from geometric coordinate space to
+	 * value space for the control
+	 */
+
+	for (auto & dp : points) {
+		/* compute vertical fractional position */
+		dp.value = 1.0 - (dp.value / _line->height());
+		/* map using line */
+		_line->view_to_model_coord_y (dp.value);
+	}
+
+	list->freeze ();
+	list->editor_add_ordered (points, false);
+	if (thin) {
+		list->thin (Config->get_automation_thinning_factor());
+	}
+	list->thaw ();
+
+	if (_control->automation_state () == ARDOUR::Off) {
+		set_automation_state (ARDOUR::Play);
+	}
+
+	if (UIConfiguration::instance().get_automation_edit_cancels_auto_hide () && _control == _session->recently_touched_controllable ()) {
+		RouteTimeAxisView::signal_ctrl_touched (false);
+	}
+
+	XMLNode& after = list->get_state();
+	_editor.begin_reversible_command (_("draw automation"));
+	_session->add_command (new MementoCommand<ARDOUR::AutomationList> (*list.get (), &before, &after));
+
+	_line->get_selectables (earliest, latest, 0.0, 1.0, results);
+	_editor.get_selection ().set (results);
+
+	_editor.commit_reversible_command ();
+	_session->set_dirty ();
 }
 
 void
@@ -978,7 +1084,7 @@ AutomationTimeAxisView::propagate_time_selection () const
 	/* MIDI automation is part of the MIDI region. It is always
 	 * implicily selected with the parent, regardless of TAV selection
 	 */
-	return parameter_is_midi(_parameter.type ());
+	return parameter_is_midi(_parameter.type ()) || _parameter == Evoral::Parameter (MidiVelocityAutomation);
 }
 
 void
@@ -1199,4 +1305,47 @@ Gdk::Color
 AutomationTimeAxisView::color () const
 {
 	return gdk_color_from_rgb (_stripable->presentation_info().color());
+}
+
+void
+AutomationTimeAxisView::set_velocity_mode (VelocityMode vm, bool force)
+{
+	if (_parameter.type() != MidiVelocityAutomation) {
+		return;
+	}
+
+	if (vm == _velocity_mode && !force) {
+		return;
+	}
+
+	_velocity_mode = vm;
+	switch (_velocity_mode) {
+	case VelocityModeLollipops:
+		_ghost_group->show ();
+		_ghost_group->raise_to_top ();
+		break;
+	case VelocityModeLine:
+		_ghost_group->hide ();
+		break;
+	}
+}
+
+void
+AutomationTimeAxisView::set_selected_regionviews (RegionSelection& rs)
+{
+	if (_view) {
+		_view->set_selected_regionviews (rs);
+	}
+
+	if (_parameter.type() != MidiVelocityAutomation) {
+		return;
+	}
+
+	for (auto & ghost : ghosts) {
+		if (std::find (rs.begin(), rs.end(), &ghost->parent_rv) != rs.end()) {
+			ghost->set_selected (true);
+		} else {
+			ghost->set_selected (false);
+		}
+	}
 }

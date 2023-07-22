@@ -2488,7 +2488,7 @@ Route::customize_plugin_insert (std::shared_ptr<Processor> proc, uint32_t count,
 		configure_processors_unlocked (0, &lm);
 	}
 
-	processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
+	processors_changed (RouteProcessorChange (RouteProcessorChange::CustomPinChange, false)); /* EMIT SIGNAL */
 	_session.set_dirty ();
 	return true;
 }
@@ -2526,7 +2526,7 @@ Route::set_strict_io (const bool enable)
 		configure_processors (0);
 		lx.release ();
 
-		processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
+		processors_changed (RouteProcessorChange (RouteProcessorChange::CustomPinChange, false)); /* EMIT SIGNAL */
 		_session.set_dirty ();
 	}
 	return true;
@@ -6273,7 +6273,7 @@ Route::monitoring_state () const
 	 * I don't think it's ever going to be too pretty too look at.
 	 */
 
-	bool const roll        = _session.transport_rolling ();
+	bool const roll        = _session.transport_state_rolling ();
 	bool const auto_input  = _session.config.get_auto_input ();
 	bool const track_rec   = _disk_writer->record_enabled ();
 	bool session_rec;

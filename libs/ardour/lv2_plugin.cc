@@ -54,6 +54,8 @@
 #include "pbd/windows_special_dirs.h"
 #endif
 
+#include "temporal/superclock.h"
+
 #ifdef WAF_BUILD
 #include "libardour-config.h"
 #endif
@@ -1048,13 +1050,6 @@ LV2Plugin::requires_fixed_sized_buffers () const
 	 * e.g The process cycle may be split when looping, also
 	 * the period-size may change any time: see set_block_size()
 	 */
-	if (get_info()->n_inputs.n_midi() > 0) {
-		/* we don't yet implement midi buffer offsets (for split cycles).
-		 * Also connect_and_run() also uses _session.transport_sample() directly
-		 * (for BBT) which is not offset for plugin cycle split.
-		 */
-		return true;
-	}
 	return _no_sample_accurate_ctrl;
 }
 
@@ -2769,11 +2764,6 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 	TempoMap::SharedPtr tmap (TempoMap::use());
 	TempoMetric metric (tmap->metric_at (timepos_t (start0)));
 
-	TempoMapPoints tempo_map_points;
-	tmap->get_grid (tempo_map_points,
-	                samples_to_superclock (start0, TEMPORAL_SAMPLE_RATE),
-	                samples_to_superclock (end, TEMPORAL_SAMPLE_RATE), 0);
-
 	if (_freewheel_control_port) {
 		*_freewheel_control_port = _session.engine().freewheeling() ? 1.f : 0.f;
 	}
@@ -2815,6 +2805,10 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 	uint32_t midi_in_index   = 0;
 	uint32_t midi_out_index  = 0;
 	uint32_t atom_port_index = 0;
+
+	TempoMapPoints tempo_map_points;
+	tempo_map_points.reserve (16);
+	bool got_grid = false;
 
 	for (uint32_t port_index = 0; port_index < num_ports; ++port_index) {
 		void*     buf   = NULL;
@@ -2866,7 +2860,7 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 			if (valid && (flags & PORT_INPUT)) {
 				if ((flags & PORT_POSITION)) {
 					Temporal::BBT_Time bbt (metric.bbt_at (timepos_t (start0)));
-					double bpm = metric.tempo().note_types_per_minute();
+					double bpm = (superclock_ticks_per_second() * 60.) / metric.superclocks_per_note_type_at_superclock (samples_to_superclock (start0, TEMPORAL_SAMPLE_RATE));
 					double time_scale = Port::speed_ratio ();
 					double beatpos = (bbt.bars - 1) * metric.meter().divisions_per_bar()
 						+ (bbt.beats - 1)
@@ -2880,6 +2874,13 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 						// Transport or Tempo has changed, write position at cycle start
 						write_position(&_impl->forge, _ev_buffers[port_index],
 						               metric, bbt, speed, time_scale,  bpm, start, 0);
+					}
+
+					if (!got_grid) {
+						got_grid = true;
+						tmap->get_grid (grid_iterator, tempo_map_points,
+						                samples_to_superclock (start0, TEMPORAL_SAMPLE_RATE),
+						                samples_to_superclock (end, TEMPORAL_SAMPLE_RATE), 0);
 					}
 				}
 
@@ -2912,13 +2913,13 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 
 				while (m != m_end || ((tempo_map_point != tempo_map_points.end()) && ((*tempo_map_point).sample(TEMPORAL_SAMPLE_RATE) < tend))) {
 
-					if (m != m_end && ((tempo_map_point == tempo_map_points.end()) || (*tempo_map_point).sample(TEMPORAL_SAMPLE_RATE) > (*m).time())) {
+					if (m != m_end && ((tempo_map_point == tempo_map_points.end()) || (*tempo_map_point).sample(TEMPORAL_SAMPLE_RATE) > (*m).time() + offset)) {
 
 						const Evoral::Event<samplepos_t> ev (*m, false);
 
-						if (ev.time() < nframes) {
+						if (ev.time() >= offset && ev.time() < offset + nframes) {
 							LV2_Evbuf_Iterator eend = lv2_evbuf_end(_ev_buffers[port_index]);
-							lv2_evbuf_write(&eend, ev.time(), 0, type, ev.size(), ev.buffer());
+							lv2_evbuf_write(&eend, ev.time() - offset, 0, type, ev.size(), ev.buffer());
 						}
 
 						++m;
@@ -2927,7 +2928,7 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 						assert (tempo_map_point != tempo_map_points.end());
 						const samplepos_t sample = tempo_map_point->sample (TEMPORAL_SAMPLE_RATE);
 						const Temporal::BBT_Time bbt = tempo_map_point->bbt();
-						double bpm = tempo_map_point->tempo().quarter_notes_per_minute ();
+						double bpm = (superclock_ticks_per_second() * 60) / tempo_map_point->superclocks_per_note_type_at_superclock (tempo_map_point->sclock());
 
 						write_position(&_impl->forge, _ev_buffers[port_index],
 						               *tempo_map_point, bbt, speed, Port::speed_ratio (),
@@ -3041,7 +3042,7 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 			const uint32_t buf_index = out_map.get(
 				DataType::MIDI, midi_out_index++, &valid);
 			if (valid) {
-				bufs.forward_lv2_midi(_ev_buffers[port_index], buf_index);
+				bufs.forward_lv2_midi(_ev_buffers[port_index], buf_index, nframes, offset);
 			}
 		}
 		// Flush MIDI (write back to Ardour MIDI buffers) -- MIDI THRU
@@ -3049,7 +3050,7 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 			const uint32_t buf_index = out_map.get(
 				DataType::MIDI, midi_out_index++, &valid);
 			if (valid) {
-				bufs.flush_lv2_midi(true, buf_index);
+				bufs.flush_lv2_midi (true, buf_index, nframes, offset);
 			}
 		}
 
@@ -3246,7 +3247,7 @@ LV2Plugin::connect_and_run(BufferSet& bufs,
 		 * Note: for no-midi plugins, we only ever send information at cycle-start,
 		 * so it needs to be realative to that.
 		 */
-		_current_bpm = metric.tempo().note_types_per_minute();
+		_current_bpm = (superclock_ticks_per_second() * 60.) / metric.superclocks_per_note_type_at_superclock (samples_to_superclock (start0, TEMPORAL_SAMPLE_RATE));
 		Temporal::BBT_Time bbt (metric.bbt_at (timepos_t (start0)));
 		double beatpos = (bbt.bars - 1) * metric.divisions_per_bar()
 		               + (bbt.beats - 1)

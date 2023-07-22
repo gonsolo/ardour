@@ -725,7 +725,7 @@ VST3Plugin::connect_and_run (BufferSet&  bufs,
 		context.timeSigNumerator   = metric.meter ().divisions_per_bar ();
 		context.timeSigDenominator = metric.meter ().note_value ();
 		context.projectTimeMusic   = DoubleableBeats (metric.tempo ().quarters_at_sample (start)).to_double ();
-		context.barPositionMusic   = bbt.bars * 4; // PPQN, NOT tmap.metric_at(bbt).meter().divisions_per_bar()
+		context.barPositionMusic   = (bbt.bars - 1) * 4; // PPQN, NOT tmap.metric_at(bbt).meter().divisions_per_bar()
 	}
 
 	const double tcfps                = _session.timecode_frames_per_second ();
@@ -1161,6 +1161,7 @@ VST3PI::VST3PI (std::shared_ptr<ARDOUR::VST3PluginModule> m, std::string unique_
 	, _owner (0)
 	, _add_to_selection (false)
 	, _n_factory_presets (0)
+	, _no_kMono (false)
 {
 	using namespace std;
 	IPluginFactory* factory = m->factory ();
@@ -1171,6 +1172,16 @@ VST3PI::VST3PI (std::shared_ptr<ARDOUR::VST3PluginModule> m, std::string unique_
 
 	if (!_fuid.fromString (unique_id.c_str ())) {
 		throw failed_constructor ();
+	}
+
+	PFactoryInfo fi;
+	if (factory->getFactoryInfo (&fi) == kResultTrue) {
+		/* work around issue with UADx VST3s not recognizing
+		 * Vst::SpeakerArr::kMono. (see commit message for details)
+		 */
+		if (0 == strcmp (fi.vendor, "Universal Audio (UADx)")) {
+			_no_kMono = true;
+		}
 	}
 
 #ifndef NDEBUG
@@ -2210,7 +2221,7 @@ VST3PI::enable_io (std::vector<bool> const& ins, std::vector<bool> const& outs)
 		}
 		cnt += n_chn;
 		/* special case for Left only == Mono */
-		if (sa == 1 /*Vst::SpeakerArr::kSpeakerL */) {
+		if (sa == 1 /*Vst::SpeakerArr::kSpeakerL */ && !_no_kMono) {
 			sa = Vst::SpeakerArr::kMono; /* 1 << 19 */
 		}
 
@@ -2234,7 +2245,7 @@ VST3PI::enable_io (std::vector<bool> const& ins, std::vector<bool> const& outs)
 		}
 		cnt += n_chn;
 		/* special case for Left only == Mono */
-		if (sa == 1 /*Vst::SpeakerArr::kSpeakerL */) {
+		if (sa == 1 /*Vst::SpeakerArr::kSpeakerL */ && !_no_kMono) {
 			sa = Vst::SpeakerArr::kMono; /* 1 << 19 */
 		}
 		DEBUG_TRACE (DEBUG::VST3Config, string_compose ("VST3PI::enable_io: activateBus (kAudio, kOutput, %1, %2) used-chn: %3 spk-arr: %4\n", sa_out.size (), enable, _bus_info_out[sa_out.size ()].n_used_chn, std::hex, sa));

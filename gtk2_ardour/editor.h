@@ -789,6 +789,7 @@ private:
 	void ensure_cd_marker_updated (LocationMarkers* lam, ARDOUR::Location* location);
 	void update_cue_marker_display ();
 	void ensure_cue_marker_updated (LocationMarkers* lam, ARDOUR::Location* location);
+	void update_all_marker_lanes ();
 
 	TimeAxisView*      clicked_axisview;
 	RouteTimeAxisView* clicked_routeview;
@@ -1039,9 +1040,10 @@ private:
 	};
 
 	BBTRulerScale bbt_ruler_scale;
-
 	uint32_t bbt_bars;
 	uint32_t bbt_bar_helper_on;
+
+	uint32_t count_bars (Temporal::Beats const & start, Temporal::Beats const & end) const;
 	void compute_bbt_ruler_scale (samplepos_t lower, samplepos_t upper);
 
 	ArdourCanvas::Ruler* timecode_ruler;
@@ -1701,6 +1703,8 @@ private:
 
 	bool canvas_scroll_event (GdkEventScroll* event, bool from_canvas);
 	bool canvas_control_point_event (GdkEvent* event,ArdourCanvas::Item*, ControlPoint*);
+	bool canvas_velocity_event (GdkEvent* event,ArdourCanvas::Item*);
+	bool canvas_velocity_base_event (GdkEvent* event,ArdourCanvas::Item*);
 	bool canvas_line_event (GdkEvent* event,ArdourCanvas::Item*, AutomationLine*);
 	bool canvas_selection_rect_event (GdkEvent* event,ArdourCanvas::Item*, SelectionRect*);
 	bool canvas_selection_start_trim_event (GdkEvent* event,ArdourCanvas::Item*, SelectionRect*);
@@ -1900,9 +1904,9 @@ private:
 
 	void reassociate_metric_markers (Temporal::TempoMap::SharedPtr const &);
 
-	void reassociate_tempo_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::TempoMap::Tempos const &, TempoMarker& marker);
-	void reassociate_meter_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::TempoMap::Meters const &, MeterMarker& marker);
-	void reassociate_bartime_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::TempoMap::MusicTimes const &, BBTMarker& marker);
+	void reassociate_tempo_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::Tempos const &, TempoMarker& marker);
+	void reassociate_meter_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::Meters const &, MeterMarker& marker);
+	void reassociate_bartime_marker (Temporal::TempoMap::SharedPtr const & tmap, Temporal::MusicTimes const &, BBTMarker& marker);
 
 	void make_bbt_marker (Temporal::MusicTimePoint const *, Marks::iterator before);
 	void make_meter_marker (Temporal::MeterPoint const *, Marks::iterator before);
@@ -2540,6 +2544,12 @@ private:
 	template<typename T>
 	Temporal::TimeDomain drag_time_domain (std::shared_ptr<T> thing_with_time_domain) {
 		return thing_with_time_domain ? thing_with_time_domain->time_domain() : Temporal::AudioTime;
+	}
+
+	void clear_tempo_markers_before (Temporal::timepos_t where, bool stop_at_music_times);
+	void clear_tempo_markers_after (Temporal::timepos_t where, bool stop_at_music_times);
+	void clear_tempo_markers () {
+		clear_tempo_markers_after (Temporal::timepos_t (0), false);
 	}
 
 	friend class Drag;
