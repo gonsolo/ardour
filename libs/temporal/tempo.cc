@@ -1253,7 +1253,6 @@ TempoMap::set_tempo (Tempo const & t, timepos_t const & time)
 
 	if (time.is_beats()) {
 
-
 		/* tempo changes are required to be on-beat */
 
 		Beats on_beat = time.beats().round_to_beat();
@@ -1488,15 +1487,41 @@ TempoMap::set_bartime (BBT_Time const & bbt, timepos_t const & pos, std::string 
 
 	superclock_t sc (pos.superclocks());
 	TempoMetric metric (metric_at (sc));
-	MusicTimePoint* tp = new MusicTimePoint (*this, sc, metric.quarters_at_superclock (sc), bbt, metric.tempo(), metric.meter(), name);
+
+	/* MusicTimePoints define a beat position (even if it is not predicted
+	 * by the prior tempo map elements.
+	 */
+
+	Beats b = metric.quarters_at_superclock (sc).round_up_to_beat ();;
+
+	MusicTimePoint* tp = new MusicTimePoint (*this, sc, b, bbt, metric.tempo(), metric.meter(), name);
 
 	add_or_replace_bartime (tp);
+}
+
+void
+TempoMap::replace_bartime (MusicTimePoint & mtp, bool with_reset)
+{
+	bool ignored;
+
+	core_add_bartime (&mtp, ignored);
+
+	if (with_reset) {
+		reset_starting_at (mtp.sclock());
+	}
 }
 
 MusicTimePoint*
 TempoMap::add_or_replace_bartime (MusicTimePoint* mtp)
 {
 	bool replaced;
+
+	/* A MusicTimePoint by definition defines a beat position. It's not
+	 * zero, but it must be "on beat". So ensure that this is true.
+	 */
+
+	mtp->set (mtp->sclock(), mtp->beats().round_up_to_beat(), mtp->bbt());
+
 	MusicTimePoint* ret = core_add_bartime (mtp, replaced);
 
 	if (!replaced) {
@@ -4873,6 +4898,10 @@ DomainSwapInformation::undo ()
 
 	for (auto & p : positions) {
 		p->set_time_domain (previous);
+	}
+
+	for (auto & tt : time_things) {
+		tt->swap_domain (previous == AudioTime ? BeatTime : AudioTime, previous);
 	}
 
 	clear ();

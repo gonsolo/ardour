@@ -822,6 +822,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 
 	LIBTEMPORAL_API void set_bartime (BBT_Time const &, timepos_t const &, std::string name = std::string());
 	LIBTEMPORAL_API void remove_bartime (MusicTimePoint const & tp, bool with_reset = true);
+	LIBTEMPORAL_API void replace_bartime (MusicTimePoint & tp, bool with_reset = true);
 
 	LIBTEMPORAL_API TempoPoint& set_tempo (Tempo const &, BBT_Argument const &);
 	LIBTEMPORAL_API	TempoPoint& set_tempo (Tempo const &, timepos_t const &);
@@ -1273,6 +1274,7 @@ class LIBTEMPORAL_API DomainSwapInformation {
 
 	void add (timecnt_t& t) { counts.push_back (&t); }
 	void add (timepos_t& p) { positions.push_back (&p); }
+	void add (TimeDomainSwapper& tt) { time_things.push_back (&tt); }
 	void clear ();
 
    private:
@@ -1280,6 +1282,7 @@ class LIBTEMPORAL_API DomainSwapInformation {
 
 	std::vector<timecnt_t*> counts;
 	std::vector<timepos_t*> positions;
+	std::vector<TimeDomainSwapper*> time_things;
 	TimeDomain previous;
 
 	void undo ();

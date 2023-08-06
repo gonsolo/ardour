@@ -87,22 +87,22 @@ Location::Location (Session& s, timepos_t const & start, timepos_t const & end, 
 	, _cue (cue_id)
 	, _signals_suspended (0)
 {
+	/* Locations follow the global Session time domain */
 
-	/* it would be nice if the caller could ensure that the start and end
-	   values simply use the correct domain, but that would involve
-	   enforcing/checking that at every place where we create a
-	   Location. So instead we centralize this here.
+	set_position_time_domain (_session.time_domain());
+}
 
-	   NUTEMPO: it might make sense to switch time domains when <something>
-	   happens, but it's not clear what the <something> might be? Maybe
-	   changing some setting of the tempo map.
-	*/
-
-	if (s.config.get_glue_new_markers_to_bars_and_beats()) {
-		set_position_time_domain (Temporal::BeatTime);
-	} else {
-		set_position_time_domain (Temporal::AudioTime);
+void
+Location::set_position_time_domain (TimeDomain domain)
+{
+	if (_start.time_domain() == domain) {
+		return;
 	}
+
+	_start.set_time_domain (domain);
+	_end.set_time_domain (domain);
+
+	emit_signal (Domain); /* EMIT SIGNAL */
 }
 
 Location::Location (const Location& other)
@@ -266,11 +266,18 @@ Location::set_name (const std::string& str)
  *  @param force true to force setting, even if the given new start is after the current end.
  */
 int
-Location::set_start (Temporal::timepos_t const & s, bool force)
+Location::set_start (Temporal::timepos_t const & s_, bool force)
 {
-
 	if (_locked) {
 		return -1;
+	}
+
+	timepos_t s;
+
+	if (_session.time_domain() == Temporal::AudioTime) {
+		s = timepos_t (s_.samples());
+	} else {
+		s = timepos_t (s_.beats());
 	}
 
 	if (!force) {
@@ -331,10 +338,18 @@ Location::set_start (Temporal::timepos_t const & s, bool force)
  *  @param force true to force setting, even if the given new end is before the current start.
  */
 int
-Location::set_end (Temporal::timepos_t const & e, bool force)
+Location::set_end (Temporal::timepos_t const & e_, bool force)
 {
 	if (_locked) {
 		return -1;
+	}
+
+	timepos_t e;
+
+	if (_session.time_domain() == Temporal::AudioTime) {
+		e = timepos_t (e_.samples());
+	} else {
+		e = timepos_t (e_.beats());
 	}
 
 	if (!force) {
@@ -379,15 +394,26 @@ Location::set_end (Temporal::timepos_t const & e, bool force)
 }
 
 int
-Location::set (Temporal::timepos_t const & s, Temporal::timepos_t const & e)
+Location::set (Temporal::timepos_t const & s_, Temporal::timepos_t const & e_)
 {
 	/* check validity */
-	if (((is_auto_punch() || is_auto_loop()) && s >= e) || (!is_mark() && s > e)) {
+	if (((is_auto_punch() || is_auto_loop()) && s_ >= e_) || (!is_mark() && s_ > e_)) {
 		return -1;
 	}
 
 	bool start_change = false;
 	bool end_change = false;
+
+	timepos_t s;
+	timepos_t e;
+
+	if (_session.time_domain() == Temporal::AudioTime) {
+		s = timepos_t (s_.samples());
+		e = timepos_t (e_.samples());
+	} else {
+		s = timepos_t (s_.beats());
+		e = timepos_t (e_.beats());
+	}
 
 	if (is_mark()) {
 
@@ -727,19 +753,6 @@ Location::set_state (const XMLNode& node, int version)
 }
 
 void
-Location::set_position_time_domain (TimeDomain domain)
-{
-	if (_start.time_domain() == domain) {
-		return;
-	}
-
-	_start.set_time_domain (domain);
-	_end.set_time_domain (domain);
-
-	emit_signal (Domain); /* EMIT SIGNAL */
-}
-
-void
 Location::lock ()
 {
 	_locked = true;
@@ -775,8 +788,14 @@ Location::globally_change_time_domain (Temporal::TimeDomain from, Temporal::Time
 
 		domain_swap->add (_start);
 		domain_swap->add (_end);
-	} else {
-		std::cerr << name() << " wrong domain: " << _start << " .. " << _end << std::endl;
+	}
+}
+
+void
+Location::change_time_domain (Temporal::TimeDomain from, Temporal::TimeDomain to)
+{
+	if (_start.time_domain() == from) {
+		set_position_time_domain (to);
 	}
 }
 
@@ -1876,6 +1895,16 @@ Locations::globally_change_time_domain (Temporal::TimeDomain from, Temporal::Tim
 	Glib::Threads::RWLock::WriterLock lm (_lock);
 	for (auto & l : locations) {
 		l->globally_change_time_domain (from, to);
+	}
+
+}
+
+void
+Locations::change_time_domain (Temporal::TimeDomain from, Temporal::TimeDomain to)
+{
+	Glib::Threads::RWLock::WriterLock lm (_lock);
+	for (auto & l : locations) {
+		l->change_time_domain (from, to);
 	}
 
 }

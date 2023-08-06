@@ -68,6 +68,7 @@
 #include "lua/luastate.h"
 
 #include "temporal/range.h"
+#include "temporal/domain_provider.h"
 
 #include "midi++/types.h"
 #include "midi++/mmc.h"
@@ -199,7 +200,7 @@ private:
 };
 
 /** Ardour Session */
-class LIBARDOUR_API Session : public PBD::StatefulDestructible, public PBD::ScopedConnectionList, public SessionEventManager, public TransportAPI
+class LIBARDOUR_API Session : public PBD::StatefulDestructible, public PBD::ScopedConnectionList, public SessionEventManager, public TransportAPI, public Temporal::TimeDomainProvider
 {
 private:
 
@@ -972,7 +973,7 @@ public:
 
 	/* Control-based methods */
 
-	void set_controls (std::shared_ptr<ControlList>, double val, PBD::Controllable::GroupControlDisposition);
+	void set_controls (std::shared_ptr<AutomationControlList>, double val, PBD::Controllable::GroupControlDisposition);
 	void set_control (std::shared_ptr<AutomationControl>, double val, PBD::Controllable::GroupControlDisposition);
 
 	void set_exclusive_input_active (std::shared_ptr<RouteList> rt, bool onoff, bool flip_others = false);
@@ -2259,7 +2260,7 @@ private:
 	}
 
 	/* specialized version realtime "apply to set of controls" operations */
-	SessionEvent* get_rt_event (std::shared_ptr<WeakControlList> cl, double arg, PBD::Controllable::GroupControlDisposition group_override) {
+	SessionEvent* get_rt_event (std::shared_ptr<WeakAutomationControlList> cl, double arg, PBD::Controllable::GroupControlDisposition group_override) {
 		SessionEvent* ev = new SessionEvent (SessionEvent::RealTimeOperation, SessionEvent::Add, SessionEvent::Immediate, 0, 0.0);
 		ev->rt_slot = boost::bind (&Session::rt_set_controls, this, cl, arg, group_override);
 		ev->rt_return = Session::rt_cleanup;
@@ -2268,7 +2269,7 @@ private:
 		return ev;
 	}
 
-	void rt_set_controls (std::shared_ptr<WeakControlList>, double val, PBD::Controllable::GroupControlDisposition group_override);
+	void rt_set_controls (std::shared_ptr<WeakAutomationControlList>, double val, PBD::Controllable::GroupControlDisposition group_override);
 	void rt_clear_all_solo_state (std::shared_ptr<RouteList const>, bool yn, PBD::Controllable::GroupControlDisposition group_override);
 
 	void setup_midi_machine_control ();
@@ -2382,6 +2383,8 @@ private:
 
 	int tb_with_filled_slots;
 	void handle_slots_empty_status (std::weak_ptr<Route> const &);
+
+	void time_domain_changed ();
 };
 
 

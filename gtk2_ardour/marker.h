@@ -76,7 +76,7 @@ public:
 
 
 	ArdourMarker (PublicEditor& editor, ArdourCanvas::Item &, std::string const& color_name, std::string const& text, Type,
-	              Temporal::timepos_t const & position, bool handle_events = true, RegionView* rv = 0);
+	              Temporal::timepos_t const & position, bool handle_events = true, RegionView* rv = nullptr, bool use_tooltip = true);
 
 	virtual ~ArdourMarker ();
 
@@ -151,6 +151,7 @@ protected:
 	bool         _entered;
 	bool         _shown;
 	bool         _line_shown;
+	bool         _use_tooltip;
 
 	std::string  _color;
 	std::string  _points_color;
@@ -231,10 +232,7 @@ class MeterMarker : public MetricMarker
 class BBTMarker : public MetricMarker
 {
   public:
-	BBTMarker (PublicEditor& editor, ArdourCanvas::Item &, std::string const& color_name, Temporal::MusicTimePoint const &,
-	           ArdourCanvas::Item & tempo_parent,
-	           ArdourCanvas::Item & mapping_parent,
-	           ArdourCanvas::Item & meter_parent);
+	BBTMarker (PublicEditor& editor, ArdourCanvas::Item &, std::string const& color_name, Temporal::MusicTimePoint const &);
 	~BBTMarker ();
 
 	void reset_point (Temporal::MusicTimePoint const &);

@@ -4673,7 +4673,7 @@ Editor::cut_copy_points (Editing::CutCopyOp op, timepos_t const & earliest_time)
 		   ControlList for each of our source lists to put the cut buffer data in.
 		*/
 		for (Lists::iterator i = lists.begin(); i != lists.end(); ++i) {
-			i->second.copy = i->first->create (i->first->parameter (), i->first->descriptor(), i->first->time_domain());
+			i->second.copy = i->first->create (i->first->parameter (), i->first->descriptor(), *i->first);
 		}
 
 		/* Add all selected points to the relevant copy ControlLists */
@@ -6766,7 +6766,7 @@ Editor::toggle_solo ()
 {
 	bool new_state = false;
 	bool first = true;
-	std::shared_ptr<ControlList> cl (new ControlList);
+	std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
 
 	for (TrackSelection::iterator i = selection->tracks.begin(); i != selection->tracks.end(); ++i) {
 		StripableTimeAxisView *stav = dynamic_cast<StripableTimeAxisView *>(*i);
@@ -6791,7 +6791,7 @@ Editor::toggle_mute ()
 {
 	bool new_state = false;
 	bool first = true;
-	std::shared_ptr<ControlList> cl (new ControlList);
+	std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
 
 	for (TrackSelection::iterator i = selection->tracks.begin(); i != selection->tracks.end(); ++i) {
 		StripableTimeAxisView *stav = dynamic_cast<StripableTimeAxisView *>(*i);

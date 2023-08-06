@@ -59,6 +59,8 @@
 #include "pbd/types_convert.h"
 #include "pbd/unwind.h"
 
+#include "temporal/types_convert.h"
+
 #include "ardour/amp.h"
 #include "ardour/analyser.h"
 #include "ardour/async_midi_port.h"
@@ -918,7 +920,7 @@ Session::setup_click ()
 {
 	_clicking = false;
 
-	std::shared_ptr<AutomationList> gl (new AutomationList (Evoral::Parameter (GainAutomation), Temporal::AudioTime));
+	std::shared_ptr<AutomationList> gl (new AutomationList (Evoral::Parameter (GainAutomation), Temporal::TimeDomainProvider (Temporal::AudioTime)));
 	std::shared_ptr<GainControl> gain_control = std::shared_ptr<GainControl> (new GainControl (*this, Evoral::Parameter(GainAutomation), gl));
 
 	_click_io.reset (new ClickIO (*this, X_("Click")));
@@ -3397,7 +3399,7 @@ Session::load_and_connect_instruments (RouteList& new_routes, bool strict_io, st
 			if (pset) {
 				plugin->load_preset (*pset);
 			}
-			std::shared_ptr<PluginInsert> pi (new PluginInsert (*this, (*r)->time_domain(), plugin));
+			std::shared_ptr<PluginInsert> pi (new PluginInsert (*this, **r, plugin));
 			if (strict_io) {
 				pi->set_strict_io (true);
 			}
@@ -3986,7 +3988,7 @@ Session::cancel_all_mute ()
 	StripableList all;
 	get_stripables (all);
 	std::vector<std::weak_ptr<AutomationControl> > muted;
-	std::shared_ptr<ControlList> cl (new ControlList);
+	std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
 	for (StripableList::const_iterator i = all.begin(); i != all.end(); ++i) {
 		assert (!(*i)->is_auditioner());
 		if ((*i)->is_monitor()) {
@@ -7785,3 +7787,15 @@ Session::foreach_route (void (Route::*method)())
 	}
 }
 
+void
+Session::time_domain_changed ()
+{
+	using namespace Temporal;
+
+	TimeDomainProvider::time_domain_changed ();
+
+	Temporal::TimeDomain to = time_domain();
+	Temporal::TimeDomain from = (to == AudioTime ? BeatTime : AudioTime);
+
+	_locations->change_time_domain (from, to);
+}
