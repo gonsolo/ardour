@@ -3117,6 +3117,11 @@ void
 Route::set_processor_state (const XMLNode& node, int version)
 {
 	const XMLNodeList &nlist = node.children();
+
+	if (nlist.empty()) {
+		return;
+	}
+
 	XMLNodeConstIterator niter;
 	ProcessorList new_order;
 	bool must_configure = false;
@@ -6348,9 +6353,4 @@ Route::tempo_map_changed ()
 	if (_triggerbox) {
 		_triggerbox->tempo_map_changed ();
 	}
-}
-
-void
-Route::globally_change_time_domain (Temporal::TimeDomain from, Temporal::TimeDomain to)
-{
 }

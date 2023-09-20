@@ -7225,8 +7225,16 @@ Session::clear_object_selection ()
 }
 
 void
-Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos_t const& to, SectionOperation const op)
+Session::cut_copy_section (timepos_t const& start_, timepos_t const& end_, timepos_t const& to_, SectionOperation const op)
 {
+	timepos_t start = timepos_t::from_superclock (start_.superclocks());
+	timepos_t end   = timepos_t::from_superclock (end_.superclocks());
+	timepos_t to    = timepos_t::from_superclock (to_.superclocks());
+
+#ifndef NDEBUG
+	cout << "Session::cut_copy_section " << start << " - " << end << " << to " << to << " op = " << op << "\n";
+#endif
+
 	std::list<TimelineRange> ltr;
 	TimelineRange tlr (start, end, 0);
 	ltr.push_back (tlr);
@@ -7305,22 +7313,44 @@ Session::cut_copy_section (timepos_t const& start, timepos_t const& end, timepos
 		add_command (new MementoCommand<Locations> (*_locations, &before, &after));
 	}
 
-#if 0 // TODO - enable once tempo-map cut/copy/paste works
 	TempoMap::WritableSharedPtr wmap = TempoMap::write_copy ();
 	TempoMapCutBuffer* tmcb;
-	if (copy) {
-		tmcb = wmap->copy (start, end);
-	} else {
-		tmcb = wmap->cut (start, end, true);
-	}
-	wmap->paste (*tmcb, to, !copy);
-	TempoMap::update (wmap);
-	delete tmcb;
-#endif
+	XMLNode& tm_before (wmap->get_state());
 
-	if (!abort_empty_reversible_command ()) {
-		commit_reversible_command ();
+	switch (op) {
+	case CopyPasteSection:
+		if ((tmcb = wmap->copy (start, end))) {
+			tmcb->dump (std::cerr);
+			wmap->paste (*tmcb, to, true);
+		}
+		break;
+	case CutPasteSection:
+		if ((tmcb = wmap->cut (start, end, true))) {
+			tmcb->dump (std::cerr);
+			wmap->paste (*tmcb, to, true);
+		}
+		break;
+	default:
+		tmcb = nullptr;
+		break;
 	}
+
+	if (tmcb && !tmcb->empty()) {
+		TempoMap::update (wmap);
+		delete tmcb;
+		XMLNode& tm_after (wmap->get_state());
+		add_command (new TempoCommand (_("cut tempo map"), &tm_before, &tm_after));
+	} else {
+		delete &tm_before;
+		TempoMap::abort_update ();
+		TempoMap::SharedPtr tmap (TempoMap::fetch());
+	}
+
+	if (abort_empty_reversible_command ()) {
+		return;
+	}
+
+	commit_reversible_command ();
 }
 
 void
@@ -7787,15 +7817,3 @@ Session::foreach_route (void (Route::*method)())
 	}
 }
 
-void
-Session::time_domain_changed ()
-{
-	using namespace Temporal;
-
-	TimeDomainProvider::time_domain_changed ();
-
-	Temporal::TimeDomain to = time_domain();
-	Temporal::TimeDomain from = (to == AudioTime ? BeatTime : AudioTime);
-
-	_locations->change_time_domain (from, to);
-}

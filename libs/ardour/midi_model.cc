@@ -1793,26 +1793,16 @@ MidiModel::create_mapping_stash (Temporal::Beats const & src_pos_offset)
 		Event<Beats>& off (n->off_event());
 		audio_time = tmap->superclock_at (src_pos_offset + off.time());
 		tempo_mapping_stash.insert (std::make_pair (&off, audio_time));
-
 	}
 
 	for (auto const & s : sysexes()) {
 		superclock_t audio_time = tmap->superclock_at (src_pos_offset + s->time());
-		tempo_mapping_stash.insert (std::make_pair ((void*)s.get(), audio_time));
+		tempo_mapping_stash.insert (std::make_pair (s.get(), audio_time));
 	}
 
-	for (uint8_t chan = 0; chan < 16; ++chan) {
-		for (auto const & p : pitches(chan)) {
-			superclock_t audio_time = tmap->superclock_at (src_pos_offset + p->time());
-			tempo_mapping_stash.insert (std::make_pair ((void*) &p, audio_time));
-		}
-	}
-
-	for (auto & c : controls()) {
-		std::shared_ptr<Evoral::ControlList> l = c.second->list();
-		if (l) {
-			l->set_time_domain (AudioTime);
-		}
+	for (auto & pc : patch_changes()) {
+		superclock_t audio_time = tmap->superclock_at (src_pos_offset + pc->time());
+		tempo_mapping_stash.insert (std::make_pair (pc.get(), audio_time));
 	}
 }
 
@@ -1827,6 +1817,7 @@ MidiModel::rebuild_from_mapping_stash (Temporal::Beats const & src_pos_offset)
 	}
 
 	TempoMap::SharedPtr tmap (TempoMap::use());
+	NoteDiffCommand* note_cmd = new_note_diff_command (_("conform to tempo map"));
 
 	for (auto & n : notes()) {
 
@@ -1835,38 +1826,41 @@ MidiModel::rebuild_from_mapping_stash (Temporal::Beats const & src_pos_offset)
 
 		TempoMappingStash::iterator tms (tempo_mapping_stash.find (&on));
 		assert (tms != tempo_mapping_stash.end());
-		Beats beat_time (tmap->quarters_at_superclock (tms->second) - src_pos_offset);
-		on.set_time (beat_time);
+		Beats start_time (tmap->quarters_at_superclock (tms->second) - src_pos_offset);
+
+		note_cmd->change (n, NoteDiffCommand::StartTime, start_time);
 
 		tms = tempo_mapping_stash.find (&off);
 		assert (tms != tempo_mapping_stash.end());
-		beat_time = tmap->quarters_at_superclock (tms->second) - src_pos_offset;
-		off.set_time (beat_time);
+		Beats end_time = tmap->quarters_at_superclock (tms->second) - src_pos_offset;
 
+		Beats len = end_time - start_time;
+		note_cmd->change (n, NoteDiffCommand::Length, len);
 	}
+
+	apply_diff_command_as_subcommand (_midi_source.session(), note_cmd);
+
+	SysExDiffCommand* sysex_cmd = new_sysex_diff_command (_("conform to tempo map"));
 
 	for (auto & s : sysexes()) {
-		TempoMappingStash::iterator tms (tempo_mapping_stash.find ((void*) &s));
+		TempoMappingStash::iterator tms (tempo_mapping_stash.find (s.get()));
 		assert (tms != tempo_mapping_stash.end());
 		Beats beat_time (tmap->quarters_at_superclock (tms->second) - src_pos_offset);
-		s->set_time (beat_time);
+		sysex_cmd->change (s, beat_time);
 	}
 
-	for (uint8_t chan = 0; chan < 16; ++chan) {
-		for (auto & p : pitches(chan)) {
-			TempoMappingStash::iterator tms (tempo_mapping_stash.find ((void*) &p));
-			assert (tms != tempo_mapping_stash.end());
-			Beats beat_time (tmap->quarters_at_superclock (tms->second) - src_pos_offset);
-			p->set_time (beat_time);
-		}
+	apply_diff_command_as_subcommand (_midi_source.session(), sysex_cmd);
+
+	PatchChangeDiffCommand* pc_cmd = new_patch_change_diff_command (_("conform to tempo map"));
+
+	for (auto & pc : patch_changes()) {
+		TempoMappingStash::iterator tms (tempo_mapping_stash.find (pc.get()));
+		assert (tms != tempo_mapping_stash.end());
+		Beats beat_time (tmap->quarters_at_superclock (tms->second) - src_pos_offset);
+		pc_cmd->change_time (pc, beat_time);
 	}
 
-	for (auto & c : controls()) {
-		std::shared_ptr<Evoral::ControlList> l = c.second->list();
-		if (l) {
-			l->set_time_domain (BeatTime);
-		}
-	}
+	apply_diff_command_as_subcommand (_midi_source.session(), pc_cmd);
 
 	tempo_mapping_stash.clear ();
 }

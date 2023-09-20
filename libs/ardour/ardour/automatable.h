@@ -119,6 +119,9 @@ public:
 
 	PBD::Signal0<void> AutomationStateChanged;
 
+	void start_domain_bounce (Temporal::DomainBounceInfo&);
+	void finish_domain_bounce (Temporal::DomainBounceInfo&);
+
 protected:
 	Session& _a_session;
 

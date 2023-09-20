@@ -102,7 +102,7 @@ public:
 
 	void update (const RegionListProperty::ChangeRecord&);
 	void clear_owned_changes ();
-	void rdiff (std::vector<Command*>&) const;
+	void rdiff (std::vector<PBD::Command*>&) const;
 
 	void rdiff_and_add_command (Session*);
 
@@ -301,7 +301,8 @@ public:
 	void set_capture_insertion_in_progress (bool yn);
 
 	void time_domain_changed ();
-	void globally_change_time_domain (Temporal::TimeDomain from, Temporal::TimeDomain to);
+	void start_domain_bounce (Temporal::DomainBounceInfo&);
+	void finish_domain_bounce (Temporal::DomainBounceInfo&);
 
 protected:
 	friend class Session;

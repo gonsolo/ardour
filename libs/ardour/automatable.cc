@@ -30,6 +30,7 @@
 #include <glibmm/miscutils.h>
 
 #include "pbd/error.h"
+#include "pbd/memento_command.h"
 
 #include "temporal/timeline.h"
 
@@ -741,5 +742,32 @@ Automatable::find_prev_ac_event (std::shared_ptr<AutomationControl> c, timepos_t
 			next_event.when = (*i)->when;
 		}
 		++i;
+	}
+}
+
+void
+Automatable::start_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	for (auto & c : _controls) {
+		std::shared_ptr<Evoral::ControlList> cl = c.second->list();
+		if (cl && cl->time_domain() != cmd.to) {
+			std::shared_ptr<AutomationList> al (std::dynamic_pointer_cast<AutomationList> (cl));
+			_a_session.add_command (new MementoCommand<AutomationList> (*(al.get()), &al->get_state(), nullptr));
+		}
+	}
+	ControlSet::start_domain_bounce (cmd);
+}
+
+void
+Automatable::finish_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	ControlSet::finish_domain_bounce (cmd);
+
+	for (auto & c : _controls) {
+		std::shared_ptr<Evoral::ControlList> cl = c.second->list();
+		if (cl && cl->time_domain() != cmd.to) {
+			std::shared_ptr<AutomationList> al (std::dynamic_pointer_cast<AutomationList> (cl));
+			_a_session.add_command (new MementoCommand<AutomationList> (*(al.get()), nullptr, &al->get_state()));
+		}
 	}
 }

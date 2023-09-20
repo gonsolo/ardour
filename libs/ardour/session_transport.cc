@@ -76,11 +76,12 @@ using namespace Temporal;
 #ifdef NDEBUG
 # define ENSURE_PROCESS_THREAD do {} while (0)
 #else
-# define ENSURE_PROCESS_THREAD                           \
-  do {                                                   \
-    if (!AudioEngine::instance()->in_process_thread()) { \
-      PBD::stacktrace (std::cerr, 30);                   \
-    }                                                    \
+# define ENSURE_PROCESS_THREAD                        \
+  do {                                                \
+    if (!AudioEngine::instance()->in_process_thread() \
+        && !loading ()) {                              \
+      PBD::stacktrace (std::cerr, 30);                \
+    }                                                 \
   } while (0)
 #endif
 
@@ -1394,6 +1395,9 @@ Session::non_realtime_stop (bool abort, int on_entry, bool& finished, bool will_
 		 */
 		_state_of_the_state = StateOfTheState (_state_of_the_state | InCleanup);
 	}
+
+	/* finishing a capture will potentially create a lot of regions; we want them all assigned to the same region-group */
+	Region::RegionGroupRetainer rgr;
 
 	for (auto const& i : *rl) {
 		std::shared_ptr<Track> tr = std::dynamic_pointer_cast<Track> (i);
