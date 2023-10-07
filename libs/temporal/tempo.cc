@@ -98,9 +98,6 @@ Tempo::Tempo (XMLNode const & node)
 	_superclocks_per_note_type = double_npm_to_scpn (_npm);
 	_end_superclocks_per_note_type = double_npm_to_scpn (_enpm);
 
-	_super_note_type_per_second = double_npm_to_snps (_npm);
-	_end_super_note_type_per_second = double_npm_to_snps (_enpm);
-
 	if (!node.get_property (X_("note-type"), _note_type)) {
 		throw failed_constructor ();
 	}
@@ -121,14 +118,12 @@ Tempo::set_note_types_per_minute (double npm)
 {
 	_npm = npm;
 	_superclocks_per_note_type = double_npm_to_scpn (_npm);
-	_super_note_type_per_second = double_npm_to_snps (_npm);
 }
 
 void
 Tempo::set_end_npm (double npm)
 {
 	_enpm = npm;
-	_end_super_note_type_per_second = double_npm_to_snps (_enpm);
 	_end_superclocks_per_note_type = double_npm_to_scpn (_enpm);
 }
 
@@ -150,6 +145,14 @@ Tempo::get_state () const
 	node->set_property (X_("locked-to-meter"), _locked_to_meter);
 	node->set_property (X_("continuing"), _continuing);
 
+	/* We don't have an _active property any more, but earlier versions of
+	   Ardour will crash during session loading if this property is not
+	   provided. For the 7.5 - 8.0 transition, there was theoretically no
+	   file format change, so leave this in place till at least the next
+	   format version change.
+	*/
+	node->set_property (X_("active"), true);
+
 	return *node;
 }
 
@@ -165,8 +168,6 @@ Tempo::set_state (XMLNode const & node, int /*version*/)
 
 	_superclocks_per_note_type = double_npm_to_scpn (_npm);
 	_end_superclocks_per_note_type = double_npm_to_scpn (_enpm);
-	_super_note_type_per_second = double_npm_to_snps (_npm);
-	_end_super_note_type_per_second = double_npm_to_snps (_enpm);
 
 	node.get_property (X_("note-type"), _note_type);
 
@@ -582,21 +583,43 @@ TempoPoint::quarters_at_superclock (superclock_t sc) const
 
 	if (!actually_ramped()) {
 
+
+		/* The simple expression of the math we're computing here is
+		 * (if we could use floating point):
+		 *
+		 * double sc_delta = sc - _sclock;                                              // how far in superclocks from this point's superclock position?
+		 * double seconds = sc_delta / superclock_ticks_per_second;                     // how long is that in seconds?
+		 * double note_types_per_second = npm / 60.;                                    // how many note types in 1 second ?
+		 * double quarter_delta = note_types_per_second * (4. / * _note_type);          // how many quarters is that?
+		 * return _quarters + Beats (floor (quarter_delta), fmod (quarter_delta, 1.));  // add to this point's position in quarters
+		 *
+		 * But we can't use doubles, so this gets quite a bit more complex.
+		 */
+
 		// TEMPO_MAP_ASSERT (sc >= _sclock);
 		superclock_t sc_delta = sc - _sclock;
+
 
 		/* convert sc into superbeats, given that sc represents some number of seconds */
 		const superclock_t whole_seconds = sc_delta / superclock_ticks_per_second();
 		const superclock_t remainder = sc_delta - (whole_seconds * superclock_ticks_per_second());
 
+		/* big number to allow most (fractional) BPMs to be represented as an integer "super note type per second"
+		 *
+		 * It is not required that big_numerator equal superclock_ticks_per_second but since the values in both cases have similar
+		 * desired properties (many, many factors), it doesn't hurt to use the same number.
+		 */
+		const superclock_t big_numerator = 508032000; // 2^10 * 3^4 * 5^3 * 7^2
+
+		uint64_t _super_note_type_per_second = (uint64_t) llround (_npm * big_numerator / 60);
+
 		const int64_t supernotes = ((_super_note_type_per_second) * whole_seconds) + muldiv_round (superclock_t (_super_note_type_per_second), remainder, superclock_ticks_per_second());
 		const int64_t superbeats = muldiv_round (supernotes, 4, (superclock_t) _note_type);
 
 		/* convert superbeats to beats:ticks */
-		int32_t b;
-		int32_t t;
-
-		Tempo::superbeats_to_beats_ticks (superbeats, b, t);
+		int32_t b = superbeats / big_numerator;
+		int64_t remain = superbeats - (b * big_numerator);
+		int32_t t = PBD::muldiv_round (Temporal::ticks_per_beat, remain, big_numerator);
 
 		DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("%8 => \nsc %1 delta %9 = %2 secs rem = %3 rem snotes %4 sbeats = %5 => %6 : %7\n", sc, whole_seconds, remainder, supernotes, superbeats, b , t, *this, sc_delta));
 
@@ -829,20 +852,32 @@ TempoMap::copy_points (TempoMap const & other)
 			_meters.push_back (*mtp);
 			_tempos.push_back (*mtp);
 			_points.push_back (*mtp);
+			mtp->set_map (*this);
 		} else if ((mp = dynamic_cast<MeterPoint const *> (&point))) {
 			MeterPoint* mpp = new MeterPoint (*mp);
 			_meters.push_back (*mpp);
 			_points.push_back (*mpp);
+			mpp->set_map (*this);
 		} else if ((tp = dynamic_cast<TempoPoint const *> (&point))) {
 			TempoPoint* tpp = new TempoPoint (*tp);
 			_tempos.push_back (*tpp);
 			_points.push_back (*tpp);
+			tpp->set_map (*this);
 		}
 	}
 
+#ifndef NDEBUG
 	for (auto & p : _points) {
-		p.set_map (*this);
+		assert (&p.map () == this);
 	}
+	for (auto & t : _tempos) {
+		assert (&t.map () == this);
+	}
+	for (auto & m : _meters) {
+		assert (&m.map () == this);
+	}
+#endif
+
 }
 
 TempoMapCutBuffer*
@@ -890,8 +925,6 @@ TempoMap::cut_copy (timepos_t const & start, timepos_t const & end, bool copy, b
 		mtp = nullptr;
 	}
 
-	dump (std::cerr);
-
 	for (Points::iterator p = _points.begin(); p != _points.end(); ) {
 
 
@@ -918,7 +951,6 @@ TempoMap::cut_copy (timepos_t const & start, timepos_t const & end, bool copy, b
 		if ((mtp = dynamic_cast<MusicTimePoint const *> (&*p))) {
 			cb->add (*mtp);
 			if (!copy && mtp->sclock() != 0) {
-				std::cerr << "remove mtp " << *mtp << std::endl;
 				core_remove_bartime (*mtp);
 				remove_point (*mtp);
 				removed = true;
@@ -927,7 +959,6 @@ TempoMap::cut_copy (timepos_t const & start, timepos_t const & end, bool copy, b
 			if ((tp = dynamic_cast<TempoPoint const *> (&*p))) {
 				cb->add (*tp);
 				if (!copy && tp->sclock() != 0) {
-					std::cerr << "remove tempo " << *tp << std::endl;
 					core_remove_tempo (*tp);
 					remove_point (*tp);
 					removed = true;
@@ -935,7 +966,6 @@ TempoMap::cut_copy (timepos_t const & start, timepos_t const & end, bool copy, b
 			} else if ((mp = dynamic_cast<MeterPoint const *> (&*p))) {
 				cb->add (*mp);
 				if (!copy && mp->sclock() != 0) {
-					std::cerr << "remove meter " << *mp << std::endl;
 					core_remove_meter (*mp);
 					remove_point (*mp);
 					removed = true;
@@ -946,11 +976,8 @@ TempoMap::cut_copy (timepos_t const & start, timepos_t const & end, bool copy, b
 		p = nxt;
 	}
 
-	dump (std::cerr);
-
 	if (!copy && ripple) {
 		shift (start, -start.distance (end));
-		dump (std::cerr);
 	}
 
 	if (mtp) {
@@ -972,13 +999,9 @@ TempoMap::paste (TempoMapCutBuffer const & cb, timepos_t const & position, bool 
 		return;
 	}
 
-	dump (std::cerr);
-
 	if (ripple) {
 		shift (position, cb.duration());
 	}
-
-	dump (std::cerr);
 
 
 	/* We need to look these up first, before we change the map */
@@ -1038,7 +1061,6 @@ TempoMap::paste (TempoMapCutBuffer const & cb, timepos_t const & position, bool 
 			mp = dynamic_cast<MeterPoint const *> (&p);
 
 			MusicTimePoint *ntp = new MusicTimePoint (*this, s, b, bb, *tp, *mp, mtp->name());
-			std::cerr << "Add mtp " << *ntp << std::endl;
 			core_add_bartime (ntp, replaced);
 
 			if (!replaced) {
@@ -1051,14 +1073,12 @@ TempoMap::paste (TempoMapCutBuffer const & cb, timepos_t const & position, bool 
 
 			if ((tp = dynamic_cast<TempoPoint const *> (&p))) {
 				TempoPoint *ntp = new TempoPoint (*this, *tp, s, b, bb);
-				std::cerr << "Add tempo " << *ntp << std::endl;
 				core_add_tempo (ntp, replaced);
 				if (!replaced) {
 					core_add_point (ntp);
 				}
 			} else if ((mp = dynamic_cast<MeterPoint const *> (&p))) {
 				MeterPoint *ntp = new MeterPoint (*this, *mp, s, b, bb);
-				std::cerr << "Add meter " << *ntp << std::endl;
 				core_add_meter (ntp, replaced);
 				if (!replaced) {
 					core_add_point (ntp);
@@ -1088,7 +1108,6 @@ TempoMap::paste (TempoMapCutBuffer const & cb, timepos_t const & position, bool 
 	}
 
 	reset_starting_at (s);
-	dump (std::cerr);
 }
 
 void
@@ -1101,8 +1120,6 @@ TempoMap::shift (timepos_t const & at, timecnt_t const & by)
 	if (distance == 0) {
 		return;
 	}
-
-	std::cerr << "tm ripple @ " << at.str() << " by " << by.str() << std::endl;
 
 	for (auto & p : _points) {
 
@@ -1117,17 +1134,12 @@ TempoMap::shift (timepos_t const & at, timecnt_t const & by)
 				superclock_t s = p.sclock() + distance;
 				BBT_Time bb = bbt_at (s);
 				Beats b = quarters_at_superclock (s);
-				std::cerr << "Move " << p << std::endl;
 				p.set (s, b, bb);
-				std::cerr << "\tto " << p << std::endl;
 			}
 		}
 	}
 
-	std::cerr << "post-ripple, before reset\n";
-	dump (std::cerr);
 	reset_starting_at (at_superclocks + distance);
-	dump (std::cerr);
 }
 
 void
@@ -2301,35 +2313,8 @@ Temporal::BBT_Argument
 TempoMap::bbt_at (Temporal::Beats const & qn) const
 {
 	TempoMetric metric (metric_at (qn));
-	superclock_t ref (std::min (metric.tempo().sclock(), metric.meter().sclock()));
-	return BBT_Argument (ref, metric.bbt_at (qn));
+	return BBT_Argument (metric.reftime(), metric.bbt_at (qn));
 }
-
-#if 0
-samplepos_t
-TempoMap::sample_at (Temporal::Beats const & qn) const
-{
-	return superclock_to_samples (metric_at (qn).superclock_at (qn), TEMPORAL_SAMPLE_RATE);
-}
-
-samplepos_t
-TempoMap::sample_at (Temporal::BBT_Time const & bbt) const
-{
-	return samples_to_superclock (metric_at (bbt).superclock_at (bbt), TEMPORAL_SAMPLE_RATE);
-}
-
-samplepos_t
-TempoMap::sample_at (timepos_t const & pos) const
-{
-	if (pos.is_beat()) {
-		return sample_at (pos.beats ());
-	}
-
-	/* somewhat nonsensical to call this under these conditions but ... */
-
-	return pos.superclocks();
-}
-#endif
 
 superclock_t
 TempoMap::superclock_at (Temporal::Beats const & qn) const
@@ -2603,7 +2588,7 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t rstart, superclock_t end, 
 			if (delta != BBT_Offset ()) {
 				bbt = on_bar;
 				Beats beats_delta = _meters.front().to_quarters (delta);
-				DEBUG_TRACE (DEBUG::Grid, string_compose ("simple reset start using bbt %1 via %2 (rounded by %3 beats %4)\n", bbt, on_bar, delta, beats_delta));
+				DEBUG_TRACE (DEBUG::Grid, string_compose ("simple reset start using bbt %1 via %2 (rounded by %3 beats %4) sc %5\n", bbt, on_bar, delta, beats_delta, start));
 			} else {
 				DEBUG_TRACE (DEBUG::Grid, string_compose ("bbt %1 was already on-bar or on-beat %2 start is %3\n", bbt, on_bar, start));
 			}
@@ -2611,6 +2596,7 @@ TempoMap::get_grid (TempoMapPoints& ret, superclock_t rstart, superclock_t end, 
 
 		Beats    beats (metric.quarters_at_superclock (start));
 
+		DEBUG_TRACE (DEBUG::Grid, string_compose ("reset start to %1 with beats %2 for %3\n", start, beats, bbt));
 		fill_grid_with_final_metric (ret, metric, start, rstart, end, bar_mod, beat_div, beats, bbt);
 
 		return _points.end();
@@ -3038,9 +3024,9 @@ std::ostream&
 std::operator<<(std::ostream& str, Tempo const & t)
 {
 	if (t.ramped()) {
-		return str << t.note_types_per_minute() << " .. " << t.end_note_types_per_minute() << " 1/" << t.note_type() << " RAMPED notes per minute [ " << t.super_note_type_per_second() << " => " << t.end_super_note_type_per_second() << " sntpm ] (" << t.superclocks_per_note_type() << " sc-per-1/" << t.note_type() << ')';
+		return str << t.note_types_per_minute() << " .. " << t.end_note_types_per_minute() << " 1/" << t.note_type() << " RAMPED notes per minute (" << t.superclocks_per_note_type() << " .. " << t.end_superclocks_per_note_type() << " sc-per-1/" << t.note_type() << ')';
 	} else {
-		return str << t.note_types_per_minute() << " 1/" << t.note_type() << " notes per minute [" << t.super_note_type_per_second() << " sntpm] (" << t.superclocks_per_note_type() << " sc-per-1/" << t.note_type() << ')';
+		return str << t.note_types_per_minute() << " 1/" << t.note_type() << " notes per minute (" << t.superclocks_per_note_type() << " sc-per-1/" << t.note_type() << ')';
 	}
 }
 
@@ -3872,7 +3858,7 @@ TempoMap::metric_at (BBT_Argument const & bbt, bool can_match) const
 	 * time to get the metric.
 	 */
 
-	(void) get_tempo_and_meter (tp, mp, bbt.reference(), can_match, false);
+	(void) get_tempo_and_meter (tp, mp, bbt, can_match, false);
 
 	return TempoMetric (*tp, *mp);
 }
@@ -4221,14 +4207,14 @@ TempoMap::solve_ramped_twist (TempoPoint& earlier, TempoPoint& later)
 		err = earlier.superclock_at (later.beats()) - later.sclock();
 
 		if (cnt > 20000) {
-			std::cerr << "nn: " << new_end_npm << " err " << err << " @ " << cnt << "solve_ramped_twist FAILED\n";
+			// std::cerr << "nn: " << new_end_npm << " err " << err << " @ " << cnt << "solve_ramped_twist FAILED\n";
 			return false;
 		}
 
 		++cnt;
 	}
 
-	std::cerr << "that took " << cnt << " iterations to get to < 1 sample\n";
+	// std::cerr << "that took " << cnt << " iterations to get to < 1 sample\n";
 
 	return true;
 }
@@ -4275,14 +4261,14 @@ TempoMap::solve_constant_twist (TempoPoint& earlier, TempoPoint& later)
 		err = earlier.superclock_at (later.beats()) - later.sclock();
 
 		if (cnt > 20000) {
-			std::cerr << "nn: " << new_npm << " err " << err << " @ " << cnt << "solve_constant_twist FAILED\n";
+			// std::cerr << "nn: " << new_npm << " err " << err << " @ " << cnt << "solve_constant_twist FAILED\n";
 			return false;
 		}
 
 		++cnt;
 	}
 
-	std::cerr << "that took " << cnt << " iterations to get to < 1 sample\n";
+	// std::cerr << "that took " << cnt << " iterations to get to < 1 sample\n";
 
 	return true;
 }
@@ -4320,9 +4306,6 @@ TempoMap::constant_twist_tempi (TempoPoint& prev, TempoPoint& focus, TempoPoint&
 	 * sample of its current position
 	 */
 
-	std::cerr << "pre-iter\n";
-	dump (std::cerr);
-
 	if (!solve_constant_twist (focus, next)) {
 		prev = old_prev;
 		focus = old_focus;
@@ -4349,31 +4332,21 @@ TempoMap::ramped_twist_tempi (TempoPoint& unused, TempoPoint& focus, TempoPoint&
 	 * to bail out because change is impossible.
 	 */
 
-	std::cerr << "on entry\n";
-	dump (std::cerr);
-	std::cerr << "----------------------------\n";
-
 	TempoPoint old_focus (focus);
 
 	/* set start tempo of prev tempo marker; we will iteratively solve for the required ramp value */
 	focus.set_note_types_per_minute (tempo_value);
 
-	std::cerr << "pre-iter\n";
-	dump (std::cerr);
-
 	if (!solve_ramped_twist (focus, next)) {
 		focus = old_focus;
 		return;
 	}
-
-	std::cerr << "Twisted with " << tempo_value << std::endl;
-	dump (std::cerr);
 }
 
 void
 TempoMap::init ()
 {
-	WritableSharedPtr new_map (new TempoMap (Tempo (120, 4), Meter (4, 4)));
+	WritableSharedPtr new_map (new TempoMap ());
 	_map_mgr.init (new_map);
 	fetch ();
 }

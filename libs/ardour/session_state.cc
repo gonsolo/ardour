@@ -640,11 +640,6 @@ Session::create (const string& session_template, BusProfile const * bus_profile,
 				<< endmsg;
 			return -1;
 		}
-
-	} else {
-		(void) TempoMap::write_copy(); /* we are going to throw away the return value and replace the map entirely */
-		TempoMap::WritableSharedPtr new_map (new TempoMap (Tempo (120, 4), Meter (4, 4)));
-		TempoMap::update (new_map);;
 	}
 
 	/* set up Master Out and Monitor Out if necessary */
@@ -4593,6 +4588,7 @@ Session::config_changed (std::string p, bool ours)
 		Temporal::TimeDomain td = config.get_default_time_domain ();
 		std::cerr << "Setting time domain\n";
 		set_time_domain (td);
+		Config->set_preferred_time_domain(td);  /* sync the global default time domain to this newly chosen one */
 	}
 
 	set_dirty ();

@@ -58,6 +58,7 @@
 #include "automation_streamview.h"
 #include "ghostregion.h"
 #include "gui_thread.h"
+#include "mergeable_line.h"
 #include "route_time_axis.h"
 #include "automation_line.h"
 #include "paste_context.h"
@@ -83,7 +84,6 @@ using namespace Editing;
 
 Pango::FontDescription AutomationTimeAxisView::name_font;
 bool AutomationTimeAxisView::have_name_font = false;
-
 
 /** \a a the automatable object this time axis is to display data for.
  * For route/track automation (e.g. gain) pass the route for both \r and \a.
@@ -167,6 +167,7 @@ AutomationTimeAxisView::AutomationTimeAxisView (
 	_base_rect->set_outline (false);
 	_base_rect->set_fill_color (UIConfiguration::instance().color_mod (fill_color_name, "automation track fill"));
 	_base_rect->set_data ("trackview", this);
+	_base_rect->set_data ("linemerger", (LineMerger*) this);
 	_base_rect->Event.connect (sigc::bind (sigc::mem_fun (_editor, &PublicEditor::canvas_automation_track_event), _base_rect, this));
 	if (!a) {
 		_base_rect->lower_to_bottom();
@@ -372,8 +373,7 @@ AutomationTimeAxisView::set_automation_state (AutoState state)
 
 	if (_automatable) {
 		_automatable->set_parameter_automation_state (_parameter, state);
-	}
-	else if (_control) {
+	} else if (_control) {
 		_control->set_automation_state (state);
 		_session->set_dirty ();
 	}
@@ -788,73 +788,6 @@ AutomationTimeAxisView::build_display_menu ()
 		automation_state_changed ();
 		interpolation_changed (s);
 	}
-}
-
-void
-AutomationTimeAxisView::merge_drawn_line (Evoral::ControlList::OrderedPoints& points, bool thin)
-{
-	if (points.empty()) {
-		return;
-	}
-
-	if (!_line) {
-		return;
-	}
-
-	std::shared_ptr<AutomationList> list = _line->the_list ();
-
-	if (list->in_write_pass()) {
-		/* do not allow the GUI to add automation events during an
-		   automation write pass.
-		*/
-		return;
-	}
-
-	XMLNode& before = list->get_state();
-	std::list<Selectable*> results;
-
-	Temporal::timepos_t earliest = points.front().when;
-	Temporal::timepos_t latest = points.back().when;
-
-	if (earliest > latest) {
-		swap (earliest, latest);
-	}
-
-	/* Convert each point's "value" from geometric coordinate space to
-	 * value space for the control
-	 */
-
-	for (auto & dp : points) {
-		/* compute vertical fractional position */
-		dp.value = 1.0 - (dp.value / _line->height());
-		/* map using line */
-		_line->view_to_model_coord_y (dp.value);
-	}
-
-	list->freeze ();
-	list->editor_add_ordered (points, false);
-	if (thin) {
-		list->thin (Config->get_automation_thinning_factor());
-	}
-	list->thaw ();
-
-	if (_control->automation_state () == ARDOUR::Off) {
-		set_automation_state (ARDOUR::Play);
-	}
-
-	if (UIConfiguration::instance().get_automation_edit_cancels_auto_hide () && _control == _session->recently_touched_controllable ()) {
-		RouteTimeAxisView::signal_ctrl_touched (false);
-	}
-
-	XMLNode& after = list->get_state();
-	_editor.begin_reversible_command (_("draw automation"));
-	_session->add_command (new MementoCommand<ARDOUR::AutomationList> (*list.get (), &before, &after));
-
-	_line->get_selectables (earliest, latest, 0.0, 1.0, results);
-	_editor.get_selection ().set (results);
-
-	_editor.commit_reversible_command ();
-	_session->set_dirty ();
 }
 
 void
@@ -1349,3 +1282,10 @@ AutomationTimeAxisView::set_selected_regionviews (RegionSelection& rs)
 		}
 	}
 }
+
+MergeableLine*
+AutomationTimeAxisView::make_merger ()
+{
+	return new MergeableLine (_line, _control, nullptr, boost::bind (&AutomationTimeAxisView::set_automation_state, this, _1), boost::bind (RouteTimeAxisView::signal_ctrl_touched, false));
+}
+

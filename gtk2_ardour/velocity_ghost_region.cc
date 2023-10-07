@@ -125,6 +125,7 @@ VelocityGhostRegion::add_note (NoteBase* nb)
 
 	GhostEvent* event = new GhostEvent (nb, _note_group, l);
 	events.insert (std::make_pair (nb->note(), event));
+	_optimization_iterator = events.end();
 
 	l->Event.connect (sigc::bind (sigc::mem_fun (*this, &VelocityGhostRegion::lollevent), event));
 	l->set_ignore_events (true);
@@ -137,10 +138,11 @@ VelocityGhostRegion::add_note (NoteBase* nb)
 	MidiStreamView* mv = midi_view();
 
 	if (mv) {
-		if (!nb->item()->visible()) {
-			l->hide();
-		} else {
+		MidiRegionView* mrv = dynamic_cast<MidiRegionView*> (&parent_rv);
+		if (mrv->note_in_region_time_range (nb->note())) {
 			set_size_and_position (*event);
+		} else {
+			l->hide();
 		}
 	}
 }
@@ -151,7 +153,7 @@ VelocityGhostRegion::set_size_and_position (GhostEvent& ev)
 	ArdourCanvas::Lollipop* l = dynamic_cast<ArdourCanvas::Lollipop*> (ev.item);
 	const double available_height = base_rect->y1();
 	const double actual_height = (ev.event->note()->velocity() / 127.0) * available_height;
-	l->set (ArdourCanvas::Duple (ev.event->x0() + lollipop_radius, base_rect->y1() - actual_height), actual_height, lollipop_radius);
+	l->set (ArdourCanvas::Duple (ev.event->x0(), base_rect->y1() - actual_height), actual_height, lollipop_radius);
 }
 
 void
@@ -177,11 +179,7 @@ VelocityGhostRegion::remove_note (NoteBase* nb)
 void
 VelocityGhostRegion::set_colors ()
 {
-	if (selected) {
-		base_rect->set_fill_color (UIConfiguration::instance().color ("ghost track base"));
-	} else {
-		base_rect->set_fill_color (UIConfiguration::instance().color_mod ("ghost track base", "ghost track midi fill"));
-	}
+	base_rect->set_fill_color (UIConfiguration::instance().color_mod ("ghost track base", "ghost track midi fill"));
 
 	for (auto & gev : events) {
 		gev.second->item->set_fill_color (gev.second->event->base_color());

@@ -215,6 +215,10 @@ static const gchar *_record_mode_strings[] = {
 static bool
 ask_about_configuration_copy (string const & old_dir, string const & new_dir, int version)
 {
+	/* guess screen scaling */
+	UIConfiguration::instance ().set_font_scale (1024 * guess_default_ui_scale ());
+	UIConfiguration::instance ().reset_dpi ();
+
 	ArdourMessageDialog msg (string_compose (
 	                          _("%1 %2.x has discovered configuration files from %1 %3.x.\n\n"
 	                            "Would you like these files to be copied and used for %1 %2.x?\n\n"
@@ -367,6 +371,7 @@ ARDOUR_UI::ARDOUR_UI (int *argcp, char **argvp[], const char* localedir)
 	record_mode_strings = I18N (_record_mode_strings);
 
 	if (ARDOUR::handle_old_configuration_files (boost::bind (ask_about_configuration_copy, _1, _2, _3))) {
+
 		{
 			/* "touch" the been-here-before path now that config has been migrated */
 			PBD::ScopedFileDescriptor fout (g_open (been_here_before_path ().c_str(), O_CREAT|O_TRUNC|O_RDWR, 0666));
@@ -2345,12 +2350,11 @@ ARDOUR_UI::route_setup_info (const std::string& script_path)
 		return rv;
 	}
 
-	LuaState lua;
+	LuaState lua (true, true);
 	lua.Print.connect (&_lua_print);
-	lua.sandbox (true);
 
 	lua_State* L = lua.getState();
-	LuaInstance::register_classes (L);
+	LuaInstance::register_classes (L, true);
 	LuaBindings::set_session (L, _session);
 	luabridge::push <PublicEditor *> (L, &PublicEditor::instance());
 	lua_setglobal (L, "Editor");
@@ -2398,12 +2402,11 @@ ARDOUR_UI::meta_route_setup (const std::string& script_path)
 		return;
 	}
 
-	LuaState lua;
+	LuaState lua (true, true);
 	lua.Print.connect (&_lua_print);
-	lua.sandbox (true);
 
 	lua_State* L = lua.getState();
-	LuaInstance::register_classes (L);
+	LuaInstance::register_classes (L, true);
 	LuaBindings::set_session (L, _session);
 	luabridge::push <PublicEditor *> (L, &PublicEditor::instance());
 	lua_setglobal (L, "Editor");
@@ -2444,12 +2447,13 @@ ARDOUR_UI::meta_session_setup (const std::string& script_path)
 		return;
 	}
 
-	LuaState lua;
+	bool sandbox = UIConfiguration::instance().get_sandbox_all_lua_scripts ();
+
+	LuaState lua (true, sandbox);
 	lua.Print.connect (&_lua_print);
-	lua.sandbox (false);
 
 	lua_State* L = lua.getState();
-	LuaInstance::register_classes (L);
+	LuaInstance::register_classes (L, sandbox);
 	LuaBindings::set_session (L, _session);
 	luabridge::push <PublicEditor *> (L, &PublicEditor::instance());
 	lua_setglobal (L, "Editor");

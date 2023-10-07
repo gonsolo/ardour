@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Paul Davis <paul@linuxaudiosystems.com>
+ * Copyright (C) 2023 Paul Davis <paul@linuxaudiosystems.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,20 +16,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "temporal/superclock.h"
+#ifndef __gtk2_ardour_line_merger__
+#define __gtk2_ardour_line_merger__
 
-int Temporal::most_recent_engine_sample_rate = 48000; /* have to pick something as a default */
+class MergeableLine;
 
-Temporal::superclock_t Temporal::_superclock_ticks_per_second = 0;
-
-void
-Temporal::set_sample_rate (int sr)
+class LineMerger 
 {
-	most_recent_engine_sample_rate = sr;
-}
+   public:
+	virtual ~LineMerger() {}
+	virtual MergeableLine* make_merger () = 0;
+};
 
-void
-Temporal::set_superclock_ticks_per_second (Temporal::superclock_t sc)
-{
-	_superclock_ticks_per_second = sc;
-}
+#endif /* __gtk2_ardour_line_merger__ */

@@ -1343,7 +1343,6 @@ private:
 	void toggle_solo ();
 	void toggle_solo_isolate ();
 	void toggle_mute ();
-	void toggle_region_lock_style ();
 
 	void play_solo_selection (bool restart);
 
@@ -1391,7 +1390,7 @@ private:
 	void normalize_region ();
 	void adjust_region_gain (bool up);
 	void reset_region_gain ();
-	ARDOUR::Quantize get_quantize_op (bool force_dialog, bool& did_show_dialog);
+	ARDOUR::Quantize* get_quantize_op ();
 	void apply_midi_note_edit_op (ARDOUR::MidiOperator& op, const RegionSelection& rs);
 	void set_tempo_curve_range (double& max, double& min) const;
 	void quantize_region ();
@@ -1409,11 +1408,11 @@ private:
 	void fork_regions_from_unselected ();
 
 	void do_insert_time ();
-	void insert_time (Temporal::timepos_t const &, Temporal::timecnt_t const &, Editing::InsertTimeOption, bool, bool, bool, bool, bool, bool);
+	void insert_time (Temporal::timepos_t const &, Temporal::timecnt_t const &, Editing::InsertTimeOption, bool, bool, bool, bool);
 
 	void do_remove_time ();
-	void remove_time (Temporal::timepos_t const & pos, Temporal::timecnt_t const & distance, Editing::InsertTimeOption opt, bool ignore_music_glue, bool markers_too,
-	                  bool glued_markers_too, bool locked_markers_too, bool tempo_too);
+	void remove_time (Temporal::timepos_t const & pos, Temporal::timecnt_t const & distance, Editing::InsertTimeOption opt, bool markers_too,
+	                  bool locked_markers_too, bool tempo_too);
 
 	void tab_to_transient (bool forward);
 
@@ -1645,12 +1644,6 @@ private:
 
 	void reverse_selection ();
 	void edit_envelope ();
-
-	double last_scrub_x;
-	int scrubbing_direction;
-	int scrub_reversals;
-	int scrub_reverse_distance;
-	void scrub (samplepos_t, double);
 
 	void set_punch_start_from_edit_point ();
 	void set_punch_end_from_edit_point ();
@@ -1976,7 +1969,6 @@ private:
 	ArdourWidgets::ArdourButton mouse_timefx_button;
 	ArdourWidgets::ArdourButton mouse_grid_button;
 	ArdourWidgets::ArdourButton mouse_content_button;
-	ArdourWidgets::ArdourButton mouse_audition_button;
 	ArdourWidgets::ArdourButton mouse_cut_button;
 
 	ArdourWidgets::ArdourButton smart_mode_button;
@@ -2618,7 +2610,6 @@ private:
 	friend class RubberbandSelectDrag;
 	friend class EditorRubberbandSelectDrag;
 	friend class TimeFXDrag;
-	friend class ScrubDrag;
 	friend class SelectionDrag;
 	friend class RangeMarkerBarDrag;
 	friend class MouseZoomDrag;

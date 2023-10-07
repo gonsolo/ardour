@@ -274,8 +274,6 @@ Editor::get_mouse_mode_action(MouseMode m) const
 		return ActionManager::get_action (X_("MouseMode"), X_("set-mouse-mode-grid"));
 	case MouseContent:
 		return ActionManager::get_action (X_("MouseMode"), X_("set-mouse-mode-content"));
-	case MouseAudition:
-		return ActionManager::get_action (X_("MouseMode"), X_("set-mouse-mode-audition"));
 	}
 	return Glib::RefPtr<Action>();
 }
@@ -291,12 +289,6 @@ Editor::set_mouse_mode (MouseMode m, bool force)
 		return;
 	}
 
-	if (ARDOUR::Profile->get_mixbus()) {
-		if (m == MouseAudition) {
-			m = MouseRange;
-		}
-	}
-
 	Glib::RefPtr<Action>       act  = get_mouse_mode_action(m);
 	Glib::RefPtr<ToggleAction> tact = Glib::RefPtr<ToggleAction>::cast_dynamic(act);
 
@@ -310,12 +302,6 @@ Editor::set_mouse_mode (MouseMode m, bool force)
 void
 Editor::mouse_mode_toggled (MouseMode m)
 {
-	if (ARDOUR::Profile->get_mixbus()) {
-		if (m == MouseAudition)  {
-			m = MouseRange;
-		}
-	}
-
 	Glib::RefPtr<Action>       act  = get_mouse_mode_action(m);
 	Glib::RefPtr<ToggleAction> tact = Glib::RefPtr<ToggleAction>::cast_dynamic(act);
 
@@ -325,13 +311,6 @@ Editor::mouse_mode_toggled (MouseMode m)
 		 * jiffy.
 		 */
 		return;
-	}
-
-	if (_session && mouse_mode == MouseAudition) {
-		/* stop transport and reset default speed to avoid oddness with
-		   auditioning */
-		_session->request_stop ();
-		_session->reset_transport_speed ();
 	}
 
 	const bool was_internal = internal_editing();
@@ -408,16 +387,11 @@ Editor::mouse_mode_toggled (MouseMode m)
 		*/
 		ActionManager::set_sensitive (_midi_actions, true);
 
-		/* mark "magic widget focus" so that we handle key events
-		 * correctly
-		 */
-		Keyboard::magic_widget_grab_focus ();
 	} else {
 		/* undo some of the above actions, since we're not in internal
 		   edit mode.
 		*/
 		ActionManager::set_sensitive (_midi_actions, false);
-		Keyboard::magic_widget_drop_focus ();
 	}
 
 	if (was_internal && !internal_editing()) {
@@ -492,14 +466,6 @@ Editor::update_time_selection_display ()
 		selection->clear_tracks ();
 		break;
 
-	case MouseAudition:
-		/*Don't lose lines or points if no action in this mode */
-		selection->clear_regions ();
-		selection->clear_playlists ();
-		selection->clear_time ();
-		selection->clear_tracks ();
-		break;
-
 	case MouseGrid:
 	default:
 		/*Clear everything */
@@ -567,7 +533,6 @@ Editor::button_selection (ArdourCanvas::Item* item, GdkEvent* event, ItemType it
 	}
 
 	if (((mouse_mode != MouseObject) &&
-	     (mouse_mode != MouseAudition || item_type != RegionItem) &&
 	     (mouse_mode != MouseTimeFX || item_type != RegionItem) &&
 	     (mouse_mode != MouseDraw) &&
 	     (mouse_mode != MouseContent || item_type == RegionItem)) ||
@@ -642,7 +607,7 @@ Editor::button_selection (ArdourCanvas::Item* item, GdkEvent* event, ItemType it
 		case ControlPointItem:
 			/* for object/track exclusivity, we don't call set_selected_track_as_side_effect (op); */
 
-			if (eff_mouse_mode == MouseContent) {
+			if (eff_mouse_mode != MouseRange) {
 				if (event->button.button != 3) {
 					_mouse_changed_selection |= set_selected_control_point_from_click (press, op);
 				} else {
@@ -694,7 +659,7 @@ Editor::button_selection (ArdourCanvas::Item* item, GdkEvent* event, ItemType it
 			break;
 
 		case AutomationLineItem:
-			if (eff_mouse_mode != MouseRange) {
+			if (eff_mouse_mode != MouseRange && eff_mouse_mode != MouseDraw) {
 				AutomationLine* al = reinterpret_cast<AutomationLine*> (item->get_data ("line"));
 				std::list<Selectable*> selectables;
 				double mx = event->button.x;
@@ -1268,6 +1233,11 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			_drags->set (new LineDrag (this, item), event);
 			return true;
 
+		case ControlPointItem:
+			_drags->set (new ControlPointDrag (this, item), event);
+			return true;
+			break;
+
 		case SelectionItem:
 			{
 				if (selection->time.empty ()) {
@@ -1356,15 +1326,13 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				break;
 			}
 
-		case ControlPointItem:
-			item = &(static_cast<ControlPoint*> (item->get_data ("control_point"))->line().grab_item());
-			/*fallthrough*/
 		case AutomationLineItem:
+			/* fallthrough */
 		case AutomationTrackItem:
 			{
 				AutomationTimeAxisView* atv = static_cast<AutomationTimeAxisView*> (item->get_data ("trackview"));
 				if (atv) {
-					_drags->set (new AutomationDrawDrag (this, atv->base_item(), Temporal::AudioTime), event);
+					_drags->set (new AutomationDrawDrag (this, nullptr, atv->base_item(), Temporal::AudioTime), event);
 				}
 			}
 			break;
@@ -1387,6 +1355,14 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				_drags->set (new RegionCreateDrag (this, item, clicked_axisview), event);
 			}
 			return true;
+		case RegionItem: {
+			RegionView* rv;
+			if ((rv = dynamic_cast<RegionView*> (clicked_regionview))) {
+				ArdourCanvas::Rectangle* r = dynamic_cast<ArdourCanvas::Rectangle*> (rv->get_canvas_frame());
+				_drags->set (new AutomationDrawDrag (this, rv->get_canvas_group(), *r, Temporal::AudioTime), event);
+			}
+		}
+			break;
 
 		default:
 			break;
@@ -1408,15 +1384,6 @@ Editor::button_press_handler_1 (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			_drags->set (new TimeFXDrag (this, item, clicked_regionview, selection->regions.by_layer(), drag_time_domain (clicked_regionview->region())), event);
 			return true;
 		}
-		break;
-
-	case MouseAudition:
-		_drags->set (new ScrubDrag (this, item), event, _cursors->transparent);
-		scrub_reversals = 0;
-		scrub_reverse_distance = 0;
-		last_scrub_x = event->button.x;
-		scrubbing_direction = 0;
-		return true;
 		break;
 
 	default:
@@ -1919,10 +1886,20 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 				   points when doing this.
 				*/
 				AudioRegionView* arv = dynamic_cast<AudioRegionView*> (clicked_regionview);
-				if (!were_dragging && arv) {
-					bool with_guard_points = Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier);
-					arv->add_gain_point_event (item, event, with_guard_points);
+
+				if (!were_dragging) {
+					if (arv) {
+						bool with_guard_points = Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier);
+						arv->add_gain_point_event (item, event, with_guard_points);
+					}
+				} else {
+					AutomationRegionView* atv = dynamic_cast<AutomationRegionView*> (clicked_regionview);
+
+					if (atv) {
+						atv->add_automation_event (event);
+					}
 				}
+
 				return true;
 				break;
 			}
@@ -1943,24 +1920,8 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 
 		case MouseGrid:
 			/* MouseGrid clicks are handled by _canvas_grid_zone */
-			assert (0);
+			fatal << _("programming error: MouseGrid clicks are handled by _canvas_grid_zone!") << endmsg;
 			abort(); /*NOTREACHED*/
-			break;
-
-		case MouseAudition:
-			if (scrubbing_direction == 0) {
-				/* no drag, just a click */
-				switch (item_type) {
-				case RegionItem:
-					play_selected_region ();
-					break;
-				default:
-					break;
-				}
-			} else if (_session) {
-				/* make sure we stop */
-				_session->request_stop ();
-			}
 			break;
 
 		default:
@@ -2267,85 +2228,6 @@ Editor::leave_handler (ArdourCanvas::Item* item, GdkEvent*, ItemType item_type)
 	}
 
 	return ret;
-}
-
-void
-Editor::scrub (samplepos_t sample, double current_x)
-{
-	double delta;
-
-	if (scrubbing_direction == 0) {
-		/* first move */
-		_session->request_locate (sample, false, MustStop);
-		_session->request_transport_speed (0.1);
-		scrubbing_direction = 1;
-
-	} else {
-
-		if (last_scrub_x > current_x) {
-
-			/* pointer moved to the left */
-
-			if (scrubbing_direction > 0) {
-
-				/* we reversed direction to go backwards */
-
-				scrub_reversals++;
-				scrub_reverse_distance += (int) (last_scrub_x - current_x);
-
-			} else {
-
-				/* still moving to the left (backwards) */
-
-				scrub_reversals = 0;
-				scrub_reverse_distance = 0;
-
-				delta = 0.01 * (last_scrub_x - current_x);
-				_session->request_transport_speed_nonzero (_session->actual_speed() - delta);
-			}
-
-		} else {
-			/* pointer moved to the right */
-
-			if (scrubbing_direction < 0) {
-				/* we reversed direction to go forward */
-
-				scrub_reversals++;
-				scrub_reverse_distance += (int) (current_x - last_scrub_x);
-
-			} else {
-				/* still moving to the right */
-
-				scrub_reversals = 0;
-				scrub_reverse_distance = 0;
-
-				delta = 0.01 * (current_x - last_scrub_x);
-				_session->request_transport_speed_nonzero (_session->actual_speed() + delta);
-			}
-		}
-
-		/* if there have been more than 2 opposite motion moves detected, or one that moves
-		   back more than 10 pixels, reverse direction
-		*/
-
-		if (scrub_reversals >= 2 || scrub_reverse_distance > 10) {
-
-			if (scrubbing_direction > 0) {
-				/* was forwards, go backwards */
-				_session->request_transport_speed (-0.1);
-				scrubbing_direction = -1;
-			} else {
-				/* was backwards, go forwards */
-				_session->request_transport_speed (0.1);
-				scrubbing_direction = 1;
-			}
-
-			scrub_reverse_distance = 0;
-			scrub_reversals = 0;
-		}
-	}
-
-	last_scrub_x = current_x;
 }
 
 GridType
@@ -3110,7 +2992,7 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		if (after_after) {
 			after = after_after;
 		} else {
-			at_end = true; 
+			at_end = true;
 		}
 
 	} else if (ramped) {
@@ -3130,6 +3012,7 @@ Editor::choose_mapping_drag (ArdourCanvas::Item* item, GdkEvent* event)
 		TempoPoint& added = const_cast<TempoPoint&> (map->set_tempo (copied_no_ramp, bbt));
 		focus = &added;
 		reset_tempo_marks ();
+		reset_bbt_marks ();
 	}
 
 	/* Reversible commands get named here, now that we understand what we're doing */

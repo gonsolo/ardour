@@ -161,14 +161,6 @@ class /*LIBTEMPORAL_API*/ Point : public point_hook, public MapOwned  {
  */
 
 class LIBTEMPORAL_API Tempo {
-  private:
-	/* beats per minute * big_numerator => rational number expressing (possibly fractional) bpm as superbeats-per-minute
-	 *
-	 * It is not required that big_numerator equal superclock_ticks_per_second but since the values in both cases have similar
-	 * desired properties (many, many factors), it doesn't hurt to use the same number.
-	 */
-	static const superclock_t big_numerator = 508032000; // 2^10 * 3^4 * 5^3 * 7^2
-
   public:
 	enum Type {
 		Ramped,
@@ -189,8 +181,6 @@ class LIBTEMPORAL_API Tempo {
 		, _enpm (npm)
 		, _superclocks_per_note_type (double_npm_to_scpn (npm))
 		, _end_superclocks_per_note_type (double_npm_to_scpn (npm))
-		, _super_note_type_per_second (double_npm_to_snps (npm))
-		, _end_super_note_type_per_second (double_npm_to_snps (npm))
 		, _note_type (note_type)
 		, _locked_to_meter (false)
 		, _continuing (false)
@@ -201,8 +191,6 @@ class LIBTEMPORAL_API Tempo {
 		, _enpm (npm)
 		, _superclocks_per_note_type (double_npm_to_scpn (npm))
 		, _end_superclocks_per_note_type (double_npm_to_scpn (enpm))
-		, _super_note_type_per_second (double_npm_to_snps (npm))
-		, _end_super_note_type_per_second (double_npm_to_snps (enpm))
 		, _note_type (note_type)
 		, _locked_to_meter (false)
 		, _continuing (false)
@@ -220,7 +208,6 @@ class LIBTEMPORAL_API Tempo {
 	void   set_note_types_per_minute (double npm);
 
 	int note_type () const { return _note_type; }
-	Beats note_type_as_beats () const { return Beats (0, (1920 * 4) / _note_type); }
 
 	superclock_t superclocks_per_note_type () const {
 		return _superclocks_per_note_type;
@@ -239,15 +226,6 @@ class LIBTEMPORAL_API Tempo {
 	}
 	superclock_t end_superclocks_per_quarter_note () const {
 		return end_superclocks_per_note_type (4);
-	}
-	superclock_t superclocks_per_ppqn () const {
-		return superclocks_per_quarter_note() / ticks_per_beat;
-	}
-
-	static void superbeats_to_beats_ticks (int64_t sb, int32_t& b, int32_t& t) {
-		b = sb / big_numerator;
-		int64_t remain = sb - (b * big_numerator);
-		t = PBD::muldiv_round (Temporal::ticks_per_beat, remain, big_numerator);
 	}
 
 	bool locked_to_meter ()  const { return _locked_to_meter; }
@@ -278,21 +256,15 @@ class LIBTEMPORAL_API Tempo {
 			_continuing != other._continuing;
 	}
 
-	uint64_t super_note_type_per_second() const { return _super_note_type_per_second; }
-	uint64_t end_super_note_type_per_second() const { return _end_super_note_type_per_second; }
-
   protected:
 	double       _npm;
 	double       _enpm;
 	superclock_t _superclocks_per_note_type;
 	superclock_t _end_superclocks_per_note_type;
-	uint64_t     _super_note_type_per_second;
-	uint64_t     _end_super_note_type_per_second;
 	int8_t       _note_type;
 	bool         _locked_to_meter; /* XXX name has unclear meaning with nutempo */
 	bool         _continuing;
 
-	static inline uint64_t     double_npm_to_snps (double npm) { return (uint64_t) llround (npm * big_numerator / 60); }
 	static inline superclock_t double_npm_to_scpn (double npm) { return (superclock_t) llround ((60./npm) * superclock_ticks_per_second()); }
 
   protected:
@@ -490,7 +462,6 @@ class LIBTEMPORAL_API TempoMetric
 	superclock_t end_superclocks_per_note_type () const {return _tempo->end_superclocks_per_note_type (); }
 	superclock_t superclocks_per_note_type (int note_type) const {return _tempo->superclocks_per_note_type (note_type); }
 	superclock_t superclocks_per_quarter_note () const {return _tempo->superclocks_per_quarter_note (); }
-	superclock_t superclocks_per_ppqn () const {return _tempo->superclocks_per_ppqn (); }
 
 	int note_type () const { return _tempo->note_type(); }
 	int divisions_per_bar () const { return _meter->divisions_per_bar(); }
@@ -711,7 +682,7 @@ class LIBTEMPORAL_API GridIterator
   private:
 	bool             valid;
 
-	TempoMap const * map; /* nullptr or the map instance this GridIterator 
+	TempoMap const * map; /* nullptr or the map instance this GridIterator
 	                       * was last used with.
 	                       */
 };
@@ -735,7 +706,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	 * one could hold the map for, etc.
 	 *
 	 * Elsewhere in the codebase, we use RCU to solve this sort of
-	 * issue. For example, if we need to operate an the current list of
+	 * issue. For example, if we need to operate on the current list of
 	 * Routes, we get read-only copy of the list, and iterate over it,
 	 * knowing that even if the canonical version is being changed, the
 	 * copy we are using will not.
@@ -792,6 +763,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	/* and now on with the rest of the show ... */
 
   public:
+	LIBTEMPORAL_API TempoMap () {}
 	LIBTEMPORAL_API TempoMap (Tempo const& initial_tempo, Meter const& initial_meter);
 	LIBTEMPORAL_API TempoMap (TempoMap const&);
 	LIBTEMPORAL_API TempoMap (XMLNode const&, int version);
@@ -1120,6 +1092,7 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 		   will all be the non-const versions of these methods.
 		*/
 
+		if (_tempos.size() == 1 && _meters.size() == 1) { t = &_tempos.front(); m = &_meters.front();  return _points.end(); }
 		return _get_tempo_and_meter<non_const_traits<superclock_t, superclock_t> > (t, m, &Point::sclock, sc, _points.begin(), _points.end(), &_tempos.front(), &_meters.front(), can_match, ret_iterator_after_not_at);
 	}
 
@@ -1127,18 +1100,46 @@ class /*LIBTEMPORAL_API*/ TempoMap : public PBD::StatefulDestructible
 	 * other similar call sites where we do not modify the map
 	 */
 
-	Points::const_iterator  get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, superclock_t sc, bool can_match, bool ret_iterator_after_not_at) const {
+	Points::const_iterator get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, superclock_t sc, bool can_match, bool ret_iterator_after_not_at) const {
+		if (_tempos.size() == 1 && _meters.size() == 1) { t = &_tempos.front(); m = &_meters.front();  return _points.end(); }
 		return _get_tempo_and_meter<const_traits<superclock_t, superclock_t> > (t, m, &Point::sclock, sc, _points.begin(), _points.end(), &_tempos.front(), &_meters.front(), can_match, ret_iterator_after_not_at);
 	}
-	Points::const_iterator  get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, Beats const & b, bool can_match, bool ret_iterator_after_not_at) const {
+	Points::const_iterator get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, Beats const & b, bool can_match, bool ret_iterator_after_not_at) const {
+		if (_tempos.size() == 1 && _meters.size() == 1) { t = &_tempos.front(); m = &_meters.front();  return _points.end(); }
 		return _get_tempo_and_meter<const_traits<Beats const &, Beats> > (t, m, &Point::beats, b, _points.begin(), _points.end(), &_tempos.front(), &_meters.front(), can_match, ret_iterator_after_not_at);
 	}
-	Points::const_iterator  get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, timepos_t const & pos, bool can_match, bool ret_iterator_after_not_at) const {
-		if (pos.time_domain() == BeatTime) {
-			return get_tempo_and_meter (t, m, pos.beats(), can_match, ret_iterator_after_not_at);
-		} else {
-			return get_tempo_and_meter (t, m, pos.superclocks(), can_match, ret_iterator_after_not_at);
+	Points::const_iterator get_tempo_and_meter (TempoPoint const *& t, MeterPoint const *& m, BBT_Argument const & bbt, bool can_match, bool ret_iterator_after_not_at) const {
+
+		if (_tempos.size() == 1 && _meters.size() == 1) { t = &_tempos.front(); m = &_meters.front();  return _points.end(); }
+
+		/* Skip through the tempo map to find the tempo and meter in
+		 * effect at the bbt's "reference" time, and use them as the
+		 * starting point for the normal operation of
+		 * _get_tempo_and_meter ()
+		 */
+
+		Tempos::const_iterator tp = _tempos.begin();
+		Meters::const_iterator mp = _meters.begin();
+		superclock_t ref = bbt.reference();
+
+		if (ref != 0) {
+			while (tp != _tempos.end()) {
+				Tempos::const_iterator nxt = tp; ++nxt;
+				if (nxt == _tempos.end() || nxt->sclock() > ref) {
+					break;
+				}
+				tp = nxt;
+			}
+			while (mp != _meters.end()) {
+				Meters::const_iterator nxt = mp; ++nxt;
+				if (nxt == _meters.end() || mp->sclock() > ref) {
+					break;
+				}
+				mp = nxt;
+			}
 		}
+
+		return _get_tempo_and_meter<const_traits<BBT_Time const &, BBT_Time> > (t, m, &Point::bbt, bbt, _points.begin(), _points.end(), &(*tp), &(*mp), can_match, ret_iterator_after_not_at);
 	}
 
 	/* This is private, and should not be callable from outside the map

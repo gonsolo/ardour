@@ -256,7 +256,7 @@ MidiRegionView::MidiRegionView (const MidiRegionView& other, std::shared_ptr<Mid
 void
 MidiRegionView::init (bool /*wfd*/)
 {
-	DisplaySuspender ds (*this);
+	DisplaySuspender ds (*this, true);
 
 	PublicEditor::DropDownKeys.connect (sigc::mem_fun (*this, &MidiRegionView::drop_down_keys));
 
@@ -1740,17 +1740,21 @@ MidiRegionView::start_playing_midi_chord (vector<std::shared_ptr<NoteType> > not
 	player->play ();
 }
 
+bool
+MidiRegionView::note_in_region_time_range (const std::shared_ptr<NoteType> note) const
+{
+	const std::shared_ptr<ARDOUR::MidiRegion> midi_reg = midi_region();
+	return  (timepos_t (note->time()) >= _region->start()) && (timepos_t (note->time()) < _region->start() + _region->length());
+}
 
 bool
 MidiRegionView::note_in_region_range (const std::shared_ptr<NoteType> note, bool& visible) const
 {
 	const std::shared_ptr<ARDOUR::MidiRegion> midi_reg = midi_region();
 
-	/* must compare double explicitly as Beats::operator< rounds to ppqn */
-	const bool outside = (timepos_t (note->time()) < _region->start()) || (timepos_t (note->time()) >= _region->start() + _region->length());
+	const bool outside = !note_in_region_time_range (note);
 
-	visible = (note->note() >= _current_range_min) &&
-		(note->note() <= _current_range_max);
+	visible = (note->note() >= _current_range_min) && (note->note() <= _current_range_max);
 
 	return !outside;
 }
@@ -4737,23 +4741,20 @@ MidiRegionView::note_to_y(uint8_t note) const
 void
 MidiRegionView::quantize_selected_notes ()
 {
+	std::cerr << "QSN!\n";
+
 	RegionSelection rs;
 	rs.push_back (this);
 
-	bool did_show_dialog;
-	Quantize quant = trackview.editor().get_quantize_op (false, did_show_dialog);
-	bool success;
+	Quantize* quant = trackview.editor().get_quantize_op ();
 
-	if (!did_show_dialog) {
-		/* use global grid */
-		quant.set_start_grid (trackview.editor().get_grid_type_as_beats (success, midi_region()->source_position()));
-		if (!success) {
-			return;
-		}
-		quant.set_end_grid (quant.start_grid());
+	if (!quant) {
+		return;
 	}
 
-	trackview.editor().apply_midi_note_edit_op (quant, rs);
+	trackview.editor().apply_midi_note_edit_op (*quant, rs);
+
+	delete quant;
 }
 
 void

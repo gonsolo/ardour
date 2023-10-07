@@ -185,6 +185,9 @@ Playlist::Playlist (std::shared_ptr<const Playlist> other, string namestr, bool 
 	ThawList   thawlist;
 	other->copy_regions (tmp);
 
+	RegionSortByLayer cmp;
+	tmp.sort (cmp);
+
 	in_set_state++;
 
 	for (list<std::shared_ptr<Region> >::iterator x = tmp.begin(); x != tmp.end(); ++x) {
@@ -273,9 +276,9 @@ Playlist::Playlist (std::shared_ptr<const Playlist> other, timepos_t const & sta
 			new_region = RegionFactory::create (region, offset, plist, true, &rlock.thawlist);
 
 			add_region_internal (new_region, position, rlock.thawlist);
+			set_layer (new_region, region->layer ());
 		}
 	}
-
 
 	/* keep track of any dead space at end (for pasting into Ripple or
 	 * RippleAll mode) at the end of construction, any length of cnt beyond
@@ -286,6 +289,8 @@ Playlist::Playlist (std::shared_ptr<const Playlist> other, timepos_t const & sta
 
 	in_set_state--;
 	first_set_state = false;
+
+	relayer ();
 }
 
 void
@@ -983,8 +988,15 @@ Playlist::partition (timepos_t const & start, timepos_t const & end, bool cut)
  *  removed.
  */
 void
-Playlist::partition_internal (timepos_t const & start, timepos_t const & end, bool cutting, ThawList& thawlist)
+Playlist::partition_internal (timepos_t start, timepos_t end, bool cutting, ThawList& thawlist)
 {
+	if (start.time_domain () != end.time_domain () || start.time_domain () != time_domain () || end.time_domain () != time_domain ()) {
+		warning << string_compose (_("Playlist::partition_internal() with time domains mismatch %1 %2 (expected %3 time)"), start, end, time_domain () == Temporal::AudioTime ? "audio" : " music") << endmsg;
+	}
+
+	start.set_time_domain (time_domain ());
+	end.set_time_domain (time_domain ());
+
 	RegionList new_regions;
 
 	{
@@ -1063,7 +1075,7 @@ Playlist::partition_internal (timepos_t const & start, timepos_t const & end, bo
 					plist.add (Properties::automatic, true);
 					plist.add (Properties::left_of_split, true);
 					plist.add (Properties::right_of_split, true);
-					plist.add (Properties::reg_group, Region::get_retained_group_id(true));
+					plist.add (Properties::reg_group, Region::get_region_operation_group_id (current->region_group(), InnerSplit));
 
 					/* see note in ::_split_region()
 					 */
@@ -1083,7 +1095,7 @@ Playlist::partition_internal (timepos_t const & start, timepos_t const & end, bo
 				plist.add (Properties::name, new_name);
 				plist.add (Properties::automatic, true);
 				plist.add (Properties::right_of_split, true);
-				plist.add (Properties::reg_group, Region::get_retained_group_id());
+				plist.add (Properties::reg_group, Region::get_region_operation_group_id (current->region_group(), RightOfSplit));
 
 				region = RegionFactory::create (current, pos1.distance (pos3), plist, true, &thawlist );
 
@@ -1161,7 +1173,7 @@ Playlist::partition_internal (timepos_t const & start, timepos_t const & end, bo
 					plist.add (Properties::name, new_name);
 					plist.add (Properties::automatic, true);
 					plist.add (Properties::right_of_split, true);
-					plist.add (Properties::reg_group, Region::get_retained_group_id());
+					plist.add (Properties::reg_group, Region::get_region_operation_group_id (current->region_group(), RightOfSplit));
 
 					region = RegionFactory::create (current, plist, true, &thawlist);
 
@@ -1313,15 +1325,16 @@ Playlist::paste (std::shared_ptr<Playlist> other, timepos_t const & position, fl
 				for (auto const & r : other->regions) {
 					std::shared_ptr<Region> copy_of_region = RegionFactory::create (r, true, false, &rl1.thawlist);
 
-					/* we want newly-pasted regions to share one (implicit) group-id */
-					copy_of_region->set_region_group(false);
+					/* we want newly-pasted regions to retain prior group-sharing relationship, but with a new group-id */
+					copy_of_region->set_region_group (Region::get_region_operation_group_id(r->region_group(), Paste));
 
 					/* put these new regions on top of all existing ones, but preserve
 					   the ordering they had in the original playlist.
 					*/
 
 					add_region_internal (copy_of_region, r->position() + pos, rl1.thawlist);
-					set_layer (copy_of_region, copy_of_region->layer() + top);
+					copy_of_region->set_layer (r->layer() + top);
+					set_layer (copy_of_region, copy_of_region->layer());
 				}
 				pos += shift;
 			}
@@ -1347,6 +1360,7 @@ Playlist::duplicate (std::shared_ptr<Region> region, timepos_t & position, timec
 
 	while (itimes--) {
 		std::shared_ptr<Region> copy = RegionFactory::create (region, true, false, &rl.thawlist);
+		copy->set_region_group(Region::get_region_operation_group_id(region->region_group(), Paste));
 		add_region_internal (copy, position, rl.thawlist);
 		set_layer (copy, DBL_MAX);
 		position += gap;
@@ -1362,6 +1376,7 @@ Playlist::duplicate (std::shared_ptr<Region> region, timepos_t & position, timec
 			plist.add (Properties::length, length);
 
 			std::shared_ptr<Region> sub = RegionFactory::create (region, plist, true, &rl.thawlist);
+			sub->set_region_group(Region::get_region_operation_group_id(region->region_group(), Paste));
 			add_region_internal (sub, position, rl.thawlist);
 			set_layer (sub, DBL_MAX);
 		}
@@ -1378,6 +1393,7 @@ Playlist::duplicate_until (std::shared_ptr<Region> region, timepos_t & position,
 	while ((position + region->length()).decrement() < end) {
 		std::shared_ptr<Region> copy = RegionFactory::create (region, true, false, &rl.thawlist);
 		add_region_internal (copy, position, rl.thawlist);
+		copy->set_region_group(Region::get_region_operation_group_id(region->region_group(), Paste));
 		set_layer (copy, DBL_MAX);
 		position += gap;
 	}
@@ -1391,6 +1407,7 @@ Playlist::duplicate_until (std::shared_ptr<Region> region, timepos_t & position,
 			plist.add (Properties::length, length);
 
 			std::shared_ptr<Region> sub = RegionFactory::create (region, plist, false, &rl.thawlist);
+			sub->set_region_group(Region::get_region_operation_group_id(region->region_group(), Paste));
 			add_region_internal (sub, position, rl.thawlist);
 			set_layer (sub, DBL_MAX);
 		}
@@ -1435,7 +1452,7 @@ Playlist::duplicate_ranges (std::list<TimelineRange>& ranges, float times)
 }
 
 void
-Playlist::shift (timepos_t const & at, timecnt_t const & distance, bool move_intersected, bool ignore_music_glue)
+Playlist::shift (timepos_t const & at, timecnt_t const & distance, bool move_intersected)
 {
 	PBD::Unwinder<bool> uw (_playlist_shift_active, true);
 	RegionWriteLock rlock (this);
@@ -1456,22 +1473,8 @@ Playlist::shift (timepos_t const & at, timecnt_t const & distance, bool move_int
 			}
 		}
 
-		/* do not move regions glued to music time - that
-		 * has to be done separately.
-		 */
-
-		if (!ignore_music_glue && r->position().time_domain() != Temporal::AudioTime) {
-			fixup.push_back (r);
-			continue;
-		}
-
 		rlock.thawlist.add (r);
 		r->set_position (r->position() + distance);
-	}
-
-	/* XXX: may not be necessary; Region::post_set should do this, I think */
-	for (auto & r : fixup) {
-		r->recompute_position_from_time_domain ();
 	}
 }
 
@@ -1539,7 +1542,7 @@ Playlist::_split_region (std::shared_ptr<Region> region, timepos_t const &  play
 		plist.add (Properties::length, after);
 		plist.add (Properties::name, after_name);
 		plist.add (Properties::right_of_split, true);
-		plist.add (Properties::reg_group, Region::get_retained_group_id());
+		plist.add (Properties::reg_group, Region::get_region_operation_group_id (region->region_group(), RightOfSplit));
 
 		/* same note as above */
 		right = RegionFactory::create (region, before, plist, true, &thawlist);
@@ -1631,24 +1634,28 @@ Playlist::region_bounds_changed (const PropertyChange& what_changed, std::shared
 	}
 
 	if (what_changed.contains (Properties::length)) {
-		/* remove it from the list then add it back in
-		 * the right place again.
-		 */
-
-		RegionSortByPosition cmp;
-
-		RegionList::iterator i = find (regions.begin (), regions.end (), region);
-
-		if (i == regions.end ()) {
-			/* the region bounds are being modified but its not currently
-			 * in the region list. we will use its bounds correctly when/if
-			 * it is added
+		{
+			/* remove it from the list then add it back in
+			 * the right place again.
 			 */
-			return;
+
+			RegionWriteLock rl (this, false);
+			RegionSortByPosition cmp;
+
+			RegionList::iterator i = find (regions.begin (), regions.end (), region);
+
+			if (i == regions.end ()) {
+				/* the region bounds are being modified but its not currently
+				 * in the region list. we will use its bounds correctly when/if
+				 * it is added
+				 */
+				return;
+			}
+
+			regions.erase (i);
+			regions.insert (upper_bound (regions.begin (), regions.end (), region, cmp), region);
 		}
 
-		regions.erase (i);
-		regions.insert (upper_bound (regions.begin (), regions.end (), region, cmp), region);
 
 		if (holding_state ()) {
 			pending_bounds.push_back (region);
@@ -3574,4 +3581,3 @@ Playlist::time_domain_changed ()
 	}
 #endif
 }
-

@@ -328,10 +328,6 @@ Editor::set_selected_control_point_from_click (bool press, Selection::Operation 
 		return false;
 	}
 
-	if (mouse_mode != Editing::MouseContent) {
-		return false;
-	}
-
 	bool ret = false;
 
 	switch (op) {
@@ -1443,8 +1439,6 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 	bool have_unlocked = false;
 	bool have_video_locked = false;
 	bool have_video_unlocked = false;
-	bool have_position_lock_style_audio = false;
-	bool have_position_lock_style_music = false;
 	bool have_muted = false;
 	bool have_unmuted = false;
 	bool have_opaque = false;
@@ -1492,12 +1486,6 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 			have_video_locked = true;
 		} else {
 			have_video_unlocked = true;
-		}
-
-		if (r->position_time_domain() == Temporal::BeatTime) {
-			have_position_lock_style_music = true;
-		} else {
-			have_position_lock_style_audio = true;
 		}
 
 		if (r->muted()) {
@@ -1641,17 +1629,6 @@ Editor::sensitize_the_right_region_actions (bool because_canvas_crossing)
 		// a->set_inconsistent ();
 	}
 
-	a = Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-lock-style"));
-	a->set_active (have_position_lock_style_music && !have_position_lock_style_audio);
-
-	vector<Widget*> proxies = a->get_proxies();
-	for (vector<Widget*>::iterator p = proxies.begin(); p != proxies.end(); ++p) {
-		Gtk::CheckMenuItem* cmi = dynamic_cast<Gtk::CheckMenuItem*> (*p);
-		if (cmi) {
-			cmi->set_inconsistent (have_position_lock_style_music && have_position_lock_style_audio);
-		}
-	}
-
 	a = Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-mute"));
 	a->set_active (have_muted && !have_unmuted);
 	if (have_muted && have_unmuted) {
@@ -1758,13 +1735,10 @@ Editor::region_selection_changed ()
 	//... otherwise the user is confusingly left with selected regions that can't be manipulated.
 	if (!selection->regions.empty() && !internal_editing()) {
 
-		/* if in MouseAudition and there's just 1 region selected
+		/* if in TimeFX mode and there's just 1 region selected
 		 * (i.e. we just clicked on it), leave things as they are
-		 *
-		 * Ditto for TimeFX mode
 		 */
-
-		if (selection->regions.size() > 1 || (mouse_mode != Editing::MouseAudition && mouse_mode != Editing::MouseTimeFX)) {
+		if (selection->regions.size() > 1 || mouse_mode != Editing::MouseTimeFX) {
 			set_mouse_mode (MouseObject, false);
 		}
 	}

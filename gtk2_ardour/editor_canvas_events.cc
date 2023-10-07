@@ -1133,7 +1133,7 @@ Editor::section_rect_event (GdkEvent* ev, Location* loc, ArdourCanvas::Rectangle
 	switch (ev->type) {
 		case GDK_ENTER_NOTIFY:
 			if (UIConfiguration::instance ().get_widget_prelight ()) {
-				rect->set_fill_color (UIConfiguration::instance().color_mod (color, "marker bar"));
+				rect->set_fill_color (Gtkmm2ext::HSV (UIConfiguration::instance().color (color)).lighter (0.25));
 				return true;
 			}
 			break;
@@ -1293,10 +1293,13 @@ Editor::canvas_grid_zone_event (GdkEvent* event)
 	GdkEventScroll scroll;
 	ArdourCanvas::Duple winpos;
 
+
 	switch (event->type) {
 
 		case GDK_BUTTON_PRESS:
-			choose_mapping_drag (_canvas_grid_zone, event);
+			if (event->button.button == 1) {
+				choose_mapping_drag (_canvas_grid_zone, event);
+			}
 			break;
 
 		case GDK_BUTTON_RELEASE:

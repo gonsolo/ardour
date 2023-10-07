@@ -58,7 +58,7 @@ LineSet::compute_bounding_box () const
 		if (_orientation == Horizontal) {
 
 			double y0 = _lines.front().pos - (_lines.front().width/2.0);
-			double y1 = _lines.back().pos - (_lines.back().width/2.0);
+			double y1 = _lines.back().pos + (_lines.back().width/2.0);
 
 			if (fmod (_lines.front().width, 2.)) {
 				y0 -= _lines.front().width * 0.5;
@@ -106,12 +106,12 @@ LineSet::render (Rect const & area, Cairo::RefPtr<Cairo::Context> context) const
 		if (_orientation == Horizontal) {
 			self = Rect (0, l.pos - (l.width/2.0), _extent, l.pos + (l.width/2.0));
 			if (fmod (l.width, 2.)) {
-				self.y0 -= shift;
+				self.y0 += shift;
 			}
 		} else {
 			self = Rect (l.pos - (l.width/2.0), 0, l.pos + (l.width/2.0), _extent);
 			if (fmod (l.width, 2.)) {
-				self.x0 -= shift;
+				self.x0 += shift;
 			}
 		}
 
@@ -128,7 +128,7 @@ LineSet::render (Rect const & area, Cairo::RefPtr<Cairo::Context> context) const
 		/* Not 100% sure that the computation of the invariant
 		 * positions (y and x) below work correctly if the line width
 		 * is not 1.0, but visual inspection suggests it is OK.
-		 * See Cairo FAQ on single pixel lines to understand why we add 0.5
+		 * See doc/cairo-single-pixel-lines lines to understand why we add 0.5
 		 */
 
 		if (_orientation == Horizontal) {

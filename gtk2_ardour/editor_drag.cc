@@ -68,6 +68,7 @@
 #include "editor_drag.h"
 #include "gui_thread.h"
 #include "keyboard.h"
+#include "mergeable_line.h"
 #include "midi_region_view.h"
 #include "midi_selection.h"
 #include "midi_time_axis.h"
@@ -297,6 +298,11 @@ Drag::Drag (Editor* e, ArdourCanvas::Item* i, Temporal::TimeDomain td, bool trac
 {
 }
 
+Drag::~Drag ()
+{
+	DEBUG_TRACE (DEBUG::Drags, "drag destroyed\n");
+}
+
 void
 Drag::set_time_domain (Temporal::TimeDomain td)
 {
@@ -427,6 +433,7 @@ Drag::adjusted_time (timepos_t const& f, GdkEvent const* event, bool snap) const
 		_editor->snap_to_with_modifier (pos, event);
 	}
 
+	pos.set_time_domain (_time_domain);
 	return pos;
 }
 
@@ -1549,6 +1556,8 @@ RegionMoveDrag::motion (GdkEvent* event, bool first_move)
 
 		/* duplicate the regionview(s) and region(s) */
 
+		Region::RegionGroupRetainer rtr;
+
 		list<DraggingView> new_regionviews;
 
 		for (list<DraggingView>::const_iterator i = _views.begin (); i != _views.end (); ++i) {
@@ -1560,6 +1569,7 @@ RegionMoveDrag::motion (GdkEvent* event, bool first_move)
 			std::shared_ptr<Region>             region_copy;
 
 			region_copy = RegionFactory::create (original, true);
+			region_copy->set_region_group( Region::get_region_operation_group_id (original->region_group(), Paste));
 
 			/* need to set this so that the drop zone code can work. This doesn't
 			   actually put the region into the playlist, but just sets a weak pointer
@@ -3614,7 +3624,6 @@ MappingTwistDrag::motion (GdkEvent* event, bool first_move)
 	const double scaling_factor = 0.4 * (spp / 1500.);
 
 	delta += scaling_factor * pixel_distance;
-	std::cerr << "pixels " << pixel_distance << " spp " << spp << " SF " << scaling_factor << " delta = " << delta << std::endl;
 
 	if (_do_ramp) {
 		map->ramped_twist_tempi (prev, focus, next, initial_focus_npm + delta); // was: PRE ... maybe we don't need 2 anymore?
@@ -5430,39 +5439,6 @@ TimeFXDrag::aborted (bool)
 	_primary->get_time_axis_view ().hide_timestretch ();
 }
 
-ScrubDrag::ScrubDrag (Editor* e, ArdourCanvas::Item* i)
-	: Drag (e, i, Temporal::AudioTime)
-{
-	DEBUG_TRACE (DEBUG::Drags, "New ScrubDrag\n");
-}
-
-void
-ScrubDrag::start_grab (GdkEvent* event, Gdk::Cursor*)
-{
-	Drag::start_grab (event);
-}
-
-void
-ScrubDrag::motion (GdkEvent* /*event*/, bool)
-{
-	_editor->scrub (adjusted_current_time (0, false).samples (), _drags->current_pointer_x ());
-}
-
-void
-ScrubDrag::finished (GdkEvent* /*event*/, bool movement_occurred)
-{
-	if (movement_occurred && _editor->session ()) {
-		/* make sure we stop */
-		_editor->session ()->request_stop ();
-	}
-}
-
-void
-ScrubDrag::aborted (bool)
-{
-	/* XXX: TODO */
-}
-
 SelectionDrag::SelectionDrag (Editor* e, ArdourCanvas::Item* i, Operation o)
 	: Drag (e, i, e->default_time_domain ())
 	, _operation (o)
@@ -7255,8 +7231,9 @@ LollipopDrag::setup_pointer_offset ()
 /********/
 
 template<typename OrderedPointList, typename OrderedPoint>
-FreehandLineDrag<OrderedPointList,OrderedPoint>::FreehandLineDrag (Editor* editor, ArdourCanvas::Rectangle& r, Temporal::TimeDomain time_domain)
+FreehandLineDrag<OrderedPointList,OrderedPoint>::FreehandLineDrag (Editor* editor, ArdourCanvas::Item* p, ArdourCanvas::Rectangle& r, Temporal::TimeDomain time_domain)
 	: Drag (editor, &r, time_domain)
+	, parent (p)
 	, base_rect (r)
 	, dragging_line (nullptr)
 	, direction (0)
@@ -7264,7 +7241,7 @@ FreehandLineDrag<OrderedPointList,OrderedPoint>::FreehandLineDrag (Editor* edito
 	, did_snap (false)
 	, line_break_pending (false)
 {
-	DEBUG_TRACE (DEBUG::Drags, "New AutomationDrawDrag\n");
+	DEBUG_TRACE (DEBUG::Drags, "New FreehandLinDrag\n");
 }
 
 template<typename OrderedPointList, typename OrderedPoint>
@@ -7278,10 +7255,11 @@ void
 FreehandLineDrag<OrderedPointList,OrderedPoint>::motion (GdkEvent* ev, bool first_move)
 {
 	if (first_move) {
-		dragging_line = new ArdourCanvas::PolyLine (item());
+		dragging_line = new ArdourCanvas::PolyLine (parent ? parent : item());
 		dragging_line->set_ignore_events (true);
 		dragging_line->set_outline_width (2.0);
 		dragging_line->set_outline_color (UIConfiguration::instance().color ("automation line"));
+		dragging_line->raise_to_top ();
 
 		/* for freehand drawing, we only support left->right direction, for now. */
 		direction = 1;
@@ -7319,10 +7297,20 @@ FreehandLineDrag<OrderedPointList,OrderedPoint>::maybe_add_point (GdkEvent* ev, 
 
 	ArdourCanvas::Rect r = base_rect.item_to_canvas (base_rect.get());
 
+	/* Adjust event coordinates to be relative to the base rectangle */
+
 	double x = pointer_x - r.x0;
 	double y = ev->motion.y - r.y0;
 
-	x = std::max (0., x);
+	if (x < 0) {
+		dragging_line->clear ();
+		drawn_points.clear ();
+		edge_x = 0;
+		return;
+	}
+
+	/* Clamp y coordinate to the area of the base rect */
+
 	y = std::max (0., std::min (r.height(), y));
 
 	bool add_point = false;
@@ -7331,7 +7319,7 @@ FreehandLineDrag<OrderedPointList,OrderedPoint>::maybe_add_point (GdkEvent* ev, 
 	const bool line = Keyboard::modifier_state_equals (ev->motion.state, Keyboard::PrimaryModifier);
 
 	if (direction > 0) {
-		if (line || (pointer_x > edge_x)  || (pointer_x == edge_x && ev->motion.y != last_pointer_y())) {
+		if (x < r.width() && (line || (pointer_x > edge_x) || (pointer_x == edge_x && ev->motion.y != last_pointer_y()))) {
 
 			if (line && dragging_line->get().size() > 1) {
 				pop_point = true;
@@ -7342,7 +7330,7 @@ FreehandLineDrag<OrderedPointList,OrderedPoint>::maybe_add_point (GdkEvent* ev, 
 
 
 	} else if (direction < 0) {
-		if (line || (pointer_x < edge_x) || (pointer_x == edge_x && ev->motion.y != last_pointer_y())) {
+		if (x >= 0. && (line || (pointer_x < edge_x) || (pointer_x == edge_x && ev->motion.y != last_pointer_y()))) {
 
 			if (line && dragging_line->get().size() > 1) {
 				pop_point = true;
@@ -7427,8 +7415,8 @@ FreehandLineDrag<OrderedPointList,OrderedPoint>::mid_drag_key_event (GdkEventKey
 
 /**********************/
 
-AutomationDrawDrag::AutomationDrawDrag (Editor* editor, ArdourCanvas::Rectangle& r, Temporal::TimeDomain time_domain)
-	: FreehandLineDrag<Evoral::ControlList::OrderedPoints,Evoral::ControlList::OrderedPoint> (editor, r, time_domain)
+AutomationDrawDrag::AutomationDrawDrag (Editor* editor, ArdourCanvas::Item* p, ArdourCanvas::Rectangle& r, Temporal::TimeDomain time_domain)
+	: FreehandLineDrag<Evoral::ControlList::OrderedPoints,Evoral::ControlList::OrderedPoint> (editor, p, r, time_domain)
 {
 	DEBUG_TRACE (DEBUG::Drags, "New AutomationDrawDrag\n");
 }
@@ -7451,20 +7439,23 @@ AutomationDrawDrag::finished (GdkEvent* event, bool motion_occured)
 		return;
 	}
 
-	AutomationTimeAxisView* atv = static_cast<AutomationTimeAxisView*>(base_rect.get_data ("trackview"));
-	if (!atv) {
+	LineMerger* lm = static_cast<LineMerger*>(base_rect.get_data ("linemerger"));
+
+	if (!lm) {
 		return;
 	}
 
 	FreehandLineDrag<Evoral::ControlList::OrderedPoints,Evoral::ControlList::OrderedPoint>::finished (event, motion_occured);
 
-	atv->merge_drawn_line (drawn_points, !did_snap);
+	MergeableLine* ml = lm->make_merger();
+	ml->merge_drawn_line (*_editor, *_editor->session(), drawn_points, !did_snap);
+	delete ml;
 }
 
 /*****************/
 
 VelocityLineDrag::VelocityLineDrag (Editor* editor, ArdourCanvas::Rectangle& r, Temporal::TimeDomain time_domain)
-	: FreehandLineDrag<Evoral::ControlList::OrderedPoints,Evoral::ControlList::OrderedPoint> (editor, r, time_domain)
+	: FreehandLineDrag<Evoral::ControlList::OrderedPoints,Evoral::ControlList::OrderedPoint> (editor, nullptr, r, time_domain)
 	, grv (static_cast<VelocityGhostRegion*> (r.get_data ("ghostregionview")))
 	, drag_did_change (false)
 {

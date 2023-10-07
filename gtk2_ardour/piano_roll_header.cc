@@ -59,6 +59,7 @@ PianoRollHeader::PianoRollHeader(MidiStreamView& v)
 	, _saved_top_val (0.0)
 	, _saved_bottom_val (127.0)
 	, _mini_map_display (false)
+	, entered (false)
 {
 	_layout = Pango::Layout::create (get_pango_context());
 	_big_c_layout = Pango::Layout::create (get_pango_context());
@@ -114,14 +115,33 @@ PianoRollHeader::render_scroomer(Cairo::RefPtr<Cairo::Context> cr)
 	double scroomer_width = _scroomer_size;
 
 	Gtkmm2ext::Color c = UIConfiguration::instance().color_mod (X_("scroomer"), X_("scroomer alpha"));
+	Gtkmm2ext::Color save_color (c);
 
-	set_source_rgba(cr, c);
+	if (entered) {
+		c = HSV (c).lighter (0.25).color();
+	}
+
+	set_source_rgba (cr, c);
 	cr->move_to (1.f, scroomer_top);
 	cr->line_to (scroomer_width - 1.f, scroomer_top);
 	cr->line_to (scroomer_width - 1.f, scroomer_bottom);
 	cr->line_to (1.f, scroomer_bottom);
 	cr->line_to (1.f, scroomer_top);
 	cr->fill();
+
+	if (entered) {
+		cr->save ();
+		c = HSV (save_color).lighter (0.9).color();
+		set_source_rgba (cr, c);
+		cr->set_line_width (4.);
+		cr->move_to (1.f, scroomer_top + 2.);
+		cr->line_to (scroomer_width - 1.f, scroomer_top + 2.);
+		cr->stroke ();
+		cr->line_to (scroomer_width - 1.f, scroomer_bottom - 2.);
+		cr->line_to (2.f, scroomer_bottom - 2.);
+		cr->stroke ();
+		cr->restore ();
+	}
 }
 
 bool
@@ -556,9 +576,11 @@ PianoRollHeader::on_motion_notify_event (GdkEventMotion* ev)
 			case TOP:
 				real_val_at_pointer = real_val_at_pointer <= _saved_top_val? _adj.get_value() + _adj.get_page_size() : real_val_at_pointer;
 				real_val_at_pointer = min(127.0, real_val_at_pointer);
-				if (_note_height >= 18.5){
+				if (_note_height >= UIConfiguration::instance().get_max_note_height()){
 					_saved_top_val  = min(_adj.get_value() + _adj.get_page_size (), 127.0);
-				}else _saved_top_val = 0.0;
+				} else {
+					_saved_top_val = 0.0;
+				}
 				//if we are at largest note size & the user is moving down don't do anything
 				//FIXME we are using a heuristic of 18.5 for max note size, but this changes when track size is small to 19.5?
 				_view.apply_note_range (_adj.get_value (), real_val_at_pointer, true);
@@ -566,9 +588,11 @@ PianoRollHeader::on_motion_notify_event (GdkEventMotion* ev)
 			case BOTTOM:
 				real_val_at_pointer = max(0.0, real_val_at_pointer);
 				real_val_at_pointer = real_val_at_pointer >= _saved_bottom_val? _adj.get_value() : real_val_at_pointer;
-				if (_note_height >= 18.5){
+				if (_note_height >= UIConfiguration::instance().get_max_note_height()){
 					_saved_bottom_val  = _adj.get_value();
-				}else _saved_bottom_val = 127.0;
+				} else {
+					_saved_bottom_val = 127.0;
+				}
 				_view.apply_note_range (real_val_at_pointer, _adj.get_value () + _adj.get_page_size (), true);
 				break;
 			default:
@@ -729,6 +753,8 @@ bool
 PianoRollHeader::on_enter_notify_event (GdkEventCrossing* ev)
 {
 	set_note_highlight (_view.y_to_note (ev->y));
+	entered = true;
+	queue_draw ();
 	return true;
 }
 
@@ -745,6 +771,9 @@ PianoRollHeader::on_leave_notify_event (GdkEventCrossing*)
 	}
 
 	_highlighted_note = NO_MIDI_NOTE;
+	entered = false;
+	queue_draw ();
+
 	return true;
 }
 
@@ -805,13 +834,12 @@ void
 PianoRollHeader::on_size_request (Gtk::Requisition* r)
 {
 	if (show_scroomer()) {
-		_scroomer_size = 60.f;
+		_scroomer_size = 60.f * UIConfiguration::instance().get_ui_scale();
 	} else {
-		_scroomer_size = 20.f;
+		_scroomer_size = 20.f * UIConfiguration::instance().get_ui_scale();
 	}
 
-	float w = _scroomer_size + 20.f;
-	r->width = std::max (w, rintf (w * UIConfiguration::instance().get_ui_scale()));
+	r->width = _scroomer_size + 20.f;
 }
 
 void

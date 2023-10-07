@@ -361,6 +361,8 @@ Session::Session (AudioEngine &eng,
 
 	_cue_events.reserve (1024);
 
+	Temporal::reset();
+
 	pre_engine_init (fullpath); // sets _is_new
 
 	setup_lua ();
@@ -390,10 +392,8 @@ Session::Session (AudioEngine &eng,
 		 * so that we have the state ready for ::set_state()
 		 * after the engine is started.
 		 *
-		 * Note that we do NOT try to get the sample rate from
-		 * the template at this time, though doing so would
-		 * be easy if we decided this was an appropriate part
-		 * of a template.
+		 * Note that templates are saved without sample rate, and the
+		 * current / previous sample rate will thus also be used after load_state()
 		 */
 
 		if (!mix_template.empty()) {
@@ -3256,6 +3256,11 @@ Session::add_routes (RouteList& new_routes, bool input_auto_connect, bool output
 
 	update_route_record_state ();
 
+	/* Nobody should hear about changes to PresentationInfo
+	 * (e.g. selection) until all handlers of RouteAdded have executed
+	 */
+
+	PresentationInfo::ChangeSuspender cs;
 	RouteAdded (new_routes); /* EMIT SIGNAL */
 }
 
@@ -5309,7 +5314,6 @@ void
 Session::setup_lua ()
 {
 	lua.Print.connect (&_lua_print);
-	lua.sandbox (true);
 	lua.do_command (
 			"function ArdourSession ()"
 			"  local self = { scripts = {}, instances = {} }"
@@ -7279,6 +7283,15 @@ Session::cut_copy_section (timepos_t const& start_, timepos_t const& end_, timep
 			}
 
 			if (op != DeleteSection) {
+				/* Commit changes so far, to retain undo sequence.
+				 * split() may create a new region replacing the already
+				 * rippled of regions, the length/position of which
+				 * would not be saved/restored.
+				 */
+				pl->rdiff_and_add_command (this);
+				pl->clear_changes ();
+				pl->clear_owned_changes ();
+
 				/* now make space at the insertion-point */
 				pl->split (to);
 				pl->ripple (to, start.distance(end), NULL);
@@ -7288,13 +7301,10 @@ Session::cut_copy_section (timepos_t const& start_, timepos_t const& end_, timep
 				pl->paste (p, to, 1);
 			}
 
-			vector<Command*> cmds;
-			pl->rdiff (cmds);
-			add_commands (cmds);
-			add_command (new StatefulDiffCommand (pl));
+			pl->rdiff_and_add_command (this);
 		}
 
-		for (auto& pl : _playlists->playlists) {
+		for (auto& pl : playlists) {
 			pl->thaw ();
 		}
 

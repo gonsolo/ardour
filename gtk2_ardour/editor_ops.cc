@@ -3126,7 +3126,7 @@ Editor::group_selected_regions ()
 	begin_reversible_command (_("group regions"));
 	for (RegionSelection::iterator i = rs.begin (); i != rs.end (); ++i) {
 		(*i)->region ()->clear_changes ();
-		(*i)->region ()->set_region_group (true);
+		(*i)->region ()->set_region_group (Region::get_retained_group_id(), true);
 		_session->add_command (new StatefulDiffCommand ((*i)->region ()));
 	}
 	commit_reversible_command ();
@@ -3144,7 +3144,7 @@ Editor::ungroup_selected_regions ()
 	begin_reversible_command (_("ungroup regions"));
 	for (RegionSelection::iterator i = rs.begin (); i != rs.end (); ++i) {
 		(*i)->region ()->clear_changes ();
-		(*i)->region ()->unset_region_group ();
+		(*i)->region ()->unset_region_group (true);
 		_session->add_command (new StatefulDiffCommand ((*i)->region ()));
 	}
 	selection->clear_regions ();
@@ -5092,6 +5092,7 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 		case Cut:
 			_xx = RegionFactory::create (r, false);
 			npl->add_region (_xx, timepos_t (first_position.distance (r->position())));
+			npl->set_layer (_xx, r->layer ());
 			pl->remove_region (r);
 			if (should_ripple()) {
 				ripple_list.push_front (Ripple (pl, r->position(), -r->length()));
@@ -5100,7 +5101,9 @@ Editor::cut_copy_regions (CutCopyOp op, RegionSelection& rs)
 
 		case Copy:
 			/* copy region before adding, so we're not putting same object into two different playlists */
-			npl->add_region (RegionFactory::create (r, false), timepos_t (first_position.distance (r->position())));
+			_xx = RegionFactory::create (r, false);
+			npl->add_region (_xx, timepos_t (first_position.distance (r->position())));
+			npl->set_layer (_xx, r->layer ());
 			break;
 
 		case Clear:
@@ -6219,51 +6222,43 @@ Editor::quantize_regions (const RegionSelection& rs)
 		return;
 	}
 
-	bool ignored;
-	Quantize quant = get_quantize_op (true, ignored);
+	Quantize* quant = get_quantize_op ();
 
-	if (!quant.empty()) {
-		apply_midi_note_edit_op (quant, rs);
+	if (!quant) {
+		return;
 	}
+
+	if (!quant->empty()) {
+		apply_midi_note_edit_op (*quant, rs);
+	}
+
+	delete quant;
 }
 
-Quantize
-Editor::get_quantize_op (bool force_dialog, bool& did_show_dialog)
+Quantize*
+Editor::get_quantize_op ()
 {
-	did_show_dialog = false;
-
 	if (!quantize_dialog) {
 		quantize_dialog = new QuantizeDialog (*this);
-		force_dialog = true;
 	}
 
-	if (quantize_dialog->get_mapped()) {
-		/* in progress already */
-		return Quantize (false, false, Temporal::Beats(), Temporal::Beats(), 0., 0., Temporal::Beats());
+	quantize_dialog->present ();
+	int r = quantize_dialog->run ();
+	quantize_dialog->hide ();
+
+
+	if (r != Gtk::RESPONSE_OK) {
+		return nullptr;
 	}
 
-	int r = Gtk::RESPONSE_OK;
-
-	if (force_dialog) {
-		quantize_dialog->present ();
-		r = quantize_dialog->run ();
-		quantize_dialog->hide ();
-		did_show_dialog = true;
-	}
-
-	if (r == Gtk::RESPONSE_OK) {
-		return Quantize (quantize_dialog->snap_start(),
-		                 quantize_dialog->snap_end(),
-		                 quantize_dialog->start_grid_size(),
-		                 quantize_dialog->end_grid_size(),
-		                 quantize_dialog->strength(),
-		                 quantize_dialog->swing(),
-		                 quantize_dialog->threshold());
-	}
-
-	return Quantize (false, false, Temporal::Beats(), Temporal::Beats(), 0., 0., Temporal::Beats());
+	return new Quantize (quantize_dialog->snap_start(),
+	                     quantize_dialog->snap_end(),
+	                     quantize_dialog->start_grid_size(),
+	                     quantize_dialog->end_grid_size(),
+	                     quantize_dialog->strength(),
+	                     quantize_dialog->swing(),
+	                     quantize_dialog->threshold());
 }
-
 
 void
 Editor::legatize_region (bool shrink_only)
@@ -6666,37 +6661,6 @@ Editor::toggle_region_video_lock ()
 	for (RegionSelection::iterator i = rs.begin(); i != rs.end(); ++i) {
 		(*i)->region()->clear_changes ();
 		(*i)->region()->set_video_locked (!(*i)->region()->video_locked());
-		_session->add_command (new StatefulDiffCommand ((*i)->region()));
-	}
-
-	commit_reversible_command ();
-}
-
-void
-Editor::toggle_region_lock_style ()
-{
-	if (_ignore_region_action) {
-		return;
-	}
-
-	RegionSelection rs = get_regions_from_selection_and_entered ();
-
-	if (!_session || rs.empty()) {
-		return;
-	}
-
-	Glib::RefPtr<ToggleAction> a = Glib::RefPtr<ToggleAction>::cast_dynamic (_region_actions->get_action("toggle-region-lock-style"));
-	vector<Widget*> proxies = a->get_proxies();
-	Gtk::CheckMenuItem* cmi = dynamic_cast<Gtk::CheckMenuItem*> (proxies.front());
-
-	assert (cmi);
-
-	begin_reversible_command (_("toggle region lock style"));
-
-	for (RegionSelection::iterator i = rs.begin(); i != rs.end(); ++i) {
-		(*i)->region()->clear_changes ();
-		Temporal::TimeDomain const td = ((*i)->region()->position_time_domain() == Temporal::AudioTime && !cmi->get_inconsistent()) ? Temporal::BeatTime : Temporal::AudioTime;
-		(*i)->region()->set_position_time_domain (td);
 		_session->add_command (new StatefulDiffCommand ((*i)->region()));
 	}
 
@@ -8488,19 +8452,15 @@ Editor::do_insert_time ()
 		d.distance(),
 		d.intersected_region_action (),
 		d.all_playlists(),
-		d.move_glued(),
 		d.move_markers(),
-		d.move_glued_markers(),
 		d.move_locked_markers(),
 		d.move_tempos()
 		);
 }
 
 void
-Editor::insert_time (
-	timepos_t const & pos, timecnt_t const & samples, InsertTimeOption opt,
-	bool all_playlists, bool ignore_music_glue, bool markers_too, bool glued_markers_too, bool locked_markers_too, bool tempo_too
-	)
+Editor::insert_time (timepos_t const & pos, timecnt_t const & samples, InsertTimeOption opt, bool all_playlists, bool markers_too,
+                     bool locked_markers_too, bool tempo_too)
 {
 
 	if (Config->get_edit_mode() == Lock) {
@@ -8551,7 +8511,7 @@ Editor::insert_time (
 				(*i)->split (pos);
 			}
 
-			(*i)->shift (pos, samples, (opt == MoveIntersected), ignore_music_glue);
+			(*i)->shift (pos, samples, (opt == MoveIntersected));
 
 			vector<Command*> cmds;
 			(*i)->rdiff (cmds);
@@ -8581,24 +8541,23 @@ Editor::insert_time (
 
 			Locations::LocationList::const_iterator tmp;
 
-			if ((*i)->position_time_domain() == Temporal::AudioTime || glued_markers_too) {
-				bool const was_locked = (*i)->locked ();
-				if (locked_markers_too) {
-					(*i)->unlock ();
-				}
+			bool const was_locked = (*i)->locked ();
 
-				if ((*i)->start() >= pos) {
-					// move end first, in case we're moving by more than the length of the range
-					if (!(*i)->is_mark()) {
-						(*i)->set_end ((*i)->end() + samples, false);
-					}
-					(*i)->set_start ((*i)->start() + samples, false);
-					moved = true;
-				}
+			if (locked_markers_too) {
+				(*i)->unlock ();
+			}
 
-				if (was_locked) {
-					(*i)->lock ();
+			if ((*i)->start() >= pos) {
+				// move end first, in case we're moving by more than the length of the range
+				if (!(*i)->is_mark()) {
+					(*i)->set_end ((*i)->end() + samples, false);
 				}
+				(*i)->set_start ((*i)->start() + samples, false);
+				moved = true;
+			}
+
+			if (was_locked) {
+				(*i)->lock ();
 			}
 		}
 
@@ -8667,9 +8626,7 @@ Editor::do_remove_time ()
 		d.position(),
 		distance,
 		SplitIntersected,
-		d.move_glued(),
 		d.move_markers(),
-		d.move_glued_markers(),
 		d.move_locked_markers(),
 		d.move_tempos()
 	);
@@ -8677,7 +8634,7 @@ Editor::do_remove_time ()
 
 void
 Editor::remove_time (timepos_t const & pos, timecnt_t const & duration, InsertTimeOption opt,
-                     bool ignore_music_glue, bool markers_too, bool glued_markers_too, bool locked_markers_too, bool tempo_too)
+                     bool markers_too, bool locked_markers_too, bool tempo_too)
 {
 	if (Config->get_edit_mode() == Lock) {
 		error << (_("Cannot insert or delete time when in Lock edit.")) << endmsg;
@@ -8702,7 +8659,7 @@ Editor::remove_time (timepos_t const & pos, timecnt_t const & duration, InsertTi
 			TimelineRange ar(pos, pos+duration, 0);
 			rl.push_back(ar);
 			pl->cut (rl);
-			pl->shift (pos, -duration, true, ignore_music_glue);
+			pl->shift (pos, -duration, true);
 
 			XMLNode &after = pl->get_state();
 
@@ -8729,54 +8686,52 @@ Editor::remove_time (timepos_t const & pos, timecnt_t const & duration, InsertTi
 		Locations::LocationList copy (_session->locations()->list());
 
 		for (Locations::LocationList::iterator i = copy.begin(); i != copy.end(); ++i) {
-			if ((*i)->position_time_domain() == Temporal::AudioTime || glued_markers_too) {
 
-				bool const was_locked = (*i)->locked ();
-				if (locked_markers_too) {
-					(*i)->unlock ();
-				}
+			bool const was_locked = (*i)->locked ();
+			if (locked_markers_too) {
+				(*i)->unlock ();
+			}
 
-				if (!(*i)->is_mark()) {  // it's a range;  have to handle both start and end
-					if ((*i)->end() >= pos
-					&& (*i)->end() < pos+duration
-					&& (*i)->start() >= pos
-					&& (*i)->end() < pos+duration) {  // range is completely enclosed;  kill it
-						moved = true;
-						loc_kill_list.push_back(*i);
-					} else {  // only start or end is included, try to do the right thing
-						// move start before moving end, to avoid trying to move the end to before the start
-						// if we're removing more time than the length of the range
-						if ((*i)->start() >= pos && (*i)->start() < pos+duration) {
-							// start is within cut
-							(*i)->set_start (pos, false);  // bring the start marker to the beginning of the cut
-							moved = true;
-						} else if ((*i)->start() >= pos+duration) {
-							// start (and thus entire range) lies beyond end of cut
-							(*i)->set_start ((*i)->start().earlier (duration), false); // slip the start marker back
-							moved = true;
-						}
-						if ((*i)->end() >= pos && (*i)->end() < pos+duration) {
-							// end is inside cut
-							(*i)->set_end (pos, false);  // bring the end to the cut
-							moved = true;
-						} else if ((*i)->end() >= pos+duration) {
-							// end is beyond end of cut
-							(*i)->set_end ((*i)->end().earlier (duration), false); // slip the end marker back
-							moved = true;
-						}
-
-					}
-				} else if ((*i)->start() >= pos && (*i)->start() < pos+duration) {
+			if (!(*i)->is_mark()) {  // it's a range;  have to handle both start and end
+				if ((*i)->end() >= pos
+				    && (*i)->end() < pos+duration
+				    && (*i)->start() >= pos
+				    && (*i)->end() < pos+duration) {  // range is completely enclosed;  kill it
+					moved = true;
 					loc_kill_list.push_back(*i);
-					moved = true;
-				} else if ((*i)->start() >= pos) {
-					(*i)->set_start ((*i)->start().earlier (duration), false);
-					moved = true;
-				}
+				} else {  // only start or end is included, try to do the right thing
+					// move start before moving end, to avoid trying to move the end to before the start
+					// if we're removing more time than the length of the range
+					if ((*i)->start() >= pos && (*i)->start() < pos+duration) {
+						// start is within cut
+						(*i)->set_start (pos, false);  // bring the start marker to the beginning of the cut
+						moved = true;
+					} else if ((*i)->start() >= pos+duration) {
+						// start (and thus entire range) lies beyond end of cut
+						(*i)->set_start ((*i)->start().earlier (duration), false); // slip the start marker back
+						moved = true;
+					}
+					if ((*i)->end() >= pos && (*i)->end() < pos+duration) {
+						// end is inside cut
+						(*i)->set_end (pos, false);  // bring the end to the cut
+						moved = true;
+					} else if ((*i)->end() >= pos+duration) {
+						// end is beyond end of cut
+						(*i)->set_end ((*i)->end().earlier (duration), false); // slip the end marker back
+						moved = true;
+					}
 
-				if (was_locked) {
-					(*i)->lock ();
 				}
+			} else if ((*i)->start() >= pos && (*i)->start() < pos+duration) {
+				loc_kill_list.push_back(*i);
+				moved = true;
+			} else if ((*i)->start() >= pos) {
+				(*i)->set_start ((*i)->start().earlier (duration), false);
+				moved = true;
+			}
+
+			if (was_locked) {
+				(*i)->lock ();
 			}
 		}
 

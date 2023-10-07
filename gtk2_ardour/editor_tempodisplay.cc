@@ -216,7 +216,7 @@ Editor::reset_tempo_marks ()
 	double min_tempo;
 
 	set_tempo_curve_range (max_tempo, min_tempo);
-	update_tempo_curves (min_tempo, max_tempo, sr);	
+	update_tempo_curves (min_tempo, max_tempo, sr);
 }
 
 void
@@ -905,6 +905,10 @@ Editor::mid_tempo_change (MidTempoChanges what_changed)
 
 	for (auto & b : bbt_marks) {
 		b->update ();
+	}
+
+	for (auto const & lam : location_markers) {
+		lam.second->set_position (lam.first->start(), lam.first->end());
 	}
 
 	update_tempo_based_rulers ();
