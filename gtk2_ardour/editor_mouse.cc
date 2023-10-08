@@ -1881,23 +1881,17 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			switch (item_type) {
 			case RegionItem:
 			{
-				/* check that we didn't drag before releasing, since
-				   its really annoying to create new control
-				   points when doing this.
-				*/
-				AudioRegionView* arv = dynamic_cast<AudioRegionView*> (clicked_regionview);
+				/* since we have FreehandLineDrag we can only get here after a drag, when no movement has happend */
+				assert (were_dragging);
 
-				if (!were_dragging) {
-					if (arv) {
-						bool with_guard_points = Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier);
-						arv->add_gain_point_event (item, event, with_guard_points);
-					}
-				} else {
-					AutomationRegionView* atv = dynamic_cast<AutomationRegionView*> (clicked_regionview);
+				AudioRegionView*      arv = dynamic_cast<AudioRegionView*> (clicked_regionview);
+				AutomationRegionView* atv = dynamic_cast<AutomationRegionView*> (clicked_regionview);
 
-					if (atv) {
-						atv->add_automation_event (event);
-					}
+				if (arv) {
+					bool with_guard_points = Keyboard::modifier_state_equals (event->button.state, Keyboard::PrimaryModifier);
+					arv->add_gain_point_event (item, event, with_guard_points);
+				} else if (atv) {
+					atv->add_automation_event (event);
 				}
 
 				return true;
@@ -1919,9 +1913,10 @@ Editor::button_release_handler (ArdourCanvas::Item* item, GdkEvent* event, ItemT
 			break;
 
 		case MouseGrid:
-			/* MouseGrid clicks are handled by _canvas_grid_zone */
-			fatal << _("programming error: MouseGrid clicks are handled by _canvas_grid_zone!") << endmsg;
-			abort(); /*NOTREACHED*/
+			/* MouseGrid clicks are handled by _canvas_grid_zone ,
+			 * We can still get here by single-click on a Tempo, Meter or BBT Marker in the ruler.
+			 */
+			return true;
 			break;
 
 		default:

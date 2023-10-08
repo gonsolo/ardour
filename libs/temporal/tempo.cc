@@ -1920,7 +1920,7 @@ TempoMap::reset_section (Points::iterator& begin, Points::iterator& end, supercl
 
 
 bool
-TempoMap::move_meter (MeterPoint const & mp, timepos_t const & when, bool earlier, bool push)
+TempoMap::move_meter (MeterPoint const & mp, timepos_t const & when, bool push)
 {
 	TEMPO_MAP_ASSERT (!_tempos.empty());
 	TEMPO_MAP_ASSERT (!_meters.empty());
@@ -1933,15 +1933,8 @@ TempoMap::move_meter (MeterPoint const & mp, timepos_t const & when, bool earlie
 	superclock_t sc;
 	Beats beats;
 	BBT_Time bbt;
-	bool round_up;
 
 	beats = when.beats ();
-
-	if (earlier) {
-		round_up = false;
-	} else {
-		round_up = true;
-	}
 
 	/* Do not allow moving a meter marker to the same position as
 	 * an existing one.
@@ -1965,14 +1958,20 @@ TempoMap::move_meter (MeterPoint const & mp, timepos_t const & when, bool earlie
 	TempoMetric metric (*prev_t, *prev_m);
 	bbt = metric.bbt_at (beats);
 
-	if (round_up) {
-		bbt = bbt.round_up_to_bar ();
-	} else {
-		bbt = bbt.round_down_to_bar ();
-	}
+	bbt = metric.round_to_bar (bbt);
 
-	for (t = _tempos.begin(), prev_t = _tempos.end(); t != _tempos.end() && t->bbt() < bbt; ++t) { prev_t = t; }
+	/* Now find the correct TempoMetric for the new BBT position (which may
+	 * differ from the one we determined earlier.
+	 *
+	 * The search for the correct meter will be limited by the meter we're
+	 * dragging. But the search for the correct tempo needs to bounded by
+	 * both the BBT *and* the beat position, in case there is an upcoming
+	 * BBT marker.
+	 */
+
+	for (t = _tempos.begin(), prev_t = _tempos.end(); t != _tempos.end() && t->bbt() < bbt && t->beats() < beats; ++t) { prev_t = t; }
 	for (m = _meters.begin(), prev_m = _meters.end(); m != _meters.end() && m->bbt() < bbt && *m != mp; ++m) { prev_m = m; }
+
 
 	if (prev_m == _meters.end()) {
 		return false;
@@ -1980,6 +1979,11 @@ TempoMap::move_meter (MeterPoint const & mp, timepos_t const & when, bool earlie
 
 	if (prev_t == _tempos.end()) {
 		prev_t = _tempos.begin();
+	}
+
+	if (dynamic_cast<MusicTimePoint*> (&(*prev_t)) || dynamic_cast<MusicTimePoint*> (&(*prev_m))) {
+		/* game over ... cannot drag meter through a BBT Marker */
+		return false;
 	}
 
 	metric = TempoMetric (*prev_t, *prev_m);
