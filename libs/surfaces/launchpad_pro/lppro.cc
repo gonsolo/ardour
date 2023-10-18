@@ -21,6 +21,7 @@
 #include <bitset>
 #include <cmath>
 #include <limits>
+#include <regex>
 
 #include <stdlib.h>
 #include <pthread.h>
@@ -110,19 +111,22 @@ LaunchPadPro::probe (std::string& i, std::string& o)
 {
 	vector<string> midi_inputs;
 	vector<string> midi_outputs;
+
 	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsOutput|IsTerminal), midi_inputs);
-	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsInput|IsTerminal), midi_outputs);
+        AudioEngine::instance()->get_ports("", DataType::MIDI, PortFlags(IsInput | IsTerminal), midi_outputs);
 
-	/* the name "Launchpad Pro MK3" is the prefix used on all platforms,
-	 * according to Novation.
-	 */
+	if (midi_inputs.empty() || midi_outputs.empty()) {
+		return false;
+	}
 
-	auto has_lppro = [](string const& s) {
-		std::string pn = AudioEngine::instance()->get_hardware_port_name_by_name (s);
-		return pn.find ("Launchpad Pro MK3") != string::npos;
+	std::regex rx (X_("Launchpad Pro MK3.*MIDI"));
+
+	auto has_lppro = [&rx](string const &s) {
+		std::string pn = AudioEngine::instance()->get_hardware_port_name_by_name(s);
+		return std::regex_search (pn, rx);
 	};
 
-	auto pi = std::find_if (midi_inputs.begin (), midi_inputs.end (), has_lppro);
+	auto pi = std::find_if (midi_inputs.begin(), midi_inputs.end(), has_lppro);
 	auto po = std::find_if (midi_outputs.begin (), midi_outputs.end (), has_lppro);
 
 	if (pi == midi_inputs.end () || po == midi_outputs.end ()) {
@@ -185,8 +189,10 @@ LaunchPadPro::~LaunchPadPro ()
 	}
 
 	stop_event_loop ();
+	tear_down_gui ();
 
 	MIDISurface::drop ();
+
 }
 
 void
@@ -332,53 +338,13 @@ LaunchPadPro::set_state (const XMLNode & node, int version)
 std::string
 LaunchPadPro::input_port_name () const
 {
-#ifdef __APPLE__
-	/* the origin of the numeric magic identifiers is known only to Novation
-	   and may change in time. This is part of how CoreMIDI works.
-	*/
-	return X_("system:midi_capture_1319078870");
-#else
-	return X_("Launchpad Pro MK3 MIDI 1");
-#endif
-}
-
-std::string
-LaunchPadPro::input_daw_port_name () const
-{
-#ifdef __APPLE__
-	/* the origin of the numeric magic identifiers is known only to Novation
-	   and may change in time. This is part of how CoreMIDI works.
-	*/
-	return X_("system:midi_capture_1319078870");
-#else
-	return X_("Launchpad Pro MK3 MIDI 3");
-#endif
+	return X_(":Launchpad Pro MK3.*MIDI (In|1)");
 }
 
 std::string
 LaunchPadPro::output_port_name () const
 {
-#ifdef __APPLE__
-	/* the origin of the numeric magic identifiers is known only to Novation
-	   and may change in time. This is part of how CoreMIDI works.
-	*/
-	return X_("system:midi_playback_3409210341");
-#else
-	return X_("Launchpad Pro MK3 MIDI 1");
-#endif
-}
-
-std::string
-LaunchPadPro::output_daw_port_name () const
-{
-#ifdef __APPLE__
-	/* the origin of the numeric magic identifiers is known only to Novation
-	   and may change in time. This is part of how CoreMIDI works.
-	*/
-	return X_("system:midi_playback_3409210341");
-#else
-	return X_("Launchpad Pro MK3 MIDI 3");
-#endif
+	return X_(":Launchpad Pro MK3.*MIDI (Out|1)");
 }
 
 void
@@ -866,20 +832,44 @@ LaunchPadPro::connect_daw_ports ()
 		return;
 	}
 
-	std::vector<std::string> in;
-	std::vector<std::string> out;
+	std::vector<std::string> midi_inputs;
+	std::vector<std::string> midi_outputs;
 
-	AudioEngine::instance()->get_ports (string_compose (".*%1", input_daw_port_name()), DataType::MIDI, PortFlags (IsPhysical|IsOutput), in);
-	AudioEngine::instance()->get_ports (string_compose (".*%1", output_daw_port_name()), DataType::MIDI, PortFlags (IsPhysical|IsInput), out);
+	/* get all MIDI Ports */
 
-	if (!in.empty() && !out.empty()) {
-		if (!_daw_in->connected()) {
-			AudioEngine::instance()->connect (_daw_in->name(), in.front());
-		}
-		if (!_daw_out->connected()) {
-			AudioEngine::instance()->connect (_daw_out->name(), out.front());
-		}
+	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsOutput|IsTerminal), midi_inputs);
+        AudioEngine::instance()->get_ports("", DataType::MIDI, PortFlags(IsInput | IsTerminal), midi_outputs);
+
+        if (midi_inputs.empty() || midi_outputs.empty()) {
+		return;
 	}
+
+        /* Try to find the DAW port, whose pretty name varies on Linux
+         * depending on the version of ALSA, but is fairly consistent across
+         * newer ALSA and other platforms.
+         */
+
+        std::regex rx (X_("Launchpad Pro MK3.*(DAW|MIDI 3)"), std::regex::extended);
+
+        auto is_dawport = [&rx](string const &s) {
+	        std::string pn = AudioEngine::instance()->get_hardware_port_name_by_name(s);
+	        return std::regex_search (pn, rx);
+        };
+
+        auto pi = std::find_if (midi_inputs.begin(), midi_inputs.end(), is_dawport);
+        auto po = std::find_if (midi_outputs.begin (), midi_outputs.end (), is_dawport);
+
+        if (pi == midi_inputs.end() || po == midi_inputs.end()) {
+	        return;
+        }
+
+        if (!_daw_in->connected()) {
+	        AudioEngine::instance()->connect (_daw_in->name(), *pi);
+        }
+
+        if (!_daw_out->connected()) {
+	        AudioEngine::instance()->connect (_daw_out->name(), *po);
+        }
 }
 
 int
@@ -1083,7 +1073,7 @@ LaunchPadPro::stripable_selection_changed ()
 		}
 	}
 
-	
+
 }
 
 bool

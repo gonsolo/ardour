@@ -232,13 +232,14 @@ def set_version (from_file = False):
         rev, rev_date = fetch_git_revision_date()
     else:
         rev, rev_date = fetch_tarball_revision_date()
+    rev_date = sanitize(rev_date)
 
     #
     # rev is now of the form MAJOR.MINOR[-rcX]-rev-commit
     # or, if right at the same rev as a release, MAJOR.MINOR[-rcX]
     #
 
-    parts = rev.split ('.', 1)
+    parts = sanitize(rev).split ('.', 1)
     MAJOR = parts[0]
     other = parts[1].split('-', 1)
     MINOR = other[0]
@@ -247,10 +248,8 @@ def set_version (from_file = False):
     else:
         MICRO = '0'
 
-    V = MAJOR + '.' + MINOR + '.' + MICRO
-
-    VERSION = sanitize(V)
-    PROGRAM_VERSION = sanitize(MAJOR)
+    VERSION = MAJOR + '.' + MINOR + '.' + MICRO
+    PROGRAM_VERSION = MAJOR
 
 def fetch_gcc_version (CC):
     cmd = "%s --version" % CC
@@ -309,6 +308,7 @@ top = '.'
 out = 'build'
 
 children = [
+        'libs/clearlooks-newer',
         # optionally external libraries
         'libs/fluidsynth',
         'libs/hidapi',
@@ -1072,7 +1072,7 @@ def configure(conf):
     if Options.options.lv2dir:
         conf.env['LV2DIR'] = Options.options.lv2dir
     else:
-        conf.env['LV2DIR'] = os.path.join(conf.env['LIBDIR'], 'ardour' + str(conf.env['MAJOR']), 'LV2')
+        conf.env['LV2DIR'] = os.path.join(conf.env['LIBDIR'], 'ardour' + conf.env['MAJOR'], 'LV2')
 
     conf.env['LV2DIR'] = os.path.normpath(conf.env['LV2DIR'])
 
@@ -1495,10 +1495,8 @@ int main () { __int128 x = 0; return 0; }
     if not (Options.options.dist_target == 'mingw' or Options.options.dist_target == 'msvc'):
         conf.env.append_value('LIB', 'm')
 
-    sub_config_and_use(conf, 'libs/clearlooks-newer')
-
     for i in children:
-        sub_config_and_use(conf, i)
+        conf.recurse(i)
 
     # Fix utterly braindead FLAC include path to not smash assert.h
     conf.env['INCLUDES_FLAC'] = []
@@ -1653,8 +1651,6 @@ def build(bld):
         obj.target       = 'libs/ardour-avahi'
         obj.chmod        = Utils.O755
         obj.install_path = bld.env['LIBDIR']
-
-    bld.recurse('libs/clearlooks-newer')
 
     for i in children:
         bld.recurse(i)

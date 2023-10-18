@@ -31,7 +31,7 @@ temporal_sources = [
 ]
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
     pass
@@ -106,6 +106,3 @@ def test(ctx):
     os.environ['EVORAL_TEST_PATH'] = os.path.abspath('../test/testdata/')
     autowaf.run_tests(ctx, APPNAME, ['./run-tests'])
     autowaf.post_test(ctx, APPNAME)
-
-def shutdown():
-    autowaf.shutdown()

@@ -431,10 +431,10 @@ def enoify (major, minor):
     return "\\\"\\\""
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
-    conf.load('misc')
+    conf.load('misc')  # make 'command-output' available
 
     # TODO: Insert a sanity check for on OS X to ensure CoreAudio is present
 
@@ -479,7 +479,7 @@ def configure(conf):
     conf.write_config_header('gtk2ardour-config.h', remove=False)
 
     bak = conf.env['define_key']
-    conf.define('VERSIONSTRING', str (conf.env['VERSION']))
+    conf.define('VERSIONSTRING', conf.env['VERSION'])
     conf.define('CODENAME', enoify(int(conf.env['MAJOR']), int(conf.env['MINOR'])))
     conf.env['define_key'] = ['VERSIONSTRING', 'CODENAME' ]
     conf.write_config_header('gtk2ardour-version.h')
@@ -575,7 +575,7 @@ def build(bld):
 
     # operate on copy to avoid adding sources twice
     obj.source    = list(gtk2_ardour_sources)
-    obj.target    = 'ardour-' + str (bld.env['VERSION'])
+    obj.target    = 'ardour-' + bld.env['VERSION']
     obj.includes  = ['.']
 
     if bld.is_defined('WINDOWS_VST_SUPPORT'):
@@ -678,8 +678,8 @@ def build(bld):
             'DATADIR'        : os.path.normpath(bld.env['DATADIR']),
             'CONFDIR'        : os.path.normpath(bld.env['CONFDIR']),
             'LIBS'           : 'build/libs',
-            'VERSION'        : str (bld.env['VERSION']),
-            'EXECUTABLE'     : 'build/gtk2_ardour/ardour-' + str (bld.env['VERSION'])
+            'VERSION'        : bld.env['VERSION'],
+            'EXECUTABLE'     : 'build/gtk2_ardour/ardour-' + bld.env['VERSION']
     }
 
     def set_subst_dict(obj, dict):
@@ -695,7 +695,7 @@ def build(bld):
 
     obj              = bld(features = 'subst')
     obj.source       = 'ardour.sh.in'
-    obj.target       = 'ardour' + str (bld.env['MAJOR'])
+    obj.target       = 'ardour' + bld.env['MAJOR']
     obj.chmod        = Utils.O755
     obj.dict         = wrapper_subst_dict
     obj.install_path = bld.env['BINDIR']
@@ -827,16 +827,16 @@ def build(bld):
 
     # Freedesktop
     freedesktop_subst_dict = {
-                    'ARDOUR_EXEC' : str (bld.env['lwrcase_dirname']),
-                    'ARDOUR_ICON' : str (bld.env['lwrcase_dirname']),
-                    'VERSION': str (bld.env['VERSION']),
-                    'DATE': str (bld.env['DATE']),
+                    'ARDOUR_EXEC' : bld.env['lwrcase_dirname'],
+                    'ARDOUR_ICON' : bld.env['lwrcase_dirname'],
+                    'VERSION': bld.env['VERSION'],
+                    'DATE': bld.env['DATE'],
     }
 
     if bld.env['FREEDESKTOP']:
         obj              = bld(features = 'subst')
         obj.source       = 'ardour.desktop.in'
-        obj.target       = str (bld.env['lwrcase_dirname']) + '.desktop'
+        obj.target       = bld.env['lwrcase_dirname'] + '.desktop'
         obj.chmod        = Utils.O644
         obj.dict         = freedesktop_subst_dict
         set_subst_dict(obj, freedesktop_subst_dict)
@@ -853,14 +853,14 @@ def build(bld):
         appdata_i18n_xmlin(bld)
         obj              = bld(features = 'subst')
         obj.source       = 'ardour.appdata.xml.in'
-        obj.target       = str (bld.env['lwrcase_dirname']) + '.appdata.xml'
+        obj.target       = bld.env['lwrcase_dirname'] + '.appdata.xml'
         obj.chmod        = Utils.O644
         obj.dict         = freedesktop_subst_dict
         set_subst_dict(obj, freedesktop_subst_dict)
         bld.install_files (os.path.join (bld.env['PREFIX'], 'share/appdata'), obj.target)
 
         # install desktop icon files
-        icon_file_name = str (bld.env['lwrcase_dirname']) + '.png'
+        icon_file_name = bld.env['lwrcase_dirname'] + '.png'
         bld.install_as('${PREFIX}/share/icons/hicolor/16x16/apps/' + icon_file_name, 'resources/Ardour-icon_16px.png')
         bld.install_as('${PREFIX}/share/icons/hicolor/22x22/apps/'+ icon_file_name, 'resources/Ardour-icon_22px.png')
         bld.install_as('${PREFIX}/share/icons/hicolor/32x32/apps/'+ icon_file_name, 'resources/Ardour-icon_32px.png')

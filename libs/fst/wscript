@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from waflib.extras import autowaf as autowaf
 import os
 import sys
 import re
@@ -8,11 +7,9 @@ import re
 I18N_PACKAGE = 'ardour'
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
-    conf.load('misc')
-
     if conf.env['WINDOWS_VST_SUPPORT'] == True:
         conf.check(compiler='cxx', lib='gdi32', mandatory=True, uselib_store='GDI32')
 
@@ -24,8 +21,8 @@ def build(bld):
         obj.includes  = [ '../pbd/', '../ardour/', '../vst3/', '..' ]
         obj.defines   = [
             'VST3_SCANNER_APP',
-            'VERSIONSTRING="' + str(bld.env['VERSION']) + '"',
-            'PACKAGE="' + I18N_PACKAGE + str(bld.env['MAJOR']) + '"',
+            'VERSIONSTRING="' + bld.env['VERSION'] + '"',
+            'PACKAGE="' + I18N_PACKAGE + bld.env['MAJOR'] + '"',
             'LIBARDOUR="' + bld.env['lwrcase_dirname'] + '"',
             'LOCALEDIR="' + os.path.join(os.path.normpath(bld.env['DATADIR']), 'locale') + '"',
             ]
@@ -67,9 +64,9 @@ def build(bld):
             '_POSIX_SOURCE',
             'USE_WS_PREFIX',
             'VST_SCANNER_APP',
-            'PACKAGE="' + I18N_PACKAGE + str(bld.env['MAJOR']) + '"',
+            'PACKAGE="' + I18N_PACKAGE + bld.env['MAJOR'] + '"',
             'LIBARDOUR="' + bld.env['lwrcase_dirname'] + '"',
-            'VERSIONSTRING="' + str(bld.env['VERSION']) + '"',
+            'VERSIONSTRING="' + bld.env['VERSION'] + '"',
             ]
         if re.search ("bsd", sys.platform) != None:
             obj.defines.append('_POSIX_C_SOURCE=200809')

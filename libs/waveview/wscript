@@ -22,7 +22,7 @@ waveview_sources = [
 ]
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
     autowaf.check_pkg(conf, 'cairomm-1.0', uselib_store='CAIROMM', atleast_version='1.8.4')
@@ -47,6 +47,3 @@ def build(bld):
     obj.vnum         = WAVEVIEW_LIB_VERSION
     obj.install_path = bld.env['LIBDIR']
     obj.defines      += [ 'PACKAGE="' + I18N_PACKAGE + '"' ]
-
-def shutdown():
-    autowaf.shutdown()

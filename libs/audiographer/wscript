@@ -14,7 +14,7 @@ AUDIOGRAPHER_VERSION = '0.0.0'
 AUDIOGRAPHER_LIB_VERSION = '0.0.0'
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
 
@@ -120,6 +120,3 @@ def build(bld):
         obj.target       = 'run-tests'
         obj.name         = 'audiographer-unit-tests'
         obj.install_path = ''
-
-def shutdown():
-    autowaf.shutdown()

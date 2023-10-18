@@ -53,22 +53,15 @@ public:
 	void freeze_me (InterThreadInfo&);
 	void unfreeze ();
 
-	bool bounceable (std::shared_ptr<Processor>, bool) const { return false; }
-	std::shared_ptr<Region> bounce (InterThreadInfo&, std::string const&);
-	std::shared_ptr<Region> bounce_range (samplepos_t                  start,
-	                                        samplepos_t                  end,
-	                                        InterThreadInfo&             iti,
-	                                        std::shared_ptr<Processor> endpoint,
-	                                        bool                         include_endpoint,
-	                                        std::string const&           name);
+	bool bounceable (std::shared_ptr<Processor>, bool include_endpoint) const;
 
-	int export_stuff (BufferSet&                   bufs,
-	                  samplepos_t                  start_sample,
-	                  samplecnt_t                  end_sample,
-	                  std::shared_ptr<Processor> endpoint,
-	                  bool                         include_endpoint,
-	                  bool                         for_export,
-	                  bool                         for_freeze,
+	int export_stuff (BufferSet&                  bufs,
+	                  samplepos_t                 start_sample,
+	                  samplecnt_t                 end_sample,
+	                  std::shared_ptr<Processor>  endpoint,
+	                  bool                        include_endpoint,
+	                  bool                        for_export,
+	                  bool                        for_freeze,
 	                  MidiNoteTracker&            tracker);
 
 	int set_state (const XMLNode&, int version);

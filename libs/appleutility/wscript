@@ -22,7 +22,7 @@ libappleutility_sources = [
 ]
 
 def options(opt):
-    autowaf.set_options(opt)
+    pass
 
 def configure(conf):
     if conf.env['build_target'] in ['panther', 'tiger', 'leopard'] or (Options.options.ppc and conf.env['build_target'] == 'snowleopard'):
@@ -51,9 +51,6 @@ def build(bld):
     obj.name           = 'libappleutility'
     obj.target         = 'appleutility'
     obj.install_path   = os.path.join(bld.env['LIBDIR'], 'appleutility')
-
-def shutdown():
-    autowaf.shutdown()
 
 def i18n(bld):
     pass

@@ -25,7 +25,6 @@ libmidi_sources = [
 ]
 
 def options(opt):
-    autowaf.set_options(opt)
     opt.add_option('--test', action='store_true', default=False, dest='build_tests',
                     help="Build unit tests")
 
@@ -67,6 +66,3 @@ def build(bld):
         obj.target       = 'run-tests'
         obj.name         = 'libmidipp-tests'
         obj.install_path = ''
-
-def shutdown():
-    autowaf.shutdown()

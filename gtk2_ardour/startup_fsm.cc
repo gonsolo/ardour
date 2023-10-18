@@ -69,7 +69,8 @@ using std::string;
 using std::vector;
 
 StartupFSM::StartupFSM (EngineControl& amd)
-	: session_existing_sample_rate (0)
+	: session_domain (Config->get_preferred_time_domain())
+	, session_existing_sample_rate (0)
 	, session_engine_hints ("EngineHints")
 	, session_is_new (false)
 	, session_name_edited (false)
@@ -98,7 +99,7 @@ StartupFSM::StartupFSM (EngineControl& amd)
 
 	Application* app = Application::instance ();
 
-	app->ShouldQuit.connect (sigc::mem_fun (*this, &StartupFSM::queue_finish));
+	app_quit_connection = app->ShouldQuit.connect (sigc::mem_fun (*this, &StartupFSM::queue_finish));
 
 	Gtkmm2ext::Keyboard::HideMightMeanQuit.connect (sigc::mem_fun (*this, &StartupFSM::dialog_hidden));
 }
