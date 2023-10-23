@@ -2891,7 +2891,7 @@ RCOptionEditor::RCOptionEditor ()
 	add_option (_("Appearance/Toolbar"),
 	     new BoolOption (
 		     "show-toolbar-latency",
-		     _("Display Latency Compensation Info"),
+		     _("Display Latency Compensation"),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_show_toolbar_latency),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_show_toolbar_latency)
 		     ));
@@ -3517,7 +3517,7 @@ These settings will only take effect after %1 is restarted.\n\
 		     -1, 65536, 1, 10
 		     ));
 
-	add_option (_("MIDI"), new OptionEditorHeading (_("Selection")));
+	add_option (_("MIDI"), new OptionEditorHeading (_("Editing")));
 
 	add_option (_("MIDI"),
 	     new BoolOption (
@@ -3525,6 +3525,14 @@ These settings will only take effect after %1 is restarted.\n\
 		     _("When drawing new notes, select only the last drawn note"),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_select_last_drawn_note_only),
 		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_select_last_drawn_note_only)
+		     ));
+
+	add_option (_("MIDI"),
+	     new BoolOption (
+		     "scroll_velocity_editing",
+		     _("Scroll wheel use when editing MIDI adjusts selected note velocity"),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::get_scroll_velocity_editing),
+		     sigc::mem_fun (UIConfiguration::instance(), &UIConfiguration::set_scroll_velocity_editing)
 		     ));
 
 	add_option (_("MIDI"), new OptionEditorHeading (_("Audition")));

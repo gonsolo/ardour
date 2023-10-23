@@ -4404,9 +4404,11 @@ TempoMap::midi_clock_beat_at_or_after (samplepos_t const pos, samplepos_t& clk_p
 	 *
 	 * from http://midi.teragonaudio.com/tech/midispec/seq.htm
 	 */
+	superclock_t sc (samples_to_superclock (pos, TEMPORAL_SAMPLE_RATE));
+	TempoPoint const & tp (tempo_at (sc));
+	Temporal::Beats b = (tp.quarters_at_sample (pos)).round_up_to_beat ();
 
-	Temporal::Beats b = (quarters_at_sample (pos)).round_up_to_beat ();
-
+  again:
 	/* We cannot use
 	 *    clk_pos = sample_at (b);
 	 * because in this case we have to round up to the start
@@ -4422,7 +4424,20 @@ TempoMap::midi_clock_beat_at_or_after (samplepos_t const pos, samplepos_t& clk_p
 	 */
 	clk_beat = b.get_beats () * 4 ; // 4 = 24 / 6;
 
-	TEMPO_MAP_ASSERT (clk_pos >= pos);
+	/* It can happen that the computed beat is actually slightly before
+	 * pos. For example, if @p pos is 441002, this is less than 1 tick
+	 * beyond beat 20 (at 120bpm, 44100Hz, 4/4). The call to
+	 * quarters_at_sample(pos) will return 20:0, which does not (and
+	 * cannot) be rounded up). But when we convert that back to a sample
+	 * time, we get 441000, which is before the time (@p pos) that we are
+	 * meant to be computing for. So .. advance to the next beat, and do it
+	 * again.
+	 */
+
+	if (clk_pos < pos) {
+		b += Beats (1, 0);
+		goto again;
+	}
 }
 
 /******** OLD STATE LOADING CODE SECTION *************/

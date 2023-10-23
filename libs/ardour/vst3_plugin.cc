@@ -341,8 +341,16 @@ VST3Plugin::possible_output () const
 bool
 VST3Plugin::has_editor () const
 {
-	/* consider caching has-editor in VST3Info */
-	return _plug->has_editor ();
+	VST3PI::RouteProcessorChangeBlock rpcb (_plug);
+
+	std::shared_ptr<VST3PluginInfo> nfo = std::dynamic_pointer_cast<VST3PluginInfo> (get_info ());
+	if (nfo->has_editor.has_value ()) {
+		return nfo->has_editor.value ();
+	}
+
+	bool rv = _plug->has_editor ();
+	nfo->has_editor = rv;
+	return rv;
 }
 
 Steinberg::IPlugView*
@@ -899,7 +907,7 @@ VST3Plugin::do_save_preset (std::string name)
 {
 
 	std::shared_ptr<VST3PluginInfo> nfo = std::dynamic_pointer_cast<VST3PluginInfo> (get_info ());
-	PBD::Searchpath                   psp = nfo->preset_search_path ();
+	PBD::Searchpath                 psp = nfo->preset_search_path ();
 
 	assert (!psp.empty ());
 
@@ -932,7 +940,7 @@ void
 VST3Plugin::do_remove_preset (std::string name)
 {
 	std::shared_ptr<VST3PluginInfo> nfo = std::dynamic_pointer_cast<VST3PluginInfo> (get_info ());
-	PBD::Searchpath                   psp = nfo->preset_search_path ();
+	PBD::Searchpath                 psp = nfo->preset_search_path ();
 
 	assert (!psp.empty ());
 
@@ -1024,7 +1032,7 @@ VST3Plugin::find_presets ()
 
 
 	std::shared_ptr<VST3PluginInfo> info = std::dynamic_pointer_cast<VST3PluginInfo> (get_info ());
-	PBD::Searchpath                   psp  = info->preset_search_path ();
+	PBD::Searchpath                 psp  = info->preset_search_path ();
 
 	std::vector<std::string> preset_files;
 	find_paths_matching_filter (preset_files, psp, vst3_preset_filter, 0, false, true, false);
@@ -1060,7 +1068,7 @@ VST3PluginInfo::load (Session& session)
 		PluginPtr          plugin;
 		Steinberg::VST3PI* plug = new VST3PI (m, unique_id);
 		plugin.reset (new VST3Plugin (session.engine (), session, plug));
-		plugin->set_info (PluginInfoPtr (new VST3PluginInfo (*this)));
+		plugin->set_info (PluginInfoPtr (shared_from_this ()));
 		return plugin;
 	} catch (failed_constructor& err) {
 		;
@@ -1162,6 +1170,8 @@ VST3PI::VST3PI (std::shared_ptr<ARDOUR::VST3PluginModule> m, std::string unique_
 	, _owner (0)
 	, _add_to_selection (false)
 	, _n_factory_presets (0)
+	, _block_rpc (0)
+	, _rpc_queue (RouteProcessorChange::NoProcessorChange, false)
 	, _no_kMono (false)
 {
 	using namespace std;
@@ -1589,10 +1599,7 @@ VST3PI::restartComponent (int32 flags)
 				p.normal = pi.defaultNormalizedValue;
 			}
 		}
-		Route* r = dynamic_cast<Route*> (_owner);
-		if (r) {
-			r->processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
-		}
+		send_processors_changed (RouteProcessorChange ()); /* EMIT SIGNAL */
 	}
 	if (flags & Vst::kIoChanged) {
 		warning << "VST3: Vst::kIoChanged (not implemented)" << endmsg;
@@ -3180,10 +3187,6 @@ VST3PI::close_view ()
 bool
 VST3PI::has_editor () const
 {
-	if (_has_editor.has_value ()) {
-		return _has_editor.value ();
-	}
-
 	IPlugView* view = _view;
 	if (!view) {
 		view = try_create_view ();
@@ -3202,7 +3205,6 @@ VST3PI::has_editor () const
 			view->release ();
 		}
 	}
-	_has_editor = rv;
 	return rv;
 }
 
@@ -3219,4 +3221,40 @@ VST3PI::resizeView (IPlugView* view, ViewRect* new_size)
 {
 	OnResizeView (new_size->getWidth (), new_size->getHeight ()); /* EMIT SIGNAL */
 	return view->onSize (new_size);
+}
+
+void
+VST3PI::block_notifications ()
+{
+	_block_rpc.fetch_add (1);
+}
+
+void
+VST3PI::resume_notifications ()
+{
+	if (!PBD::atomic_dec_and_test (_block_rpc)) {
+		return;
+	}
+	ARDOUR::RouteProcessorChange rpc (RouteProcessorChange::NoProcessorChange, false);
+	std::swap (rpc, _rpc_queue);
+
+	Route* r = dynamic_cast<Route*> (_owner);
+	if (r && _rpc_queue.type != RouteProcessorChange::NoProcessorChange) {
+		r->processors_changed (rpc); /* EMIT SIGNAL */
+	}
+}
+
+void
+VST3PI::send_processors_changed (RouteProcessorChange const& rpc)
+{
+	if (_block_rpc.load () != 0) {
+		_rpc_queue.type = ARDOUR::RouteProcessorChange::Type (_rpc_queue.type | rpc.type);
+		_rpc_queue.meter_visibly_changed |= rpc.meter_visibly_changed;
+		return;
+	}
+
+	Route* r = dynamic_cast<Route*> (_owner);
+	if (r) {
+		r->processors_changed (rpc); /* EMIT SIGNAL */
+	}
 }
