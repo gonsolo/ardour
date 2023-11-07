@@ -50,6 +50,8 @@ public:
 	void set_selected (bool);
 
 	bool line_draw_motion (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x);
+	bool line_extended (ArdourCanvas::Duple const & from, ArdourCanvas::Duple const & to, ArdourCanvas::Rectangle const & r, double last_x);
+
 	void start_line_drag ();
 	void end_line_drag (bool did_change);
 
@@ -65,8 +67,8 @@ private:
 	bool base_event (GdkEvent*);
 	bool lollevent (GdkEvent*, MidiGhostRegion::GhostEvent*);
 	void set_size_and_position (MidiGhostRegion::GhostEvent&);
-	void lollis_close_to_x (int x, double distance, std::vector<NoteBase*>& events);
-	void lollis_between (int x0, int x1, std::vector<NoteBase*>& events);
+	void lollis_close_to_x (int x, double distance, std::vector<GhostEvent*>& events);
+	void lollis_between (int x0, int x1, std::vector<GhostEvent*>& events);
 	void desensitize_lollis ();
 	void sensitize_lollis ();
 };

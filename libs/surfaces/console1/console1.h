@@ -23,20 +23,14 @@
 #include <map>
 #include <set>
 
-#include <glibmm/threads.h>
-
 #define ABSTRACT_UI_EXPORTS
-#include <midi++/types.h>
-
-#include "glibmm/main.h"
 #include "pbd/abstract_ui.h"
-#include "pbd/controllable.h"
 
 #include "ardour/presentation_info.h"
-#include "ardour/readonly_control.h"
-#include "ardour/types.h"
+
 #include "control_protocol/control_protocol.h"
-#include "gdk/gdkevents.h"
+#include "control_protocol/types.h"
+
 #include "midi_surface/midi_byte_array.h"
 #include "midi_surface/midi_surface.h"
 
@@ -49,7 +43,9 @@ namespace ARDOUR {
 class AsyncMIDIPort;
 class Bundle;
 class Port;
+class Plugin;
 class Processor;
+class ReadOnlyControl;
 class Route;
 class Session;
 class MidiPort;
@@ -67,20 +63,27 @@ namespace ArdourSurface {
 
 class C1GUI;
 
+// XXX TODO: these classes should not be in the ArdourSurface namespace
+// which is shared with all other ctrl surfaces.
+//
+// ArdourSurface::Meter etc may cause conflicts.
+// best add a C1 prefix, or additional namespace
+
 class Controller;
 class ControllerButton;
 class MultiStateButton;
 class Meter;
 class Encoder;
 
+// 'using' in header files is frowned upon.
+// it may cause conflicts or result in amgibuities
 using Controllable = std::shared_ptr<PBD::Controllable>;
 using order_t = ARDOUR::PresentationInfo::order_t;
 
 class ControlNotFoundException : public std::exception
 {
-  public:
+public:
 	ControlNotFoundException () {}
-	virtual ~ControlNotFoundException () {}
 };
 
 class Console1 : public MIDISurface
@@ -92,15 +95,16 @@ class Console1 : public MIDISurface
 	friend Meter;
 	friend Encoder;
 
-  public:
+public:
 	Console1 (ARDOUR::Session&);
-	virtual ~Console1 ();
+	~Console1 ();
+
 	void map_p ();
 
-	int set_active (bool yn);
+	int set_active (bool yn) override;
 
-	bool has_editor () const { return true; }
-	void* get_gui () const;
+	bool has_editor () const override { return true; }
+	void* get_gui () const override;
 	void tear_down_gui () override;
 
 	std::string input_port_name () const override;
@@ -275,7 +279,7 @@ class Console1 : public MIDISurface
 		                         { "TRACK_COPY", ControllerID::TRACK_COPY },
 		                         { "TRACK_GROUP", ControllerID::TRACK_GROUP } };
 
-  private:
+private:
 	std::string config_dir_name = "c1mappings";
 	/* GUI */
 	mutable C1GUI* gui;
@@ -315,19 +319,20 @@ class Console1 : public MIDISurface
 	bool strip_recenabled = false;
 	ARDOUR::MonitorState monitor_state = ARDOUR::MonitorState::MonitoringSilence;
 
-	int begin_using_device ();
-	int stop_using_device ();
+	int begin_using_device () override;
+	int stop_using_device () override;
 
-	int device_acquire () { return 0; }
-	void device_release () {}
+	int device_acquire () override { return 0; }
+	void device_release () override {}
 
-	void connect_session_signals ();
+	void connect_session_signals () override;
 	void connect_internal_signals ();
 
-	/* MIDI-Message handler - we only have controller messages */
-	void handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes* tb);
+	void run_event_loop ();
+	void stop_event_loop ();
 
-	void tabbed_window_state_event_handler (GdkEventWindowState* ev, void* object);
+	/* MIDI-Message handler - we only have controller messages */
+	void handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes* tb) override;
 
 	void master_monitor_has_changed ();
 
@@ -338,7 +343,7 @@ class Console1 : public MIDISurface
 
 	void create_strip_inventory ();
 
-    void strip_inventory_changed (ARDOUR::RouteList&) {
+	void strip_inventory_changed (ARDOUR::RouteList&) {
 		create_strip_inventory ();
 	}
 
@@ -376,7 +381,6 @@ class Console1 : public MIDISurface
 	/* */
 	void all_lights_out ();
 
-	void notify_session_loaded ();
 	void notify_transport_state_changed () override;
 	void notify_solo_active_changed (bool) override;
 
@@ -415,7 +419,7 @@ class Console1 : public MIDISurface
 
 	void map_stripable_state ();
 
-	void notify_parameter_changed (std::string);
+	void notify_parameter_changed (std::string) override;
 
 	/* operations (defined in c1_operations.cc) */
 

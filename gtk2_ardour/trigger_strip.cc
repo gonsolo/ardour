@@ -338,8 +338,8 @@ void
 TriggerStrip::set_button_names ()
 {
 	mute_button->set_text (_("Mute"));
-	monitor_input_button->set_text (_("In"));
-	monitor_disk_button->set_text (_("Disk"));
+	monitor_input_button->set_text (S_("Monitor|In"));
+	monitor_disk_button->set_text (S_("Monitor|Disk"));
 
 	if (!Config->get_solo_control_is_listen_control ()) {
 		solo_button->set_text (_("Solo"));
@@ -574,7 +574,7 @@ TriggerStrip::name_button_press (GdkEventButton* ev)
 		if (ev->button == 1) {
 			Gtkmm2ext::anchored_menu_popup (_route_ops_menu, &_name_button, "", 1, ev->time);
 		} else {
-			_route_ops_menu->popup (3, ev->time);
+			_route_ops_menu->popup (ev->button, ev->time);
 		}
 
 		return true;

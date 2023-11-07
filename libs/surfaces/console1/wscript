@@ -19,11 +19,11 @@ def build(bld):
     '''
     obj.defines      = [ 'PACKAGE="ardour_console1"' ]
     obj.defines     += [ 'ARDOURSURFACE_DLL_EXPORTS' ]
-    obj.includes     = [ '.', './console1', './midi_surface/midi_surface']
+    obj.includes     = [ '.', './console1']
     obj.name         = 'libardour_console1'
     obj.target       = 'ardour_console1'
-    obj.uselib       = 'GTKMM GTK GDK XML OSX'
-    obj.use          = 'libardour libardour_cp libardour_midisurface libcanvas libgtkmm2ext libpbd'
+    obj.uselib       = 'GTKMM SIGCPP XML OSX'
+    obj.use          = 'libardour libardour_cp libardour_midisurface libgtkmm2ext libpbd libevoral libtemporal'
     obj.install_path = os.path.join(bld.env['LIBDIR'], 'surfaces')
 
 def shutdown():

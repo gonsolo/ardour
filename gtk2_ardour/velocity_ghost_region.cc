@@ -48,7 +48,7 @@
 
 using namespace Temporal;
 
-static double const lollipop_radius = 8.0;
+static double const lollipop_radius = 6.0;
 
 VelocityGhostRegion::VelocityGhostRegion (MidiRegionView& mrv, TimeAxisView& tv, TimeAxisView& source_tv, double initial_unit_pos)
 	: MidiGhostRegion (mrv, tv, source_tv, initial_unit_pos)
@@ -73,8 +73,7 @@ VelocityGhostRegion::~VelocityGhostRegion ()
 bool
 VelocityGhostRegion::line_draw_motion (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x)
 {
-	std::vector<NoteBase*> affected_lollis;
-	MidiRegionView* mrv = dynamic_cast<MidiRegionView*> (&parent_rv);
+	std::vector<GhostEvent*> affected_lollis;
 
 	if (last_x < 0) {
 		lollis_close_to_x (d.x, 20., affected_lollis);
@@ -86,15 +85,47 @@ VelocityGhostRegion::line_draw_motion (ArdourCanvas::Duple const & d, ArdourCanv
 		lollis_between (d.x, last_x, affected_lollis);
 	}
 
-	bool ret = false;
-
-	if (!affected_lollis.empty()) {
-		int velocity = y_position_to_velocity (r.height() - (r.y1() - d.y));
-		ret = mrv->set_velocity_for_notes (affected_lollis, velocity);
-		mrv->mid_drag_edit ();
+	if (affected_lollis.empty()) {
+		return false;
 	}
 
-	return ret;
+	int velocity = y_position_to_velocity (r.height() - (r.y1() - d.y));
+
+	for (auto & lolli : affected_lollis) {
+		lolli->velocity_while_editing = velocity;
+		set_size_and_position (*lolli);
+	}
+
+	return true;
+}
+
+bool
+VelocityGhostRegion::line_extended (ArdourCanvas::Duple const & from, ArdourCanvas::Duple const & to, ArdourCanvas::Rectangle const & r, double last_x)
+{
+	std::vector<GhostEvent*> affected_lollis;
+
+	lollis_between (from.x, to.x, affected_lollis);
+
+	if (affected_lollis.empty()) {
+		return false;
+	}
+
+	if (to.x == from.x) {
+		/* no x-axis motion */
+		return false;
+	}
+
+	double slope =  (to.y - from.y) / (to.x - from.x);
+
+	for (auto const & lolli : affected_lollis) {
+		ArdourCanvas::Item* item = lolli->item;
+		ArdourCanvas::Duple pos = item->item_to_canvas (ArdourCanvas::Duple (lolli->event->x0(), 0.0));
+		int y = from.y + (slope * (pos.x - from.x));
+		lolli->velocity_while_editing = y_position_to_velocity (r.height() - (r.y1() - y));
+		set_size_and_position (*lolli);
+	}
+
+	return true;
 }
 
 bool
@@ -148,12 +179,13 @@ VelocityGhostRegion::add_note (NoteBase* nb)
 }
 
 void
-VelocityGhostRegion::set_size_and_position (GhostEvent& ev)
+VelocityGhostRegion::set_size_and_position (GhostEvent& gev)
 {
-	ArdourCanvas::Lollipop* l = dynamic_cast<ArdourCanvas::Lollipop*> (ev.item);
+	ArdourCanvas::Lollipop* l = dynamic_cast<ArdourCanvas::Lollipop*> (gev.item);
 	const double available_height = base_rect->y1();
-	const double actual_height = (ev.event->note()->velocity() / 127.0) * available_height;
-	l->set (ArdourCanvas::Duple (ev.event->x0(), base_rect->y1() - actual_height), actual_height, lollipop_radius);
+	const double actual_height = ((dragging ? gev.velocity_while_editing : gev.event->note()->velocity()) / 127.0) * available_height;
+	const double scale  = UIConfiguration::instance ().get_ui_scale ();
+	l->set (ArdourCanvas::Duple (gev.event->x0(), base_rect->y1() - actual_height), actual_height, lollipop_radius * scale);
 }
 
 void
@@ -218,13 +250,14 @@ VelocityGhostRegion::drag_lolli (ArdourCanvas::Lollipop* l, GdkEventMotion* ev)
 	MidiRegionView::Selection const & sel (mrv->selection());
 	int verbose_velocity = -1;
 	GhostEvent* primary_ghost = 0;
+	const double scale  = UIConfiguration::instance ().get_ui_scale ();
 
 	for (auto & s : sel) {
 		GhostEvent* x = find_event (s->note());
 
 		if (x) {
 			ArdourCanvas::Lollipop* lolli = dynamic_cast<ArdourCanvas::Lollipop*> (x->item);
-			lolli->set (ArdourCanvas::Duple (lolli->x(), lolli->y0() - delta), lolli->length() + delta, lollipop_radius);
+			lolli->set (ArdourCanvas::Duple (lolli->x(), lolli->y0() - delta), lolli->length() + delta, lollipop_radius * scale);
 			/* note: length is now set to the new value */
 			const int newvel = floor (127. * (l->length() / r.height()));
 			/* since we're not actually changing the note velocity
@@ -290,7 +323,7 @@ VelocityGhostRegion::note_selected (NoteBase* ev)
 }
 
 void
-VelocityGhostRegion::lollis_between (int x0, int x1, std::vector<NoteBase*>& within)
+VelocityGhostRegion::lollis_between (int x0, int x1, std::vector<GhostEvent*>& within)
 {
 	MidiRegionView* mrv = dynamic_cast<MidiRegionView*> (&parent_rv);
 	assert (mrv);
@@ -307,21 +340,21 @@ VelocityGhostRegion::lollis_between (int x0, int x1, std::vector<NoteBase*>& wit
 		if (l) {
 			ArdourCanvas::Duple pos = l->item_to_canvas (ArdourCanvas::Duple (l->x(), l->y0()));
 			if (pos.x >= x0 && pos.x < x1) {
-				within.push_back (gev.second->event);
+				within.push_back (gev.second);
 			}
 		}
 	}
 }
 
 void
-VelocityGhostRegion::lollis_close_to_x (int x, double distance, std::vector<NoteBase*>& within)
+VelocityGhostRegion::lollis_close_to_x (int x, double distance, std::vector<GhostEvent*>& within)
 {
 	for (auto & gev : events) {
 		ArdourCanvas::Lollipop* l = dynamic_cast<ArdourCanvas::Lollipop*> (gev.second->item);
 		if (l) {
 			ArdourCanvas::Duple pos = l->item_to_canvas (ArdourCanvas::Duple (l->x(), l->y0()));
 			if (std::abs (pos.x - x) < distance) {
-				within.push_back (gev.second->event);
+				within.push_back (gev.second);
 			}
 		}
 	}
@@ -331,7 +364,15 @@ void
 VelocityGhostRegion::start_line_drag ()
 {
 	MidiRegionView* mrv = dynamic_cast<MidiRegionView*> (&parent_rv);
+
 	mrv->begin_drag_edit (_("draw velocities"));
+
+	for (auto & e : events) {
+		GhostEvent* gev (e.second);
+		gev->velocity_while_editing = gev->event->note()->velocity();
+	}
+
+	dragging = true;
 	desensitize_lollis ();
 }
 
@@ -339,7 +380,25 @@ void
 VelocityGhostRegion::end_line_drag (bool did_change)
 {
 	MidiRegionView* mrv = dynamic_cast<MidiRegionView*> (&parent_rv);
-	mrv->end_drag_edit (did_change);
+
+	dragging = false;
+
+	if (did_change) {
+		std::vector<NoteBase*> notes;
+		std::vector<int> velocities;
+
+		for (auto & e : events) {
+			GhostEvent* gev (e.second);
+			if (gev->event->note()->velocity() != gev->velocity_while_editing) {
+				notes.push_back (gev->event);
+				velocities.push_back (gev->velocity_while_editing);
+			}
+		}
+
+		mrv->set_velocities_for_notes (notes, velocities);
+	}
+
+	mrv->end_drag_edit ();
 	sensitize_lollis ();
 }
 

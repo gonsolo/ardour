@@ -470,11 +470,11 @@ ARDOUR_UI::install_actions ()
 	ActionManager::session_sensitive_actions.push_back (act);
 
 	act = ActionManager::register_toggle_action (transport_actions, X_("TogglePunchIn"), _("Punch In"), sigc::mem_fun(*this, &ARDOUR_UI::toggle_punch_in));
-	act->set_short_label (_("In"));
+	act->set_short_label (S_("Punch|In"));
 	ActionManager::session_sensitive_actions.push_back (act);
 	ActionManager::transport_sensitive_actions.push_back (act);
 	act = ActionManager::register_toggle_action (transport_actions, X_("TogglePunchOut"), _("Punch Out"), sigc::mem_fun(*this, &ARDOUR_UI::toggle_punch_out));
-	act->set_short_label (_("Out"));
+	act->set_short_label (S_("Punch|Out"));
 	ActionManager::session_sensitive_actions.push_back (act);
 	ActionManager::transport_sensitive_actions.push_back (act);
 	act = ActionManager::register_toggle_action (transport_actions, X_("TogglePunch"), _("Punch In/Out"), sigc::mem_fun(*this, &ARDOUR_UI::toggle_punch));
@@ -1109,7 +1109,7 @@ ARDOUR_UI::tabbable_visibility_button_press (GdkEventButton* ev, string const& t
 	string menu_name = string ("/ui/") + tabbable_name + X_("TabbableButtonMenu");
 	Gtk::Menu* menu = dynamic_cast<Gtk::Menu*> (ActionManager::get_widget (menu_name.c_str()));
 	if (menu) {
-		menu->popup (3, ev->time);
+		menu->popup (ev->button, ev->time);
 	}
 	return true;
 }

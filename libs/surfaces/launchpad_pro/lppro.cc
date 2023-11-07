@@ -78,6 +78,7 @@ using namespace Gtkmm2ext;
 #define NOVATION          0x1235
 #define LAUNCHPADPROMK3   0x0123
 static const std::vector<MIDI::byte> sysex_header ({ 0xf0, 0x00, 0x20, 0x29, 0x2, 0xe });
+static int first_fader = 0x9;
 
 const LaunchPadPro::PadID LaunchPadPro::all_pad_ids[] = {
 	Shift, Left, Right, Session, Note, Chord, Custom, Sequencer, Projects,
@@ -413,7 +414,7 @@ LaunchPadPro::build_pad_map ()
 	for (int row = 0; row < 8; ++row) {
 		for (int col = 0; col < 8; ++col) {
 			int pid = (11 + (row * 10)) + col;
-			std::pair<int,Pad> p (pid, Pad (pid, col, 7 - row, &LaunchPadPro::pad_press, &LaunchPadPro::pad_long_press, &LaunchPadPro::relax));
+			std::pair<int,Pad> p (pid, Pad (pid, col, 7 - row, &LaunchPadPro::pad_press, &LaunchPadPro::pad_long_press, &LaunchPadPro::pad_release));
 			if (!pad_map.insert (p).second) abort();
 		}
 	}
@@ -641,7 +642,7 @@ LaunchPadPro::display_session_layout ()
 	}
 
 	MIDI::byte msg[3];
-	msg[0] = 0x90;
+	msg[0] = 0xb0;
 
 	msg[1] = Patterns;
 	msg[2] = 0x27;
@@ -731,7 +732,7 @@ LaunchPadPro::handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes
 
 	if (_current_layout == Fader) {
 		/* Trap fader move messages and act on them */
-		if (ev->controller_number >= 0x20 && ev->controller_number < 0x28) {
+		if (ev->controller_number >= first_fader && ev->controller_number < first_fader+8) {
 			fader_move (ev->controller_number, ev->value);
 			return;
 		}
@@ -1538,16 +1539,19 @@ LaunchPadPro::pad_press (Pad& pad, int velocity)
 	}
 
 	session->bang_trigger_at (pad.x, pad.y, velocity / 127.0f);
-	start_press_timeout (pad);
 }
 
 void
 LaunchPadPro::pad_long_press (Pad& pad)
 {
 	DEBUG_TRACE (DEBUG::Launchpad, string_compose ("pad long press on %1, %2 => %3\n", pad.x, pad.y, pad.id));
-	session->unbang_trigger_at (pad.x, pad.y);
-	/* Pad was used for long press, do not invoke release action */
-	consumed.insert (pad.id);
+}
+
+void
+LaunchPadPro::pad_release(Pad &pad)
+{
+        DEBUG_TRACE (DEBUG::Launchpad, string_compose ("pad release on %1, %2 => %3\n", pad.x, pad.y, pad.id));
+        session->unbang_trigger_at(pad.x, pad.y);
 }
 
 void
@@ -1932,7 +1936,7 @@ LaunchPadPro::setup_faders (FaderBank bank)
 			msg.push_back (0); /* unipolar */
 			break;
 		}
-		msg.push_back (0x20+n);       /* CC number */
+		msg.push_back (first_fader+n);       /* CC number */
 		msg.push_back (random() % 127); /* color */
 	}
 
@@ -1951,7 +1955,7 @@ LaunchPadPro::fader_move (int cc, int val)
 		r = std::dynamic_pointer_cast<Route> (session->selection().first_selected_stripable());
 		break;
 	default:
-		r = session->get_remote_nth_route (scroll_x_offset + (cc - 0x20));
+		r = session->get_remote_nth_route (scroll_x_offset + (cc - first_fader));
 		break;
 	}
 
@@ -1975,7 +1979,7 @@ LaunchPadPro::fader_move (int cc, int val)
 		}
 		break;
 	case SendFaders:
-		ac = r->send_level_controllable (scroll_x_offset + (cc - 0x20));
+		ac = r->send_level_controllable (scroll_x_offset + (cc - first_fader));
 		if (ac) {
 			session->set_control (ac, ARDOUR::slider_position_to_gain_with_max (val/127.0, ARDOUR::Config->get_max_gain()), PBD::Controllable::NoGroup);
 		}
@@ -2009,7 +2013,7 @@ LaunchPadPro::map_faders ()
 
 		std::shared_ptr<AutomationControl> ac;
 
-		msg[1] = 0x20 + n;
+		msg[1] = first_fader + n;
 
 		if (!r) {
 			switch (current_fader_bank) {
@@ -2072,7 +2076,7 @@ LaunchPadPro::automation_control_change (int n, std::weak_ptr<AutomationControl>
 
 	MIDI::byte msg[3];
 	msg[0] = 0xb4;
-	msg[1] = 0x20 + n;
+	msg[1] = first_fader + n;
 
 	switch (current_fader_bank) {
 	case VolumeFaders:

@@ -146,6 +146,7 @@
 #include "gui_object.h"
 #include "gui_thread.h"
 #include "idleometer.h"
+#include "instrument_selector.h"
 #include "io_plugin_window.h"
 #include "keyboard.h"
 #include "keyeditor.h"
@@ -215,9 +216,11 @@ static const gchar *_record_mode_strings[] = {
 static bool
 ask_about_configuration_copy (string const & old_dir, string const & new_dir, int version)
 {
+#ifndef __APPLE__
 	/* guess screen scaling */
 	UIConfiguration::instance ().set_font_scale (1024 * guess_default_ui_scale ());
 	UIConfiguration::instance ().reset_dpi ();
+#endif
 
 	ArdourMessageDialog msg (string_compose (
 	                          _("%1 %2.x has discovered configuration files from %1 %3.x.\n\n"
@@ -867,6 +870,8 @@ ARDOUR_UI::~ARDOUR_UI ()
 	if (recorder) {
 		recorder->cleanup ();
 	}
+
+	InstrumentSelector::DropPluginInfoPtr ();
 
 	if (getenv ("ARDOUR_RUNNING_UNDER_VALGRIND")) {
 		// don't bother at 'real' exit. the OS cleans up for us.

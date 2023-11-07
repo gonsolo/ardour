@@ -1210,7 +1210,7 @@ MixerStrip::name_button_button_press (GdkEventButton* ev)
 			Gtkmm2ext::anchored_menu_popup(route_ops_menu, &name_button, "",
 			                               1, ev->time);
 		} else {
-			route_ops_menu->popup (3, ev->time);
+			route_ops_menu->popup (ev->button, ev->time);
 		}
 
 		return true;
@@ -1230,7 +1230,7 @@ MixerStrip::number_button_button_press (GdkEventButton* ev)
 	if (ev->button == 3) {
 		list_route_operations ();
 
-		route_ops_menu->popup (1, ev->time);
+		route_ops_menu->popup (ev->button, ev->time);
 
 		return true;
 	}
@@ -1498,24 +1498,24 @@ MixerStrip::meter_point_string (MeterPoint mp)
 	case Wide:
 		switch (mp) {
 		case MeterInput:
-			return _("In");
+			return S_("MeterWide|In");
 			break;
 
 		case MeterPreFader:
-			return _("Pre");
+			return S_("MeterWide|Pre");
 			break;
 
 		case MeterPostFader:
-			return _("Post");
+			return S_("MeterWide|Post");
 			break;
 
 		case MeterOutput:
-			return _("Out");
+			return S_("MeterWide|Out");
 			break;
 
 		case MeterCustom:
 		default:
-			return _("Custom");
+			return S_("MeterWide|Custom");
 			break;
 		}
 		break;
@@ -1694,8 +1694,8 @@ MixerStrip::set_button_names ()
 	switch (_width) {
 	case Wide:
 		mute_button->set_text (_("Mute"));
-		monitor_input_button->set_text (_("In"));
-		monitor_disk_button->set_text (_("Disk"));
+		monitor_input_button->set_text (S_("Monitor|In"));
+		monitor_disk_button->set_text (S_("Monitor|Disk"));
 		if (monitor_section_button) {
 			monitor_section_button->set_text (_("Mon"));
 		}

@@ -16,13 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "console1.h"
-
-#include <chrono>
-#include <thread>
-
 #include <boost/optional.hpp>
-#include <glibmm-2.4/glibmm/main.h>
 
 #include "pbd/abstract_ui.cc" // instantiate template
 #include "pbd/controllable.h"
@@ -41,6 +35,8 @@
 #include "ardour/stripable.h"
 #include "ardour/track.h"
 #include "ardour/vca_manager.h"
+
+#include "console1.h"
 #include "c1_control.h"
 #include "c1_gui.h"
 
@@ -56,6 +52,7 @@ Console1::Console1 (Session& s)
   , blink_state (false)
   , rec_enable_state (false)
 {
+	run_event_loop ();
 	port_setup ();
 }
 
@@ -63,27 +60,23 @@ Console1::~Console1 ()
 {
 	all_lights_out ();
 
+	stop_event_loop ();
 	MIDISurface::drop ();
 
 	tear_down_gui ();
 
-    for( const auto &b : buttons ){
+	for (const auto& b : buttons) {
 		delete b.second;
 	}
-    for( const auto &e : encoders ){
+	for (const auto& e : encoders) {
 		delete e.second;
 	}
-    for( const auto &m : meters ){
+	for (const auto& m : meters) {
 		delete m.second;
 	}
-    for( const auto &mb : multi_buttons ){
+	for (const auto& mb : multi_buttons) {
 		delete mb.second;
 	}
-
-	/* stop event loop */
-	DEBUG_TRACE (DEBUG::Console1, "BaseUI::quit ()\n");
-
-	BaseUI::quit ();
 }
 
 void
@@ -103,26 +96,7 @@ Console1::set_active (bool yn)
 		return 0;
 	}
 
-	if (yn) {
-
-		/* start event loop */
-
-		DEBUG_TRACE (DEBUG::Console1, "Console1::set_active\n");
-
-		BaseUI::run ();
-
-	} else {
-		/* Control Protocol Manager never calls us with false, but
-		 * insteads destroys us.
-		 */
-	}
-
 	ControlProtocol::set_active (yn);
-	/* this needs to be done that early, otherwise we'll miss the call of the signal */
-	session->SessionLoaded.connect (
-	  session_connections, MISSING_INVALIDATOR, boost::bind (&Console1::notify_session_loaded, this), this);
-
-	DEBUG_TRACE (DEBUG::Console1, string_compose ("Console1::set_active done with yn: '%1'\n", yn));
 
 	return 0;
 }
@@ -174,14 +148,25 @@ Console1::output_port_name () const
 #endif
 }
 
+void
+Console1::run_event_loop ()
+{
+  DEBUG_TRACE (DEBUG::Launchpad, "start event loop\n");
+  BaseUI::run ();
+}
+
+void
+Console1::stop_event_loop ()
+{
+  DEBUG_TRACE (DEBUG::Launchpad, "stop event loop\n");
+  BaseUI::quit ();
+}
+
 int
 Console1::begin_using_device ()
 {
 	DEBUG_TRACE (DEBUG::Console1, "sending device inquiry message...\n");
 
-	if (MIDISurface::begin_using_device ()) {
-		return -1;
-	}
 	/*
 	  with this sysex command we can enter the 'native mode'
 	  But there's no need to do so
@@ -191,9 +176,7 @@ Console1::begin_using_device ()
 	load_mappings ();
 	setup_controls ();
 
-	/*
-	Connection to the blink-timer
-	*/
+	/* Connection to the blink-timer */
 	Glib::RefPtr<Glib::TimeoutSource> blink_timeout = Glib::TimeoutSource::create (200); // milliseconds
 	blink_connection = blink_timeout->connect (sigc::mem_fun (*this, &Console1::blinker));
 	blink_timeout->attach (main_loop ()->get_context ());
@@ -202,8 +185,24 @@ Console1::begin_using_device ()
 	Glib::RefPtr<Glib::TimeoutSource> periodic_timer = Glib::TimeoutSource::create (100);
 	periodic_connection = periodic_timer->connect (sigc::mem_fun (*this, &Console1::periodic));
 	periodic_timer->attach (main_loop ()->get_context ());
+	connect_session_signals ();
+	connect_internal_signals ();
+	create_strip_inventory ();
 
 	DEBUG_TRACE (DEBUG::Console1, "************** begin_using_device() ********************\n");
+
+	return MIDISurface::begin_using_device ();
+}
+
+int
+Console1::stop_using_device ()
+{
+	DEBUG_TRACE (DEBUG::Console1, "stop_using_device()\n");
+	blink_connection.disconnect ();
+	periodic_connection.disconnect ();
+	stripable_connections.drop_connections ();
+	console1_connections.drop_connections ();
+	MIDISurface::stop_using_device ();
 	return 0;
 }
 
@@ -242,8 +241,6 @@ Console1::connect_session_signals ()
 	  session_connections, MISSING_INVALIDATOR, boost::bind (&Console1::master_monitor_has_changed, this), this);
 	session->RouteAdded.connect (
 	  session_connections, MISSING_INVALIDATOR, boost::bind (&Console1::strip_inventory_changed, this, _1), this);
-	// window.signal_window_state_event().connect (sigc::bind (sigc::mem_fun (*this,
-	// &ARDOUR_UI::tabbed_window_state_event_handler), owner));
 }
 
 void
@@ -263,15 +260,6 @@ Console1::connect_internal_signals ()
 	  console1_connections, MISSING_INVALIDATOR, [] () { DEBUG_TRACE (DEBUG::Console1, "VerticalZoomIn\n"); }, this);
 	VerticalZoomOutSelected.connect (
 	  console1_connections, MISSING_INVALIDATOR, [] () { DEBUG_TRACE (DEBUG::Console1, "VerticalZoomOut\n"); }, this);
-}
-
-void
-Console1::notify_session_loaded ()
-{
-	DEBUG_TRACE (DEBUG::Console1, "************** Session Loaded() ********************\n");
-	create_strip_inventory ();
-	connect_internal_signals ();
-	stripable_selection_changed ();
 }
 
 void
@@ -428,17 +416,6 @@ Console1::setup_controls ()
 	new Meter (this, ControllerID::OUTPUT_METER_R, boost::function<void ()> ([] () {}));
 }
 
-int
-Console1::stop_using_device ()
-{
-	DEBUG_TRACE (DEBUG::Console1, "stop_using_device()\n");
-
-	blink_connection.disconnect ();
-	periodic_connection.disconnect ();
-	stripable_connections.drop_connections ();
-	return 0;
-}
-
 void
 Console1::handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes* tb)
 {
@@ -505,12 +482,6 @@ Console1::handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes* tb
 }
 
 void
-Console1::tabbed_window_state_event_handler (GdkEventWindowState* ev, void* object)
-{
-	DEBUG_TRACE (DEBUG::Console1, string_compose ("tabbed_window_state_event_handler: %1\n", ev->type));
-}
-
-void
 Console1::notify_solo_active_changed (bool state)
 {
 	DEBUG_TRACE (DEBUG::Console1, "notify_active_solo_changed() \n");
@@ -538,9 +509,13 @@ void
 Console1::stripable_selection_changed ()
 {
 	DEBUG_TRACE (DEBUG::Console1, "stripable_selection_changed \n");
+	if (!_in_use)
+		return;
+
 	std::shared_ptr<Stripable> r = ControlProtocol::first_selected_stripable ();
-	if ( r )
-    	set_current_stripable (r);
+	if (r) {
+		set_current_stripable (r);
+	}
 }
 
 void
@@ -893,15 +868,23 @@ Console1::map_stripable_state ()
 void
 Console1::stop_blinking (ControllerID id)
 {
-	blinkers.remove (id);
-	get_button (id)->set_led_state (false);
+	try {
+		blinkers.remove (id);
+		get_button (id)->set_led_state (false);
+	} catch (ControlNotFoundException const&) {
+		DEBUG_TRACE (DEBUG::Console1, "Button to stop blinking not found ...\n");
+	}
 }
 
 void
 Console1::start_blinking (ControllerID id)
 {
-	blinkers.push_back (id);
-	get_button (id)->set_led_state (true);
+	try {
+		blinkers.push_back (id);
+		get_button (id)->set_led_state (true);
+	} catch (ControlNotFoundException const&) {
+		DEBUG_TRACE (DEBUG::Console1, "Button to start blinking not found ...\n");
+	}
 }
 
 bool
@@ -1197,22 +1180,23 @@ Console1::select_rid_by_index (uint32_t index)
 #ifdef MIXBUS
 	rid = index + offset;
 #else
-	if (index == master_index)
+	if (index == master_index) {
 		rid = 1;
-    else
-	    rid = index + 1 + offset;
+	} else {
+		rid = index + 1 + offset;
+	}
 #endif
 	DEBUG_TRACE (DEBUG::Console1, string_compose ("rid %1\n", rid));
-    if (rid > ( max_strip_index + 1 + offset ))
+	if (rid > ( max_strip_index + 1 + offset )) {
 		success =  false;
+	}
 	std::shared_ptr<Stripable> s = session->get_remote_nth_stripable (rid, PresentationInfo::MixerStripables);
 	if (s) {
 		session->selection ().select_stripable_and_maybe_group (s, true, false, 0);
+	} else {
+		success = false;
 	}
-    else {
-    	success = false;
-    }
-    if( !success ){
+	if (!success) {
 		map_select ();
 	}
 }

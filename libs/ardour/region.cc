@@ -1001,7 +1001,7 @@ Region::cut_end (timepos_t const & new_endpoint)
 void
 Region::modify_front_unchecked (timepos_t const & npos, bool reset_fade)
 {
-	timepos_t last = end().decrement();
+	timepos_t last = nt_last();
 	timepos_t source_zero;
 	timepos_t new_position (npos);
 
@@ -2197,7 +2197,7 @@ Region::end() const
 	/* one day we might want to enforce _position, _start and _length (or
 	   some combination thereof) all being in the same time domain.
 	*/
-	return position() + _length.val();
+	return _length.val().end();
 }
 
 timepos_t

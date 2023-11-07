@@ -36,11 +36,10 @@ class FeedbackHelperUI : public AbstractUI<BaseUI::BaseRequestObject>
 {
 public:
 	FeedbackHelperUI ();
-	~FeedbackHelperUI () {};
+	~FeedbackHelperUI ();
 
 protected:
 	virtual void do_request (BaseUI::BaseRequestObject*);
-
 };
 
 class ArdourFeedback : public SurfaceComponent
