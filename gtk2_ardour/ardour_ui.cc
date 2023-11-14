@@ -1203,12 +1203,14 @@ ARDOUR_UI::every_point_zero_something_seconds ()
 			_editor_meter_peaked = false;
 		}
 
-		const float mpeak = editor_meter->update_meters();
-		const bool peaking = mpeak > UIConfiguration::instance().get_meter_peak();
+		if (!UIConfiguration::instance().get_no_strobe()) {
+			const float mpeak = editor_meter->update_meters();
+			const bool peaking = mpeak > UIConfiguration::instance().get_meter_peak();
 
-		if (!_editor_meter_peaked && peaking) {
-			editor_meter_peak_display.set_active_state ( Gtkmm2ext::ExplicitActive );
-			_editor_meter_peaked = true;
+			if (!_editor_meter_peaked && peaking) {
+				editor_meter_peak_display.set_active_state (Gtkmm2ext::ExplicitActive);
+				_editor_meter_peaked = true;
+			}
 		}
 	}
 }
@@ -2182,7 +2184,7 @@ ARDOUR_UI::blink_handler (bool blink_on)
 {
 	sync_blink (blink_on);
 
-	if (!UIConfiguration::instance().get_blink_alert_indicators()) {
+	if (UIConfiguration::instance().get_no_strobe() || !UIConfiguration::instance().get_blink_alert_indicators()) {
 		blink_on = true;
 	}
 	error_blink (blink_on);
@@ -2204,6 +2206,17 @@ ARDOUR_UI::update_clocks ()
 void
 ARDOUR_UI::start_clocking ()
 {
+	std::cerr << "start clocking\n";
+
+	if (UIConfiguration::instance().get_no_strobe()) {
+		if (!_session) {
+			return;
+		}
+		_session->TransportStateChange.connect (clock_state_connection, MISSING_INVALIDATOR, sigc::mem_fun (*this, &ARDOUR_UI::update_clocks), gui_context());
+		_session->Located.connect (clock_state_connection, MISSING_INVALIDATOR, sigc::mem_fun (*this, &ARDOUR_UI::update_clocks), gui_context());
+		return;
+	}
+
 	if (UIConfiguration::instance().get_super_rapid_clock_update()) {
 		clock_signal_connection = Timers::fps_connect (sigc::mem_fun(*this, &ARDOUR_UI::update_clocks));
 	} else {
@@ -2214,6 +2227,7 @@ ARDOUR_UI::start_clocking ()
 void
 ARDOUR_UI::stop_clocking ()
 {
+	clock_state_connection.drop_connections ();
 	clock_signal_connection.disconnect ();
 }
 

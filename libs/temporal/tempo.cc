@@ -621,9 +621,9 @@ TempoPoint::quarters_at_superclock (superclock_t sc) const
 		int64_t remain = superbeats - (b * big_numerator);
 		int32_t t = PBD::muldiv_round (Temporal::ticks_per_beat, remain, big_numerator);
 
-		DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("%8 => \nsc %1 delta %9 = %2 secs rem = %3 rem snotes %4 sbeats = %5 => %6 : %7\n", sc, whole_seconds, remainder, supernotes, superbeats, b , t, *this, sc_delta));
-
 		const Beats ret = _quarters + Beats (b, t);
+
+		DEBUG_TRACE (DEBUG::TemporalMap, string_compose ("%8 => \nsc %1 delta %9 = %2 secs rem = %3 rem snotes %4 sbeats = %5 => %6 : %7 + %10 = %11\n", sc, whole_seconds, remainder, supernotes, superbeats, b , t, *this, sc_delta, _quarters, ret));
 
 		/* positive superclock can never generate negative beats unless
 		 * it is too large. If that happens, handle it the same way as
@@ -1387,6 +1387,19 @@ TempoMap::set_tempo (Tempo const & t, timepos_t const & time)
 	}
 #endif
 
+	return *ret;
+}
+
+TempoPoint &
+TempoMap::set_tempo (Tempo const & t, timepos_t const & time, Beats const & beats)
+{
+	assert (!time.is_beats());
+	BBT_Time bbt;
+
+	TempoMetric metric (metric_at (beats, false));
+	bbt = metric.bbt_at (beats);
+	TempoPoint* tp = new TempoPoint (*this, t, time.superclocks(), beats, bbt);
+	TempoPoint* ret = add_tempo (tp);
 	return *ret;
 }
 
@@ -4486,11 +4499,15 @@ TempoMap::parse_tempo_state_3x (const XMLNode& node, LegacyTempoState& lts)
 		}
 	}
 
-	/* position is the only data we extract from older XML */
-
 	if (!node.get_property ("frame", lts.sample)) {
 		error << _("Legacy tempo section XML does not have a \"frame\" node - map will be ignored") << endmsg;
 		cerr << _("Legacy tempo section XML does not have a \"frame\" node - map will be ignored") << endl;
+		return -1;
+	}
+
+	if (!node.get_property ("pulse", lts.pulses)) {
+		error << _("Legacy tempo section XML does not have a \"pulse\" node - map will be ignored") << endmsg;
+		cerr << _("Legacy tempo section XML does not have a \"pulse\" node - map will be ignored") << endl;
 		return -1;
 	}
 
@@ -4559,6 +4576,12 @@ TempoMap::parse_meter_state_3x (const XMLNode& node, LegacyMeterState& lms)
 
 	if (!node.get_property ("frame", lms.sample)) {
 		error << _("Legacy tempo section XML does not have a \"frame\" node - map will be ignored") << endmsg;
+		return -1;
+	}
+
+	if (!node.get_property ("pulse", lms.pulses)) {
+		error << _("Legacy meter section XML does not have a \"pulse\" node - map will be ignored") << endmsg;
+		cerr << _("Legacy meter section XML does not have a \"pulse\" node - map will be ignored") << endl;
 		return -1;
 	}
 
@@ -4640,7 +4663,7 @@ TempoMap::set_state_3x (const XMLNode& node)
 			Tempo t (lts.note_types_per_minute,
 			         lts.end_note_types_per_minute,
 			         lts.note_type);
-			TempoPoint* tp = new TempoPoint (*this, t, samples_to_superclock (0, TEMPORAL_SAMPLE_RATE), Beats(), BBT_Time());
+			TempoPoint* tp = new TempoPoint (*this, t, samples_to_superclock (0, TEMPORAL_SAMPLE_RATE), Beats::from_double (lts.pulses * 4.0), BBT_Time());
 
 			tp->set_continuing (lts.continuing);
 
@@ -4717,7 +4740,7 @@ TempoMap::set_state_3x (const XMLNode& node)
 			         lts.end_note_types_per_minute,
 			         lts.note_type);
 
-			set_tempo (t, timepos_t (lts.sample));
+			set_tempo (t, timepos_t (lts.sample), Beats::from_double (lts.pulses * 4.0));
 
 		} else if (child->name() == Meter::xml_node_name) {
 
@@ -4774,26 +4797,27 @@ TempoMap::set_state_3x (const XMLNode& node)
 		Tempos::iterator prev = _tempos.end();
 		for (Tempos::iterator i = _tempos.begin(); i != _tempos.end(); ++i) {
 			if (prev != _tempos.end()) {
-			MeterSection* ms;
-			MeterSection* prev_m;
-			TempoSection* ts;
-			TempoSection* prev_t;
-			if ((prev_m = dynamic_cast<MeterSection*>(*prev)) != 0 && (ms = dynamic_cast<MeterSection*>(*i)) != 0) {
-				if (prev_m->beat() == ms->beat()) {
-					error << string_compose (_("Multiple meter definitions found at %1"), prev_m->beat()) << endmsg;
-					return -1;
-				}
-			} else if ((prev_t = dynamic_cast<TempoSection*>(*prev)) != 0 && (ts = dynamic_cast<TempoSection*>(*i)) != 0) {
-				if (prev_t->pulse() == ts->pulse()) {
-					error << string_compose (_("Multiple tempo definitions found at %1"), prev_t->pulse()) << endmsg;
-					return -1;
+				MeterSection* ms;
+				MeterSection* prev_m;
+				TempoSection* ts;
+				TempoSection* prev_t;
+				if ((prev_m = dynamic_cast<MeterSection*>(*prev)) != 0 && (ms = dynamic_cast<MeterSection*>(*i)) != 0) {
+					if (prev_m->beat() == ms->beat()) {
+						error << string_compose (_("Multiple meter definitions found at %1"), prev_m->beat()) << endmsg;
+						return -1;
+					}
+				} else if ((prev_t = dynamic_cast<TempoSection*>(*prev)) != 0 && (ts = dynamic_cast<TempoSection*>(*i)) != 0) {
+					if (prev_t->pulse() == ts->pulse()) {
+						error << string_compose (_("Multiple tempo definitions found at %1"), prev_t->pulse()) << endmsg;
+						return -1;
+					}
 				}
 			}
+			prev = i;
 		}
-		prev = i;
 	}
 #endif
-
+	reset_starting_at (0);
 	return 0;
 }
 

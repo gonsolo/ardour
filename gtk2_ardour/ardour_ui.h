@@ -617,10 +617,6 @@ private:
 	void primary_clock_value_changed ();
 	void secondary_clock_value_changed ();
 
-	/* called by Blink signal */
-
-	void transport_rec_enable_blink (bool onoff);
-
 	/* menu bar and associated stuff */
 
 	Gtk::MenuBar* menu_bar;
@@ -953,6 +949,8 @@ private:
 
 	void ask_about_scratch_deletion ();
 	bool nsm_first_session_opened;
+
+	PBD::ScopedConnectionList clock_state_connection;
 };
 
 #endif /* __ardour_gui_h__ */

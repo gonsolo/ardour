@@ -100,8 +100,7 @@ StartupFSM::StartupFSM (EngineControl& amd)
 	Application* app = Application::instance ();
 
 	app_quit_connection = app->ShouldQuit.connect (sigc::mem_fun (*this, &StartupFSM::queue_finish));
-
-	Gtkmm2ext::Keyboard::HideMightMeanQuit.connect (sigc::mem_fun (*this, &StartupFSM::dialog_hidden));
+	hide_quit_connection = Gtkmm2ext::Keyboard::HideMightMeanQuit.connect (sigc::mem_fun (*this, &StartupFSM::dialog_hidden));
 }
 
 StartupFSM::~StartupFSM ()
@@ -110,6 +109,16 @@ StartupFSM::~StartupFSM ()
 	delete pre_release_dialog;
 	delete plugin_scan_dialog;
 	delete new_user_dialog;
+}
+
+void
+StartupFSM::set_complete ()
+{
+	app_quit_connection.disconnect ();
+	hide_quit_connection.disconnect ();
+
+	_state = NotWaiting;
+	PBD::stacktrace (std::cerr, 12);
 }
 
 void
