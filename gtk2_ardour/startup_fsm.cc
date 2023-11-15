@@ -26,7 +26,6 @@
 #include "pbd/basename.h"
 #include "pbd/file_archive.h"
 #include "pbd/file_utils.h"
-#include "pbd/stacktrace.h"
 
 #include "ardour/audioengine.h"
 #include "ardour/audio_backend.h"
