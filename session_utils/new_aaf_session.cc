@@ -637,7 +637,7 @@ prepare_cache (AAF_Iface* aafi, string* media_cache_path)
 	const char* tmppath = g_get_tmp_dir ();
 
 	if (!aafi->compositionName || aafi->compositionName[0] == 0x00) {
-		*media_cache_path = g_build_path (G_DIR_SEPARATOR_S, tmppath, g_basename (aafi->aafd->cfbd->file), NULL); //+ string(DIR_SEP_STR);
+		*media_cache_path = g_build_path (G_DIR_SEPARATOR_S, tmppath, Glib::path_get_basename (aafi->aafd->cfbd->file).c_str(), NULL); //+ string(DIR_SEP_STR);
 	} else {
 		int   compoNameLen = wcslen (aafi->compositionName) + 1;
 		char* compoName    = (char*)malloc (compoNameLen);
@@ -858,9 +858,9 @@ main (int argc, char* argv[])
 
 	AAF_Iface* aafi = aafi_alloc (NULL);
 
-	aafi->ctx.options.trace    = 1;
-	aafi->ctx.options.resolve  = aaf_resolve_options;
-	aafi->ctx.options.protools = aaf_protools_options;
+	aafi_set_option_int (aafi, "trace", 1);
+	aafi_set_option_int (aafi, "protools", aaf_protools_options);
+	aafi_set_option_int (aafi, "resolve", aaf_resolve_options);
 
 	/*
 	 * The following "forbid_nonlatin_filenames" option is there until we find a
@@ -879,7 +879,7 @@ main (int argc, char* argv[])
 	 * using a file pointer avoids the need to reimplement debug_callback()
 	 */
 
-	string logfile = g_build_path (G_DIR_SEPARATOR_S, output_folder.c_str (), string (string (g_basename (aaf_file.c_str ())) + ".log").c_str (), NULL);
+	string logfile = g_build_path (G_DIR_SEPARATOR_S, output_folder.c_str (), string (Glib::path_get_basename (aaf_file.c_str ()) + ".log").c_str (), NULL);
 
 	PBD::info << string_compose ("Writting AAF log to : %1", logfile) << endmsg;
 
@@ -890,11 +890,9 @@ main (int argc, char* argv[])
 		::exit (EXIT_FAILURE);
 	}
 
-	aafi_set_debug (aafi, VERB_DEBUG, logfilefp, NULL, NULL);
+	aafi_set_debug (aafi, VERB_DEBUG, 0, logfilefp, NULL, NULL);
 
-	if (!media_location_path.empty ()) {
-		aafi_set_media_location (aafi, media_location_path.c_str ());
-	}
+	aafi_set_option_str (aafi, "media_location", media_location_path.c_str ());
 
 	if (aafi_load_file (aafi, aaf_file.c_str ())) {
 		PBD::error << "Could not load AAF file." << endmsg;
