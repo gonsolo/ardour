@@ -79,7 +79,7 @@ compiler_flags_dictionaries= {
         # All warnings (left from quiet-build) are errors
         'error-warnings' : [ '-Werror' ],
         # Any additional flags for warnings that are specific to C (not C++)
-        'extra-c-warnings' : [ '-Wstrict-prototypes', '-Wmissing-prototypes' ],
+        'extra-c-warnings' : [ '-Wstrict-prototypes' ], # gonsolo, '-Wmissing-prototypes' ],
         # Any additional flags for warnings that are specific to C++ (not C)
         'extra-cxx-warnings' : [ '-Woverloaded-virtual', '-Wno-unused-local-typedefs' ],
         # Flags used for "strict" compilation, C and C++ (i.e. compiler will warn about language issues)
