@@ -617,6 +617,10 @@ MixerStrip::set_route (std::shared_ptr<Route> rt)
 			monitor_section_button->set_can_focus (false);
 			monitor_section_added_or_removed ();
 		}
+	} else if (route()->is_surround_master()) {
+		mute_solo_table.attach (*mute_button, 0, 2, 0, 1);
+		mute_button->show ();
+		master_volume_table.hide ();
 	} else {
 		bottom_button_table.attach (group_button, 1, 2, 0, 1);
 		mute_solo_table.attach (*mute_button, 0, 1, 0, 1);
@@ -712,7 +716,7 @@ MixerStrip::set_route (std::shared_ptr<Route> rt)
 
 		/* non-master bus */
 
-		if (!_route->is_master()) {
+		if (!_route->is_main_bus ()) {
 			if (ARDOUR::Profile->get_mixbus()) {
 				rec_mon_table.attach (*show_sends_button, 0, 3, 0, 2);
 			} else {
@@ -761,7 +765,7 @@ MixerStrip::set_route (std::shared_ptr<Route> rt)
 	connect_to_pan ();
 	panners.setup_pan ();
 
-	if (has_audio_outputs ()) {
+	if (has_audio_outputs () && !_route->is_surround_master ()) {
 		panners.show_all ();
 	} else {
 		panners.hide_all ();
@@ -945,7 +949,7 @@ MixerStrip::update_input_display ()
 {
 	panners.setup_pan ();
 
-	if (has_audio_outputs ()) {
+	if (has_audio_outputs () && !_route->is_surround_master ()) {
 		panners.show_all ();
 	} else {
 		panners.hide_all ();
@@ -959,7 +963,7 @@ MixerStrip::update_output_display ()
 	gpm.setup_meters ();
 	panners.setup_pan ();
 
-	if (has_audio_outputs ()) {
+	if (has_audio_outputs () && !_route->is_surround_master ()) {
 		panners.show_all ();
 	} else {
 		panners.hide_all ();
@@ -1098,7 +1102,7 @@ MixerStrip::build_route_ops_menu ()
 			items.push_back (SeparatorElem());
 		}
 
-		if (!_route->is_master()
+		if (!_route->is_singleton ()
 #ifdef MIXBUS
 				&& !_route->mixbus()
 #endif
@@ -1118,7 +1122,7 @@ MixerStrip::build_route_ops_menu ()
 		items.push_back (SeparatorElem());
 	}
 
-	if ((!_route->is_master() || !active)
+	if ((!_route->is_singleton () || !active)
 #ifdef MIXBUS
 			&& !_route->mixbus()
 #endif
@@ -1191,7 +1195,7 @@ MixerStrip::build_route_ops_menu ()
 		}
 #endif
 
-		if (!_route->is_master()) {
+		if (!_route->is_singleton ()) {
 			items.push_back (SeparatorElem());
 			items.push_back (MenuElem (_("Duplicate..."), sigc::mem_fun (*this, &RouteUI::duplicate_selected_routes)));
 			items.push_back (SeparatorElem());
@@ -1677,7 +1681,7 @@ MixerStrip::revert_to_default_display ()
 	panner_ui().setup_pan ();
 	panner_ui().set_send_drawing_mode (false);
 
-	if (has_audio_outputs ()) {
+	if (has_audio_outputs () && !_route->is_surround_master ()) {
 		panners.show_all ();
 	} else {
 		panners.hide_all ();
@@ -1895,7 +1899,7 @@ MixerStrip::update_sensitivity ()
 	bool send = _current_delivery && std::dynamic_pointer_cast<Send>(_current_delivery) != 0;
 	bool aux  = _current_delivery && std::dynamic_pointer_cast<InternalSend>(_current_delivery) != 0;
 
-	if (route()->is_master()) {
+	if (route()->is_main_bus ()) {
 		solo_iso_table.set_sensitive (false);
 		control_slave_ui.set_sensitive (false);
 	} else {
@@ -2134,7 +2138,7 @@ MixerStrip::set_marked_for_display (bool yn)
 void
 MixerStrip::hide_master_spacer (bool yn)
 {
-	if (_mixer_owned && route()->is_master() && !yn) {
+	if (_mixer_owned && (route()->is_master() || route()->is_surround_master ()) && !yn) {
 		spacer.show();
 	} else {
 		spacer.hide();

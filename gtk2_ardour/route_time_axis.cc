@@ -57,6 +57,7 @@
 #include "ardour/profile.h"
 #include "ardour/route_group.h"
 #include "ardour/session.h"
+#include "ardour/surround_send.h"
 #include "ardour/track.h"
 
 #include "canvas/debug.h"
@@ -807,7 +808,7 @@ RouteTimeAxisView::build_display_menu ()
 		r.push_back (route ());
 	}
 
-	if (!_route->is_master()) {
+	if (!_route->is_singleton ()) {
 		route_group_menu->build (r);
 		items.push_back (MenuElem (_("Group"), *route_group_menu->menu ()));
 	}
@@ -826,7 +827,7 @@ RouteTimeAxisView::build_display_menu ()
 		if (!r) {
 			continue;
 		}
-		always_active |= r->route()->is_master();
+		always_active |= r->route()->is_singleton ();
 #ifdef MIXBUS
 		always_active |= r->route()->mixbus() != 0;
 #endif
@@ -885,12 +886,14 @@ RouteTimeAxisView::build_display_menu ()
 
 	items.push_back (SeparatorElem());
 	items.push_back (MenuElem (_("Hide"), sigc::bind (sigc::mem_fun(_editor, &PublicEditor::hide_track_in_display), this, true)));
-	if (_route && !_route->is_master()) {
+
+	if (_route && !_route->is_singleton ()) {
 		items.push_back (SeparatorElem());
 		items.push_back (MenuElem (_("Duplicate..."), boost::bind (&ARDOUR_UI::start_duplicate_routes, ARDOUR_UI::instance())));
+
+		items.push_back (SeparatorElem());
+		items.push_back (MenuElem (_("Remove"), sigc::mem_fun(_editor, &PublicEditor::remove_tracks)));
 	}
-	items.push_back (SeparatorElem());
-	items.push_back (MenuElem (_("Remove"), sigc::mem_fun(_editor, &PublicEditor::remove_tracks)));
 }
 
 void
@@ -1931,16 +1934,19 @@ RouteTimeAxisView::add_processor_to_subplugin_menu (std::weak_ptr<Processor> p)
 {
 	std::shared_ptr<Processor> processor (p.lock ());
 
-	if (!processor || !processor->display_to_user ()) {
+	if (!processor) {
 		return;
 	}
 
-	/* we use this override to veto the Amp processor from the plugin menu,
-	   as its automation lane can be accessed using the special "Fader" menu
-	   option
-	*/
-
-	if (std::dynamic_pointer_cast<Amp> (processor) != 0) {
+	if (std::dynamic_pointer_cast<SurroundSend> (processor) != 0) {
+		/* OK, show surround send controls */
+	} else if (std::dynamic_pointer_cast<Amp> (processor) != 0) {
+			/* we use this override to veto the Amp processor from the plugin menu,
+			 * as its automation lane can be accessed using the special "Fader" menu
+			 * option
+			 */
+		return;
+	} else if (!processor->display_to_user ()) {
 		return;
 	}
 

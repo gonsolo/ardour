@@ -97,6 +97,8 @@
 #include "ardour/solo_isolate_control.h"
 #include "ardour/solo_safe_control.h"
 #include "ardour/stripable.h"
+#include "ardour/surround_send.h"
+#include "ardour/surround_pannable.h"
 #include "ardour/track.h"
 #include "ardour/tempo.h"
 #include "ardour/user_bundle.h"
@@ -1378,6 +1380,7 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("is_private_route", &Stripable::is_private_route)
 		.addFunction ("is_master", &Stripable::is_master)
 		.addFunction ("is_monitor", &Stripable::is_monitor)
+		.addFunction ("is_surround_master", &Stripable::is_surround_master)
 		.addFunction ("is_hidden", &Stripable::is_hidden)
 		.addFunction ("is_selected", &Stripable::is_selected)
 		.addFunction ("gain_control", &Stripable::gain_control)
@@ -1473,6 +1476,8 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("playback_latency", &Route::playback_latency)
 		.addFunction ("monitoring_state", &Route::monitoring_state)
 		.addFunction ("monitoring_control", &Route::monitoring_control)
+		.addFunction ("surround_send", &Route::surround_send)
+		.addFunction ("surround_return", &Route::surround_return)
 		.endClass ()
 
 		.deriveWSPtrClass <Playlist, SessionObject> ("Playlist")
@@ -1827,6 +1832,7 @@ LuaBindings::common (lua_State* L)
 		.addCast<PeakMeter> ("to_peakmeter")
 		.addCast<MonitorProcessor> ("to_monitorprocessor")
 		.addCast<Send> ("to_send")
+		.addCast<SurroundSend> ("to_surroundsend")
 		.addCast<InternalSend> ("to_internalsend")
 		.addCast<PolarityProcessor> ("to_polarityprocessor")
 		.addCast<DelayLine> ("to_delayline")
@@ -1888,6 +1894,25 @@ LuaBindings::common (lua_State* L)
 		.addFunction ("allow_feedback", &InternalSend::allow_feedback)
 		.addFunction ("set_allow_feedback", &InternalSend::set_allow_feedback)
 		.addFunction ("feeds", &InternalSend::feeds)
+		.endClass ()
+
+		.deriveWSPtrClass <SurroundPannable, Automatable> ("SurroundPannable")
+		.addData ("name", &SurroundPannable::pan_pos_x)
+		.addData ("name", &SurroundPannable::pan_pos_y)
+		.addData ("name", &SurroundPannable::pan_pos_z)
+		.addData ("name", &SurroundPannable::pan_size)
+		.addData ("name", &SurroundPannable::pan_snap)
+		.endClass ()
+
+		.deriveWSPtrClass <SurroundSend, Processor> ("SurroundSend")
+		.addFunction ("get_delay_in", &SurroundSend::get_delay_in)
+		.addFunction ("get_delay_out", &SurroundSend::get_delay_out)
+		.addFunction ("gain_control", &SurroundSend::gain_control)
+		.addFunction ("n_pannables", &SurroundSend::gain_control)
+		.addFunction ("pannable", &SurroundSend::pannable)
+		.endClass ()
+
+		.deriveWSPtrClass <SurroundReturn, Processor> ("SurroundReturn")
 		.endClass ()
 
 		.deriveWSPtrClass <Return, IOProcessor> ("Return")

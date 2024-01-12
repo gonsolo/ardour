@@ -968,6 +968,7 @@ FaderPort8::filter_stripables (StripableList& strips) const
 
 	bool allow_master = false;
 	bool allow_monitor = false;
+	bool allow_surround = false;
 
 	switch (_ctrls.mix_mode ()) {
 		case MixAudio:
@@ -987,11 +988,13 @@ FaderPort8::filter_stripables (StripableList& strips) const
 			break;
 		case MixUser:
 			allow_master = true;
+			allow_surround = true;
 			flt = &flt_selected;
 			break;
 		case MixOutputs:
 			allow_master = true;
 			allow_monitor = true;
+			allow_surround = true;
 			flt = &flt_mains;
 			break;
 		case MixInputs:
@@ -1005,6 +1008,7 @@ FaderPort8::filter_stripables (StripableList& strips) const
 			/* fallthrough */
 		case MixAll:
 			allow_master = true;
+			allow_surround = true;
 			flt = &flt_all;
 			break;
 	}
@@ -1018,6 +1022,7 @@ FaderPort8::filter_stripables (StripableList& strips) const
 
 		if (!allow_master  && (*s)->is_master ()) { continue; }
 		if (!allow_monitor && (*s)->is_monitor ()) { continue; }
+		if (!allow_surround && (*s)->is_surround_master ()) { continue; }
 
 		if ((*flt)(*s)) {
 			strips.push_back (*s);
@@ -1330,14 +1335,11 @@ FaderPort8::build_well_known_processor_ctrls (std::shared_ptr<Stripable> s, int 
 			{ /* EQ */
 				int cnt = s->eq_band_cnt();
 
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 				PUSH_BACK_NON_NULL ("Flt In", s->filter_enable_controllable (true)); // both HP/LP
 				PUSH_BACK_NON_NULL ("HP Freq", s->filter_freq_controllable (true));
 				PUSH_BACK_NON_NULL ("LP Freq", s->filter_freq_controllable (false));
 				PUSH_BACK_NON_NULL ("EQ In", s->eq_enable_controllable ());
-#elif defined (MIXBUS)
-				PUSH_BACK_NON_NULL ("EQ In", s->eq_enable_controllable ());
-				PUSH_BACK_NON_NULL ("HP Freq", s->filter_freq_controllable (true));
 #endif
 
 				for (int band = 0; band < cnt; ++band) {
