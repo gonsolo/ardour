@@ -550,49 +550,8 @@ public:
 	uint32_t eq_band_cnt () const;
 	std::string eq_band_name (uint32_t) const;
 
-	std::shared_ptr<AutomationControl> eq_enable_controllable () const;
-	std::shared_ptr<AutomationControl> eq_gain_controllable (uint32_t band) const;
-	std::shared_ptr<AutomationControl> eq_freq_controllable (uint32_t band) const;
-	std::shared_ptr<AutomationControl> eq_q_controllable (uint32_t band) const;
-	std::shared_ptr<AutomationControl> eq_shape_controllable (uint32_t band) const;
-
-	std::shared_ptr<AutomationControl> filter_freq_controllable (bool hpf) const;
-	std::shared_ptr<AutomationControl> filter_slope_controllable (bool) const;
-	std::shared_ptr<AutomationControl> filter_enable_controllable (bool) const;
-
-	std::shared_ptr<AutomationControl> tape_drive_controllable () const;
-	std::shared_ptr<AutomationControl> tape_drive_mode_controllable () const;
-	std::shared_ptr<ReadOnlyControl>   tape_drive_mtr_controllable () const;
-
-	std::shared_ptr<AutomationControl> comp_enable_controllable () const;
-	std::shared_ptr<AutomationControl> comp_threshold_controllable () const;
-	std::shared_ptr<AutomationControl> comp_speed_controllable () const;
-	std::shared_ptr<AutomationControl> comp_mode_controllable () const;
-	std::shared_ptr<AutomationControl> comp_makeup_controllable () const;
-	std::shared_ptr<AutomationControl> comp_ratio_controllable () const;
-	std::shared_ptr<AutomationControl> comp_attack_controllable () const;
-	std::shared_ptr<AutomationControl> comp_release_controllable () const;
-	std::shared_ptr<AutomationControl> comp_key_filter_freq_controllable () const;
-	std::shared_ptr<AutomationControl> comp_lookahead_controllable () const;
-	std::shared_ptr<ReadOnlyControl>   comp_meter_controllable () const;
-	std::shared_ptr<ReadOnlyControl>   comp_redux_controllable () const;
-
-	std::shared_ptr<AutomationControl> gate_enable_controllable () const;
-	std::shared_ptr<AutomationControl> gate_mode_controllable () const;
-	std::shared_ptr<AutomationControl> gate_ratio_controllable () const;
-	std::shared_ptr<AutomationControl> gate_knee_controllable () const;
-	std::shared_ptr<AutomationControl> gate_threshold_controllable () const;
-	std::shared_ptr<AutomationControl> gate_depth_controllable () const;
-	std::shared_ptr<AutomationControl> gate_hysteresis_controllable () const;
-	std::shared_ptr<AutomationControl> gate_hold_controllable () const;
-	std::shared_ptr<AutomationControl> gate_attack_controllable () const;
-	std::shared_ptr<AutomationControl> gate_release_controllable () const;
-	std::shared_ptr<AutomationControl> gate_key_listen_controllable () const;
-	std::shared_ptr<AutomationControl> gate_key_filter_enable_controllable () const;
-	std::shared_ptr<AutomationControl> gate_key_filter_freq_controllable () const;
-	std::shared_ptr<AutomationControl> gate_lookahead_controllable () const;
-	std::shared_ptr<ReadOnlyControl>   gate_meter_controllable () const;
-	std::shared_ptr<ReadOnlyControl>   gate_redux_controllable () const;
+	std::shared_ptr<AutomationControl> mapped_control (enum WellKnownCtrl, uint32_t band = 0) const;
+	std::shared_ptr<ReadOnlyControl>   mapped_output (enum WellKnownData) const;
 
 	std::shared_ptr<AutomationControl> send_level_controllable (uint32_t n) const;
 	std::shared_ptr<AutomationControl> send_enable_controllable (uint32_t n) const;
@@ -602,12 +561,6 @@ public:
 	std::string send_name (uint32_t n) const;
 
 	std::shared_ptr<AutomationControl> master_send_enable_controllable () const;
-
-	std::shared_ptr<ReadOnlyControl> master_correlation_mtr_controllable (bool) const;
-
-	std::shared_ptr<AutomationControl> master_limiter_enable_controllable () const;
-	std::shared_ptr<ReadOnlyControl> master_limiter_mtr_controllable () const;
-	std::shared_ptr<ReadOnlyControl> master_k_mtr_controllable () const;
 
 	void protect_automation ();
 
@@ -839,6 +792,11 @@ private:
 	bool    _initial_io_setup;
 	bool    _in_sidechain_setup;
 	gain_t  _monitor_gain;
+
+	void add_well_known_ctrl (WellKnownCtrl, std::shared_ptr<PluginInsert>, int param);
+	void add_well_known_ctrl (WellKnownCtrl);
+
+	std::map<WellKnownCtrl, std::vector<std::weak_ptr<AutomationControl>>> _well_known_map;
 
 	/** true if we've made a note of a custom meter position in these variables */
 	bool _custom_meter_position_noted;

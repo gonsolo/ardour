@@ -101,6 +101,7 @@
 #include "ardour/types_convert.h"
 #include "ardour/unknown_processor.h"
 #include "ardour/utils.h"
+#include "ardour/well_known_enum.h"
 #include "ardour/vca.h"
 
 #include "pbd/i18n.h"
@@ -5853,6 +5854,34 @@ Route::pan_lfe_control() const
 	}
 }
 
+void
+Route::add_well_known_ctrl (WellKnownCtrl which)
+{
+	_well_known_map[which].push_back (std::weak_ptr<ARDOUR::AutomationControl> ());
+}
+
+void
+Route::add_well_known_ctrl (WellKnownCtrl which, std::shared_ptr<PluginInsert> pi, int param)
+{
+	_well_known_map[which].push_back (std::dynamic_pointer_cast<ARDOUR::AutomationControl> (pi->control (Evoral::Parameter (ARDOUR::PluginAutomation, 0, param))));
+}
+
+std::shared_ptr<AutomationControl>
+Route::mapped_control (enum WellKnownCtrl which, uint32_t band) const
+{
+	auto it = _well_known_map.find (which);
+	if (it == _well_known_map.end () || it->second.size () <= band) {
+		return std::shared_ptr<AutomationControl> ();
+	}
+	return it->second[band].lock();
+}
+
+std::shared_ptr<ReadOnlyControl>
+Route::mapped_output (enum WellKnownData which) const
+{
+	return std::shared_ptr<ReadOnlyControl>();
+}
+
 uint32_t
 Route::eq_band_cnt () const
 {
@@ -5860,241 +5889,10 @@ Route::eq_band_cnt () const
 	return 0;
 }
 
-std::shared_ptr<AutomationControl>
-Route::eq_enable_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::eq_gain_controllable (uint32_t band) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::eq_freq_controllable (uint32_t band) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::eq_q_controllable (uint32_t band) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::eq_shape_controllable (uint32_t band) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::filter_freq_controllable (bool hpf) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::filter_slope_controllable (bool) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::filter_enable_controllable (bool) const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::tape_drive_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::tape_drive_mode_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<ReadOnlyControl>
-Route::tape_drive_mtr_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-
-std::shared_ptr<ReadOnlyControl>
-Route::master_correlation_mtr_controllable (bool mm) const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::master_limiter_enable_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<ReadOnlyControl>
-Route::master_limiter_mtr_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-
-std::shared_ptr<ReadOnlyControl>
-Route::master_k_mtr_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-
 string
 Route::eq_band_name (uint32_t band) const
 {
 	return string ();
-}
-
-std::shared_ptr<AutomationControl>
-Route::comp_enable_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::comp_threshold_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-
-std::shared_ptr<AutomationControl>
-Route::comp_speed_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_mode_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_makeup_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_ratio_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_attack_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_release_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_key_filter_freq_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::comp_lookahead_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<ReadOnlyControl>
-Route::comp_meter_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-std::shared_ptr<ReadOnlyControl>
-Route::comp_redux_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_enable_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_mode_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_ratio_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_knee_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_threshold_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_depth_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_hysteresis_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_hold_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_attack_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_release_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_key_listen_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_key_filter_enable_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_key_filter_freq_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<AutomationControl>
-Route::gate_lookahead_controllable () const
-{
-	return std::shared_ptr<AutomationControl>();
-}
-std::shared_ptr<ReadOnlyControl>
-Route::gate_meter_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
-}
-std::shared_ptr<ReadOnlyControl>
-Route::gate_redux_controllable () const
-{
-	return std::shared_ptr<ReadOnlyControl>();
 }
 
 std::shared_ptr<AutomationControl>
