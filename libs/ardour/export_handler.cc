@@ -672,6 +672,9 @@ ExportHandler::export_cd_marker_file (ExportTimespanPtr timespan, ExportFormatSp
 	} catch (std::exception& e) {
 		error << string_compose (_("an error occurred while writing a TOC/CUE file: %1"), e.what()) << endmsg;
 		::g_unlink (filepath.c_str());
+	} catch (Glib::ConvertError const& e) {
+		error << string_compose (_("an error occurred while writing a TOC/CUE file: %1"), e.what()) << endmsg;
+		::g_unlink (filepath.c_str());
 	} catch (Glib::Exception& e) {
 		error << string_compose (_("an error occurred while writing a TOC/CUE file: %1"), e.what()) << endmsg;
 		::g_unlink (filepath.c_str());
@@ -1019,7 +1022,7 @@ ExportHandler::cue_escape_cdtext (const std::string& txt)
 	std::string out;
 
 	try {
-		latin1_txt = Glib::convert (txt, "ISO-8859-1", "UTF-8");
+		latin1_txt = Glib::convert_with_fallback (txt, "ISO-8859-1", "UTF-8", "_");
 	} catch (Glib::ConvertError& err) {
 		throw Glib::ConvertError (err.code(), string_compose (_("Cannot convert %1 to Latin-1 text"), txt));
 	}
