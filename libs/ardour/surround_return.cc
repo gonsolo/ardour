@@ -277,9 +277,7 @@ SurroundReturn::run (BufferSet& bufs, samplepos_t start_sample, samplepos_t end_
 		_surround_bufs.get_audio (19).data (meter_offset)
 	};
 
-	if (_rolling && (!_exporting || _export_end >= end_sample)) {
-		_lufs_meter.run (data, meter_nframes);
-	}
+	_lufs_meter.run (data, meter_nframes);
 }
 
 void
@@ -393,6 +391,18 @@ SurroundReturn::finalize_export ()
 	_surround_processor->finalize_export ();
 	_exporting = false;
 	_export_start = _export_end = 0;
+}
+
+float
+SurroundReturn::momentary () const
+{
+	return _lufs_meter.momentary ();
+}
+
+float
+SurroundReturn::max_momentary () const
+{
+	return _lufs_meter.max_momentary ();
 }
 
 float
