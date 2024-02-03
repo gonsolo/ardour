@@ -17,6 +17,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "pbd/unwind.h"
+
 #include "ardour/surround_send.h"
 #include "ardour/amp.h"
 #include "ardour/audioengine.h"
@@ -37,6 +39,7 @@ SurroundSend::SurroundSend (Session& s, std::shared_ptr<MuteMaster> mm)
 	, _surround_id (s.next_surround_send_id ())
 	, _current_gain (GAIN_COEFF_ZERO)
 	, _has_state (false)
+	, _ignore_enable_change (false)
 	, _mute_master (mm)
 
 {
@@ -53,11 +56,18 @@ SurroundSend::SurroundSend (Session& s, std::shared_ptr<MuteMaster> mm)
 
 	add_control (_gain_control);
 
+	_send_enable_control = std::shared_ptr<AutomationControl> (new AutomationControl (_session, BusSendEnable, ParameterDescriptor(BusSendEnable)));
+	_send_enable_control->Changed.connect_same_thread (*this, boost::bind (&SurroundSend::send_enable_changed, this));
+	_send_enable_control->clear_flag (PBD::Controllable::RealTime);
+
+	ActiveChanged.connect_same_thread (*this, boost::bind (&SurroundSend::proc_active_changed, this));
+
 	InternalSend::CycleStart.connect_same_thread (*this, boost::bind (&SurroundSend::cycle_start, this, _1));
 }
 
 SurroundSend::~SurroundSend ()
 {
+	_send_enable_control->drop_references ();
 }
 
 std::shared_ptr<SurroundPannable>
@@ -228,6 +238,12 @@ SurroundSend::add_pannable ()
 	add_control (p->pan_size);
 	add_control (p->pan_snap);
 	add_control (p->binaural_render_mode);
+
+	for (uint32_t i = 0; i < _pannable.size (); ++i) {
+		_pannable[i]->sync_auto_state_with (p);
+		p->sync_auto_state_with (_pannable[i]);
+	}
+
 	_pannable.push_back (p);
 
 	_change_connections.drop_connections ();
@@ -254,6 +270,34 @@ SurroundSend::configure_io (ChanCount in, ChanCount out)
 	while (_pannable.size () < n_audio) {
 		add_pannable ();
 	}
+
+	if (changed) {
+		for (uint32_t i = 0; i < n_audio; ++i) {
+			_pannable[i]->foreach_pan_control ([](std::shared_ptr<AutomationControl> ac) { ac->clear_flag (PBD::Controllable::HiddenControl); });
+		}
+		for (uint32_t i = n_audio; i < _pannable.size (); ++i) {
+			_pannable[i]->foreach_pan_control ([](std::shared_ptr<AutomationControl> ac) { ac->set_flag (PBD::Controllable::HiddenControl); });
+		}
+	}
+
+#ifdef MIXBUS
+	/* Link visibility - currently only for Mixbus which has a custom UI, and at most stereo */
+	for (uint32_t i = 0; i < _pannable.size (); ++i) {
+		_pannable[i]->foreach_pan_control ([](std::shared_ptr<AutomationControl> ac) { ac->clear_visually_linked_control (); });
+	}
+	/* first link local controls */
+	for (uint32_t i = 0; i < n_audio; ++i) {
+		_pannable[i]->setup_visual_links ();
+	}
+	for (uint32_t i = 0; i < n_audio; ++i) {
+		for (uint32_t j = 0; j < n_audio; ++j) {
+			if (i == j) {
+				continue;
+			}
+			_pannable[i]->sync_visual_link_to (_pannable[j]);
+		}
+	}
+#endif
 
 	if (!_configured && !_has_state) {
 		switch (n_audio) {
@@ -329,6 +373,10 @@ SurroundSend::cycle_start (pframes_t /*nframes*/)
 std::string
 SurroundSend::describe_parameter (Evoral::Parameter param)
 {
+	if (param.id() >=  n_pannables ()) {
+		return X_("hidden");
+	}
+
 	if (n_pannables () < 2) {
 		/* Use default names */
 		return Automatable::describe_parameter (param);
@@ -356,6 +404,30 @@ SurroundSend::describe_parameter (Evoral::Parameter param)
 	}
 
 	return Automatable::describe_parameter (param);
+}
+
+void
+SurroundSend::send_enable_changed ()
+{
+	if (_ignore_enable_change) {
+		return;
+	}
+	PBD::Unwinder<bool> uw (_ignore_enable_change, true);
+	if (_send_enable_control->get_value () > 0) {
+		activate ();
+	} else {
+		deactivate ();
+	}
+}
+
+void
+SurroundSend::proc_active_changed ()
+{
+	if (_ignore_enable_change) {
+		return;
+	}
+	PBD::Unwinder<bool> uw (_ignore_enable_change, true);
+	_send_enable_control->set_value (_pending_active ? 1 : 0, PBD::Controllable::UseGroup);
 }
 
 int
