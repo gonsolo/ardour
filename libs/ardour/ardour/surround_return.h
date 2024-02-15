@@ -28,6 +28,12 @@
 #include <lv2/lv2plug.in/ns/ext/atom/forge.h>
 #endif
 
+#ifdef __APPLE__
+#include <CoreServices/CoreServices.h>
+#include <CoreAudio/CoreAudio.h>
+#include <AudioUnit/AudioUnit.h>
+#endif
+
 #include "ardour/chan_mapping.h"
 #include "ardour/lufs_meter.h"
 #include "ardour/monitor_processor.h"
@@ -61,6 +67,14 @@ public:
 		return _surround_processor;
 	}
 
+	bool have_au_renderer () const {
+		return _have_au_renderer;
+	}
+
+	std::shared_ptr<PBD::Controllable> binaural_render_controllable () const {
+		return _binaural_render_control;
+	}
+
 	enum MainOutputFormat {
 		OUTPUT_FORMAT_5_1 = 2,
 		OUTPUT_FORMAT_7_1_4 = 6
@@ -92,8 +106,8 @@ private:
 	static const size_t num_pan_parameters = 5; // X, Y, Z, Size, Snap
 
 	void forge_int_msg (uint32_t obj_id, uint32_t key, int val, uint32_t key2 = 0, int val2 = 0);
-	void maybe_send_metadata (size_t id, pframes_t frame, pan_t const v[num_pan_parameters]);
-	void evaluate (size_t id, std::shared_ptr<SurroundPannable> const&, timepos_t const& , pframes_t);
+	void maybe_send_metadata (size_t id, pframes_t frame, pan_t const v[num_pan_parameters], bool force = false);
+	void evaluate (size_t id, std::shared_ptr<SurroundPannable> const&, timepos_t const& , pframes_t, bool force = false);
 
 	std::shared_ptr<LV2Plugin> _surround_processor;
 
@@ -110,6 +124,26 @@ private:
 
 	std::shared_ptr<OutputFormatControl> _output_format_control;
 
+	class BinauralRenderControl : public MPControl<bool>
+	{
+	public:
+		BinauralRenderControl (bool v, std::string const& n, PBD::Controllable::Flag f);
+		virtual std::string get_user_string () const;
+	};
+
+	std::shared_ptr<BinauralRenderControl> _binaural_render_control;
+
+#ifdef __APPLE__
+	::AudioUnit      _au;
+	AudioBufferList* _au_buffers;
+	samplecnt_t      _au_samples_processed;
+	float*           _au_data[12];
+
+	static OSStatus _render_callback(void*, AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32, UInt32, AudioBufferList*);
+	OSStatus render_callback(AudioUnitRenderActionFlags*, const AudioTimeStamp*, UInt32, UInt32, AudioBufferList*);
+#endif
+
+	bool             _have_au_renderer;
 	LV2_Atom_Forge   _forge;
 	uint8_t          _atom_buf[8192];
 	pan_t            _current_value[max_object_id][num_pan_parameters];
