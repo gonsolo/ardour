@@ -31,6 +31,7 @@
 #include "ardour/export_timespan.h"
 #include "ardour/profile.h"
 #include "ardour/session_directory.h"
+#include "ardour/surround_return.h"
 
 #include "nag.h"
 #include "simple_export_dialog.h"
@@ -67,7 +68,7 @@ SimpleExportDialog::SimpleExportDialog (PublicEditor& editor, bool vapor_export)
 	/* clang-format off */
 	t->attach (LBL ("Format preset:"),  0, 1, r, r + 1, FILL,          SHRINK, 0, 0);
 	if (_vapor_export) {
-		t->attach (LBL ("ADM/BWF"),       1, 2, r, r + 1, EXPAND,        SHRINK, 0, 0);
+		t->attach (LBL ("ADM BWF"),       1, 2, r, r + 1, EXPAND,        SHRINK, 0, 0);
 	} else {
 		t->attach (_eps.the_combo (),     1, 2, r, r + 1, EXPAND | FILL, SHRINK, 0, 0);
 	}
@@ -156,6 +157,11 @@ SimpleExportDialog::set_session (ARDOUR::Session* s)
 
 	if (_vapor_export && (!s->surround_master () || !s->vapor_export_barrier ())) {
 		set_error ("Error: Session has no exportable surround master.");
+		return;
+	}
+
+	if (_vapor_export && (s->surround_master ()->surround_return ()->total_n_channels () > 128)) {
+		set_error ("Error: ADM BWF files cannot contain more than 128 channels.");
 		return;
 	}
 
@@ -262,6 +268,21 @@ SimpleExportDialog::start_export ()
 	if (_vapor_export) {
 		if (range_name.empty ()) {
 			range_name = SimpleExport::_session->snap_name ();
+		}
+
+		samplepos_t rend = (*r)[_range_cols.end];
+		samplepos_t t24h;
+		Timecode::Time tc (SimpleExport::_session->timecode_frames_per_second ());
+		tc.hours = 24;
+
+		SimpleExport::_session->timecode_to_sample (tc, t24h, false /* use_offset */, false /* use_subframes */);
+
+		if (rend >= t24h) {
+			hide ();
+			std::string        txt = _("Error: ADM/BWN files timecode cannot be past 24h.");
+			Gtk::MessageDialog msg (txt, false, Gtk::MESSAGE_ERROR, Gtk::BUTTONS_OK, true);
+			msg.run ();
+			return;
 		}
 
 		/* Ensure timespan exists, see also SimpleExport::run_export */

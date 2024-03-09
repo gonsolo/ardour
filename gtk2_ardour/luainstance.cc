@@ -459,8 +459,7 @@ lua_exec (std::string cmd)
 	if (x.start()) {
 		return -1;
 	}
-	x.wait ();
-	return 0;
+	return x.wait ();
 }
 #endif
 
@@ -911,6 +910,8 @@ LuaInstance::register_classes (lua_State* L, bool sandbox)
 		.addFunction ("get_selection", &PublicEditor::get_selection)
 		.addFunction ("get_cut_buffer", &PublicEditor::get_cut_buffer)
 		.addRefFunction ("get_selection_extents", &PublicEditor::get_selection_extents)
+
+		.addFunction ("current_mixer_stripable", &PublicEditor::current_mixer_stripable)
 
 		.addFunction ("set_selection", &PublicEditor::set_selection)
 
@@ -1610,7 +1611,7 @@ LuaInstance::interactive_add (Gtk::Window& parent, LuaScriptInfo::ScriptType typ
 
 	ScriptParameterDialog spd (_("Set Script Parameters"), spi, reg, lsp);
 
-	if (spd.need_interation ()) {
+	if (spd.need_interaction ()) {
 		switch (spd.run ()) {
 			case Gtk::RESPONSE_ACCEPT:
 				break;
