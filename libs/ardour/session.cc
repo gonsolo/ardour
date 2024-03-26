@@ -136,7 +136,10 @@
 #include "ardour/utils.h"
 #include "ardour/vca_manager.h"
 #include "ardour/vca.h"
+
+#ifdef VST3_SUPPORT
 #include "ardour/vst3_plugin.h"
+#endif // VST3_SUPPORT
 
 #include "midi++/port.h"
 #include "midi++/mmc.h"
@@ -881,10 +884,12 @@ Session::destroy ()
 
 	_transport_fsm->stop ();
 
+#ifdef VST3_SUPPORT
 	/* close VST3 Modules */
 	for (auto const& nfo : PluginManager::instance().vst3_plugin_info()) {
 		std::dynamic_pointer_cast<VST3PluginInfo> (nfo)->m.reset ();
 	}
+#endif // VST3_SUPPORT
 
 	DEBUG_TRACE (DEBUG::Destruction, "Session::destroy() done\n");
 
@@ -1538,10 +1543,7 @@ Session::auto_connect_surround_master ()
 	}
 	lm.release ();
 
-	/* Mute non-surround path */
-	if (_monitor_out) {
-		_monitor_out->monitor_control ()->set_cut_all (true);
-	} else if (_master_out) {
+	if (_master_out) {
 		_master_out->mute_control ()->set_value (true, PBD::Controllable::NoGroup);
 	}
 

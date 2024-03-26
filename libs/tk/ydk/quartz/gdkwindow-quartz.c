@@ -282,11 +282,6 @@ _gdk_quartz_window_set_needs_display_in_rect (GdkWindow    *window,
   private = GDK_WINDOW_OBJECT (window);
   impl = GDK_WINDOW_IMPL_QUARTZ (private->impl);
 
-  if (!impl->needs_display_region)
-    impl->needs_display_region = gdk_region_new ();
-
-  gdk_region_union_with_rect (impl->needs_display_region, rect);
-
   [impl->view setNeedsDisplayInRect:NSMakeRect (rect->x, rect->y,
                                                 rect->width, rect->height)];
 
@@ -303,11 +298,6 @@ _gdk_quartz_window_set_needs_display_in_region (GdkWindow    *window,
 
   private = GDK_WINDOW_OBJECT (window);
   impl = GDK_WINDOW_IMPL_QUARTZ (private->impl);
-
-  if (!impl->needs_display_region)
-    impl->needs_display_region = gdk_region_new ();
-
-  gdk_region_union (impl->needs_display_region, region);
 
   gdk_region_get_rectangles (region, &rects, &n_rects);
 
@@ -786,6 +776,8 @@ _gdk_window_impl_new (GdkWindow     *window,
       draw_impl->colormap = gdk_screen_get_system_colormap (_gdk_screen);
       g_object_ref (draw_impl->colormap);
     }
+
+  impl->needs_display_region = NULL;
 
   /* Maintain the z-ordered list of children. */
   if (private->parent != (GdkWindowObject *)_gdk_root)
