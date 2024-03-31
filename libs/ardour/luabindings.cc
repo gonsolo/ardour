@@ -339,6 +339,7 @@ CLASSKEYS(std::shared_ptr<ARDOUR::MidiPlaylist>);
 CLASSKEYS(std::shared_ptr<ARDOUR::MidiRegion>);
 CLASSKEYS(std::shared_ptr<ARDOUR::MidiSource>);
 CLASSKEYS(std::shared_ptr<ARDOUR::PluginInfo>);
+CLASSKEYS(std::shared_ptr<ARDOUR::PluginInsert>);
 CLASSKEYS(std::shared_ptr<ARDOUR::Processor>);
 CLASSKEYS(std::shared_ptr<ARDOUR::AudioReadable>);
 CLASSKEYS(std::shared_ptr<ARDOUR::Region>);
