@@ -57,9 +57,9 @@ compiler_flags_dictionaries= {
                           '-Wno-use-after-free', '-Wno-unknown-pragmas', '-Wno-cast-qual',
                           '-Wno-maybe-uninitialized', '-Wno-cpp', '-Wno-switch', '-Wno-free-nonheap-object',
                           '-Wno-dangling-pointer', '-Wno-stringop-overflow', '-Wno-unused-variable',
-                          '-Wno-unused-but-set-variable', '-Wno-uninitialized', '-Wno-sign-compare'  ],
+                          '-Wno-unused-but-set-variable', '-Wno-uninitialized', '-Wno-sign-compare' ],
         'quiet-build-c': [ '-Wno-strict-prototypes' ],
-        'quiet-build-cxx': [ '-Wno-reorder' ],
+        'quiet-build-cxx': [ '-Wno-reorder', '-Wno-dangling-reference' ],
         # All warnings (left from quiet-build) are errors
         'error-warnings' : [ '-Werror' ],
         # Any additional flags for warnings that are specific to C (not C++)
