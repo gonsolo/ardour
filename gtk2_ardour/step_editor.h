@@ -22,16 +22,18 @@
 
 #include <string>
 
-#include <gdk/gdk.h>
+#include <ydk/gdk.h>
 #include <sigc++/trackable.h>
 
 #include "pbd/signals.h"
 
 #include "temporal/beats.h"
+#include "temporal/timeline.h"
 
 namespace ARDOUR {
 class MidiTrack;
 class MidiRegion;
+class Region;
 }
 
 class MidiRegionView;
@@ -46,7 +48,7 @@ class StepEntry;
  * changes.
  *
  * The StepEntry is a singleton, used over and over each time the user wants to
- * step edit; the StepEditor is owned by a MidiTimeAxisView and re-used for any
+ * step edit; the StepEditor is owned by a MidiTimeAxisView and reused for any
  * step editing in the MidiTrack for which the MidiTimeAxisView is a view.
  */
 

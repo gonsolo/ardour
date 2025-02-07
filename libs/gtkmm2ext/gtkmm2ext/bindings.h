@@ -26,10 +26,10 @@
 
 #include <stdint.h>
 
-#include <gdk/gdkkeysyms.h>
-#include <gtkmm/action.h>
-#include <gtkmm/radioaction.h>
-#include <gtkmm/toggleaction.h>
+#include <ydk/gdkkeysyms.h>
+#include <ytkmm/action.h>
+#include <ytkmm/radioaction.h>
+#include <ytkmm/toggleaction.h>
 
 #include "pbd/signals.h"
 
@@ -165,7 +165,7 @@ class LIBGTKMM2EXT_API Bindings {
 	static void associate_all ();
 	static void save_all_bindings_as_html (std::ostream&);
 
-	static PBD::Signal1<void,Bindings*> BindingsChanged;
+	static PBD::Signal<void(Bindings*)> BindingsChanged;
 
 	struct DragsBlockBindings {
 		DragsBlockBindings() { Bindings::_drag_active++; }
