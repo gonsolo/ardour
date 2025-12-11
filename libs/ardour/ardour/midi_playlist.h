@@ -20,13 +20,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_midi_playlist_h__
-#define __ardour_midi_playlist_h__
+#pragma once
 
 #include <vector>
 #include <list>
-
-#include <boost/utility.hpp>
 
 #include "evoral/Parameter.h"
 
@@ -47,7 +44,6 @@ class                         Beats;
 namespace ARDOUR
 {
 
-class BeatsSamplesConverter;
 class MidiChannelFilter;
 class MidiRegion;
 class Session;
@@ -60,10 +56,10 @@ class LIBARDOUR_API MidiPlaylist : public ARDOUR::Playlist
 public:
 	MidiPlaylist (Session&, const XMLNode&, bool hidden = false);
 	MidiPlaylist (Session&, std::string name, bool hidden = false);
-	MidiPlaylist (boost::shared_ptr<const MidiPlaylist> other, std::string name, bool hidden = false);
+	MidiPlaylist (std::shared_ptr<const MidiPlaylist> other, std::string name, bool hidden = false);
 
 	/** This constructor does NOT notify others (session) */
-	MidiPlaylist (boost::shared_ptr<const MidiPlaylist> other,
+	MidiPlaylist (std::shared_ptr<const MidiPlaylist> other,
 	              timepos_t const &                     start,
 	              timepos_t const &                     cnt,
 	              std::string                           name,
@@ -76,20 +72,16 @@ public:
 
 	int set_state (const XMLNode&, int version);
 
-	bool destroy_region (boost::shared_ptr<Region>);
+	bool destroy_region (std::shared_ptr<Region>);
 
-	void _split_region (boost::shared_ptr<Region>, timepos_t const & position, ThawList& thawlist);
+	void _split_region (std::shared_ptr<Region>, timepos_t const & position, ThawList& thawlist);
 
 	void set_note_mode (NoteMode m) { _note_mode = m; }
 
 	std::set<Evoral::Parameter> contained_automation();
 
-	boost::shared_ptr<Region> combine (const RegionList&, boost::shared_ptr<Track>);
-	void uncombine (boost::shared_ptr<Region>);
-
-  protected:
-	void remove_dependents (boost::shared_ptr<Region> region);
-	void region_going_away (boost::weak_ptr<Region> region);
+	std::shared_ptr<Region> combine (const RegionList&, std::shared_ptr<Track>);
+	void uncombine (std::shared_ptr<Region>);
 
   private:
 	void dump () const;
@@ -101,4 +93,3 @@ public:
 
 } /* namespace ARDOUR */
 
-#endif /* __ardour_midi_playlist_h__ */

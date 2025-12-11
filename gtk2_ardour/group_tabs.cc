@@ -20,7 +20,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/stock.h>
+#include <ydkmm/cursor.h>
+#include <ytkmm/stock.h>
 
 #include "ardour/session.h"
 #include "ardour/route_group.h"
@@ -48,12 +49,17 @@ using Gtkmm2ext::Keyboard;
 
 list<Gdk::Color> GroupTabs::_used_colors;
 
+#define BASELINESTRETCH (1.25)
+
 GroupTabs::GroupTabs ()
-	: _menu (0)
+	: _dragging_new_tab (0)
+	, _menu (0)
 	, _dragging (0)
-	, _dragging_new_tab (0)
+	, _extent (-1)
+	, _offset (0)
+	, _hovering (false)
 {
-	add_events (Gdk::BUTTON_PRESS_MASK|Gdk::BUTTON_RELEASE_MASK|Gdk::POINTER_MOTION_MASK);
+	add_events (Gdk::BUTTON_PRESS_MASK|Gdk::BUTTON_RELEASE_MASK|Gdk::POINTER_MOTION_MASK|Gdk::ENTER_NOTIFY_MASK|Gdk::LEAVE_NOTIFY_MASK);
 	UIConfiguration::instance().ColorsChanged.connect (sigc::mem_fun (*this, &GroupTabs::queue_draw));
 }
 
@@ -69,19 +75,66 @@ GroupTabs::set_session (Session* s)
 
 	if (_session) {
 		_session->RouteGroupPropertyChanged.connect (
-			_session_connections, invalidator (*this), boost::bind (&GroupTabs::route_group_property_changed, this, _1), gui_context()
+			_session_connections, invalidator (*this), std::bind (&GroupTabs::route_group_property_changed, this, _1), gui_context()
 			);
 		_session->RouteAddedToRouteGroup.connect (
-			_session_connections, invalidator (*this), boost::bind (&GroupTabs::route_added_to_route_group, this, _1, _2), gui_context()
+			_session_connections, invalidator (*this), std::bind (&GroupTabs::route_added_to_route_group, this, _1, _2), gui_context()
 			);
 		_session->RouteRemovedFromRouteGroup.connect (
-			_session_connections, invalidator (*this), boost::bind (&GroupTabs::route_removed_from_route_group, this, _1, _2), gui_context()
+			_session_connections, invalidator (*this), std::bind (&GroupTabs::route_removed_from_route_group, this, _1, _2), gui_context()
 			);
 
-		_session->route_group_removed.connect (_session_connections, invalidator (*this), boost::bind (&GroupTabs::set_dirty, this, (cairo_rectangle_t*)0), gui_context());
+		_session->route_group_removed.connect (_session_connections, invalidator (*this), std::bind (&GroupTabs::set_dirty, this, (cairo_rectangle_t*)0), gui_context());
 	}
 }
 
+bool
+GroupTabs::on_enter_notify_event (GdkEventCrossing* ev)
+{
+	_hovering = true;
+
+	if (UIConfiguration::instance ().get_widget_prelight ()) {
+		queue_draw ();
+	}
+
+	get_window()->set_cursor (Gdk::Cursor (offset () != primary_coordinate (1, 0) ? Gdk::SB_H_DOUBLE_ARROW : Gdk::SB_V_DOUBLE_ARROW));
+
+	return CairoWidget::on_enter_notify_event (ev);
+}
+
+bool
+GroupTabs::on_leave_notify_event (GdkEventCrossing* ev)
+{
+	_hovering = false;
+
+	if (UIConfiguration::instance ().get_widget_prelight ()) {
+		queue_draw ();
+	}
+
+	get_window()->set_cursor ();
+
+	return CairoWidget::on_leave_notify_event (ev);
+}
+
+void
+GroupTabs::set_extent (double extent)
+{
+	if (_extent == extent) {
+		return;
+	}
+	_extent = extent;
+	set_dirty ();
+}
+
+void
+GroupTabs::set_offset (double offset)
+{
+	if (_offset == offset) {
+		return;
+	}
+	_offset = offset;
+	set_dirty ();
+}
 
 /** Handle a size request.
  *  @param req GTK requisition
@@ -89,8 +142,16 @@ GroupTabs::set_session (Session* s)
 void
 GroupTabs::on_size_request (Gtk::Requisition *req)
 {
-	req->width = std::max (16.f, rintf (16.f * UIConfiguration::instance().get_ui_scale()));
-	req->height = std::max (16.f, rintf (16.f * UIConfiguration::instance().get_ui_scale()));
+	Glib::RefPtr<Pango::Layout> layout;
+	layout = Pango::Layout::create (get_pango_context ());
+	layout->set_text (X_("Tab Text"));
+	int tw, th;
+	layout->get_pixel_size (tw, th);
+
+	int size = (int) ceil(th * BASELINESTRETCH + 1.0);  //@robin this should match ArdourButton impl
+
+	req->width = size;
+	req->height = size;
 }
 
 bool
@@ -188,7 +249,6 @@ GroupTabs::on_motion_notify_event (GdkEventMotion* ev)
 	_dragging->to = min (_dragging->to, _drag_max);
 
 	set_dirty ();
-	queue_draw ();
 
 	gdk_event_request_motions(ev);
 
@@ -218,7 +278,7 @@ GroupTabs::on_button_release_event (GdkEventButton*)
 			if (_dragging_new_tab) {
 				run_new_group_dialog (&routes, false);
 			} else {
-				boost::shared_ptr<RouteList> r = _session->get_routes ();
+				std::shared_ptr<RouteList const> r = _session->get_routes ();
 				/* First add new ones, then remove old ones.
 				 * We cannot allow the group to become temporarily empty, because
 				 * Session::route_removed_from_route_group() will delete empty groups.
@@ -227,16 +287,15 @@ GroupTabs::on_button_release_event (GdkEventButton*)
 					/* RouteGroup::add () ignores routes already present in the set */
 					_dragging->group->add (*i);
 				}
-				for (RouteList::const_iterator i = r->begin(); i != r->end(); ++i) {
+				for (auto const& i : *r) {
 
 					bool const was_in_tab = find (
-						_initial_dragging_routes.begin(), _initial_dragging_routes.end(), *i
-						) != _initial_dragging_routes.end ();
+						_initial_dragging_routes.begin(), _initial_dragging_routes.end(), i) != _initial_dragging_routes.end ();
 
-					bool const now_in_tab = find (routes.begin(), routes.end(), *i) != routes.end();
+					bool const now_in_tab = find (routes.begin(), routes.end(), i) != routes.end();
 
 					if (was_in_tab && !now_in_tab) {
-						_dragging->group->remove (*i);
+						_dragging->group->remove (i);
 					}
 				}
 
@@ -244,7 +303,6 @@ GroupTabs::on_button_release_event (GdkEventButton*)
 		}
 
 		set_dirty ();
-		queue_draw ();
 	}
 
 	_dragging = 0;
@@ -261,13 +319,13 @@ GroupTabs::render (Cairo::RefPtr<Cairo::Context> const& ctx, cairo_rectangle_t*)
 
 	if (!get_sensitive ()) {
 		c = get_style()->get_base (Gtk::STATE_INSENSITIVE);
+		cairo_set_source_rgb (cr, c.get_red_p(), c.get_green_p(), c.get_blue_p());
 	} else {
-		c = get_style()->get_base (Gtk::STATE_NORMAL);
+		uint32_t bg_color = UIConfiguration::instance().color ("group tab base");
+		Gtkmm2ext::set_source_rgb_a (cr, bg_color, 1.0);
 	}
 
 	/* background */
-
-	cairo_set_source_rgb (cr, c.get_red_p(), c.get_green_p(), c.get_blue_p());
 	cairo_rectangle (cr, 0, 0, get_width(), get_height());
 	cairo_fill (cr);
 
@@ -283,6 +341,12 @@ GroupTabs::render (Cairo::RefPtr<Cairo::Context> const& ctx, cairo_rectangle_t*)
 
 	for (list<Tab>::const_iterator i = _tabs.begin(); i != _tabs.end(); ++i) {
 		draw_tab (cr, *i);
+	}
+
+	if (_hovering && UIConfiguration::instance ().get_widget_prelight ()) {
+		cairo_set_source_rgba (cr, 1, 1, 1, 0.12);
+		cairo_rectangle (cr, 0, 0, get_width(), get_height());
+		cairo_fill (cr);
 	}
 }
 
@@ -364,14 +428,17 @@ GroupTabs::get_menu (RouteGroup* g, bool in_tab_area)
 	const VCAList vcas = _session->vca_manager().vcas ();
 
 	if (!in_tab_area) {
-		/* context menu is not for a group tab, show the "create new
-		   from" items here
+		/* context menu is not for a group tab (e.g. mixer sidebar).
+		 * Show the "create new from" items here.
 		*/
 		add_new_from_items (items);
 	}
 
-	if (g) {
+	if (!in_tab_area && g) {
 		items.push_back (SeparatorElem());
+	}
+
+	if (g) {
 		items.push_back (MenuElem (_("Edit Group..."), sigc::bind (sigc::mem_fun (*this, &GroupTabs::edit_group), g)));
 		items.push_back (MenuElem (_("Collect Group"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::collect), g)));
 		items.push_back (MenuElem (_("Remove Group"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::remove_group), g)));
@@ -393,35 +460,18 @@ GroupTabs::get_menu (RouteGroup* g, bool in_tab_area)
 
 		items.push_back (SeparatorElem());
 
-		bool can_subgroup = true;
-		boost::shared_ptr<RouteList> rl = g->route_list();
-		for (RouteList::const_iterator i = rl->begin(); i != rl->end(); ++i) {
-#ifdef MIXBUS
-			if ((*i)->mixbus ()) {
-				can_subgroup = false;
-				break;
-			}
-#endif
-			if ((*i)->output()->n_ports().n_midi() != 0) {
-				can_subgroup = false;
-				break;
-			}
-		}
-
 		if (g->has_subgroup ()) {
 			items.push_back (MenuElem (_("Remove Subgroup Bus"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::un_subgroup), g)));
-		} else if (can_subgroup) {
+		} else {
 			items.push_back (MenuElem (_("Add New Subgroup Bus"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::subgroup), g, false, PreFader)));
-		}
-
-		if (can_subgroup) {
+			items.back().set_sensitive (g->can_subgroup (false, PostFader));
 			items.push_back (MenuElem (_("Add New Aux Bus (pre-fader)"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::subgroup), g, true, PreFader)));
+			items.back().set_sensitive (g->can_subgroup (true, PreFader));
 			items.push_back (MenuElem (_("Add New Aux Bus (post-fader)"), sigc::bind (sigc::mem_fun (*this, &GroupTabs::subgroup), g, true, PostFader)));
+			items.back().set_sensitive (g->can_subgroup (true, PostFader));
 		}
 
-		if (can_subgroup || g->has_subgroup ()) {
-			items.push_back (SeparatorElem());
-		}
+		items.push_back (SeparatorElem());
 	}
 
 	add_menu_items (_menu, g);
@@ -482,7 +532,7 @@ GroupTabs::assign_group_to_master (uint32_t which, RouteGroup* group, bool renam
 		return;
 	}
 
-	boost::shared_ptr<VCA> master;
+	std::shared_ptr<VCA> master;
 
 	if (which == 0) {
 		if (_session->vca_manager().create_vca (1).empty ()) {
@@ -518,7 +568,7 @@ GroupTabs::unassign_group_to_master (uint32_t which, RouteGroup* group) const
 		return;
 	}
 
-	boost::shared_ptr<VCA> master = _session->vca_manager().vca_by_number (which);
+	std::shared_ptr<VCA> master = _session->vca_manager().vca_by_number (which);
 
 	if (!master) {
 		/* should never happen; if it does, basically something deeply
@@ -538,7 +588,7 @@ GroupTabs::assign_some_to_master (uint32_t which, RouteList rl, std::string vcan
 		return;
 	}
 
-	boost::shared_ptr<VCA> master;
+	std::shared_ptr<VCA> master;
 	bool set_name = false;
 
 	if (which == 0) {
@@ -584,12 +634,12 @@ GroupTabs::get_rec_enabled ()
 		return rec_enabled;
 	}
 
-	boost::shared_ptr<RouteList> rl = _session->get_routes ();
+	std::shared_ptr<RouteList const> rl = _session->get_routes ();
 
-	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		boost::shared_ptr<Track> trk (boost::dynamic_pointer_cast<Track> (*i));
+	for (auto const& i : *rl) {
+		std::shared_ptr<Track> trk (std::dynamic_pointer_cast<Track> (i));
 		if (trk && trk->rec_enable_control()->get_value()) {
-			rec_enabled.push_back (*i);
+			rec_enabled.push_back (i);
 		}
 	}
 
@@ -659,7 +709,13 @@ GroupTabs::run_new_group_dialog (RouteList const * rl, bool with_master)
 	}
 
 	RouteGroup* g = new RouteGroup (*_session, "");
-	RouteGroupDialog* d = new RouteGroupDialog (g, true);
+	RouteGroupDialog* d = new RouteGroupDialog (g, true); // XXX
+
+	if (rl) {
+		for (auto const& r : *rl) {
+			r->DropReferences.connect (_new_route_group_connection, invalidator (*d), std::bind (&Dialog::response, d, RESPONSE_CANCEL), gui_context());
+		}
+	}
 
 	d->signal_response().connect (sigc::bind (sigc::mem_fun (*this, &GroupTabs::new_group_dialog_finished), d, rl ? new RouteList (*rl): 0, with_master));
 	d->present ();
@@ -668,6 +724,7 @@ GroupTabs::run_new_group_dialog (RouteList const * rl, bool with_master)
 void
 GroupTabs::new_group_dialog_finished (int r, RouteGroupDialog* d, RouteList const * rl, bool with_master) const
 {
+	_new_route_group_connection.disconnect ();
 	if (r == RESPONSE_OK) {
 
 		if (!d->name_check()) {
@@ -725,7 +782,7 @@ GroupTabs::un_subgroup (RouteGroup* g)
 void
 GroupTabs::collect (RouteGroup* g)
 {
-	boost::shared_ptr<RouteList> group_routes = g->route_list ();
+	std::shared_ptr<RouteList> group_routes = g->route_list ();
 	group_routes->sort (Stripable::Sorter());
 	int const N = group_routes->size ();
 
@@ -792,7 +849,7 @@ GroupTabs::set_activation (RouteGroup* g, bool a)
 void
 GroupTabs::remove_group (RouteGroup* g)
 {
-	boost::shared_ptr<RouteList> rl (g->route_list ());
+	std::shared_ptr<RouteList> rl (g->route_list ());
 	_session->remove_route_group (*g);
 
 	emit_gui_changed_for_members (rl);
@@ -840,7 +897,7 @@ GroupTabs::group_color (RouteGroup* group)
 
 	if (empty) {
 		/* no color has yet been set, so use a random one */
-		uint32_t c = Gtkmm2ext::gdk_color_to_rgba (unique_random_color (_used_colors));
+		uint32_t c = Gtkmm2ext::gdk_color_to_rgba (round_robin_palette_color ());
 		set_group_color (group, c);
 		return c;
 	}
@@ -875,11 +932,11 @@ GroupTabs::route_group_property_changed (RouteGroup* rg)
 }
 
 void
-GroupTabs::route_added_to_route_group (RouteGroup*, boost::weak_ptr<Route> w)
+GroupTabs::route_added_to_route_group (RouteGroup*, std::weak_ptr<Route> w)
 {
 	/* Similarly-spirited hack as in route_group_property_changed */
 
-	boost::shared_ptr<Route> r = w.lock ();
+	std::shared_ptr<Route> r = w.lock ();
 	if (!r) {
 		return;
 	}
@@ -890,11 +947,11 @@ GroupTabs::route_added_to_route_group (RouteGroup*, boost::weak_ptr<Route> w)
 }
 
 void
-GroupTabs::route_removed_from_route_group (RouteGroup*, boost::weak_ptr<Route> w)
+GroupTabs::route_removed_from_route_group (RouteGroup*, std::weak_ptr<Route> w)
 {
 	/* Similarly-spirited hack as in route_group_property_changed */
 
-	boost::shared_ptr<Route> r = w.lock ();
+	std::shared_ptr<Route> r = w.lock ();
 	if (!r) {
 		return;
 	}
@@ -905,7 +962,7 @@ GroupTabs::route_removed_from_route_group (RouteGroup*, boost::weak_ptr<Route> w
 }
 
 void
-GroupTabs::emit_gui_changed_for_members (boost::shared_ptr<RouteList> rl)
+GroupTabs::emit_gui_changed_for_members (std::shared_ptr<RouteList> rl)
 {
 	PresentationInfo::ChangeSuspender cs;
 

@@ -30,16 +30,16 @@
 
 #include <cmath>
 
-#include <gtkmm/adjustment.h>
-#include <gtkmm/button.h>
-#include <gtkmm/box.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/label.h>
-#include <gtkmm/menu.h>
-#include <gtkmm/sizegroup.h>
-#include <gtkmm/textview.h>
-#include <gtkmm/togglebutton.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/button.h>
+#include <ytkmm/box.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/label.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/sizegroup.h>
+#include <ytkmm/textview.h>
+#include <ytkmm/togglebutton.h>
 
 #include "pbd/stateful.h"
 
@@ -89,7 +89,7 @@ class TriggerBoxWidget;
 class MixerStrip : public AxisView, public RouteUI, public Gtk::EventBox
 {
 public:
-	MixerStrip (Mixer_UI&, ARDOUR::Session*, boost::shared_ptr<ARDOUR::Route>, bool in_mixer = true);
+	MixerStrip (Mixer_UI&, ARDOUR::Session*, std::shared_ptr<ARDOUR::Route>, bool in_mixer = true);
 	MixerStrip (Mixer_UI&, ARDOUR::Session*, bool in_mixer = true);
 	~MixerStrip ();
 
@@ -98,7 +98,7 @@ public:
 	bool marked_for_display () const;
 	bool set_marked_for_display (bool);
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
+	std::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
 
 	void set_width_enum (Width, void* owner);
 	Width get_width_enum () const { return _width; }
@@ -111,15 +111,15 @@ public:
 	void fast_update ();
 	void set_embedded (bool);
 
-	void set_route (boost::shared_ptr<ARDOUR::Route>);
+	void set_route (std::shared_ptr<ARDOUR::Route>);
 	void set_button_names ();
-	void show_send (boost::shared_ptr<ARDOUR::Send>);
+	void show_send (std::shared_ptr<ARDOUR::Send>);
 	void revert_to_default_display ();
 
 	/** @return the delivery that is being edited using our fader; it will be the
 	 *  last send passed to \ref show_send() , or our route's main out delivery.
 	 */
-	boost::shared_ptr<ARDOUR::Delivery> current_delivery () const {
+	std::shared_ptr<ARDOUR::Delivery> current_delivery () const {
 		return _current_delivery;
 	}
 
@@ -135,9 +135,9 @@ public:
 	sigc::signal<void> WidthChanged;
 
 	/** The delivery that we are handling the level for with our fader has changed */
-	PBD::Signal1<void, boost::weak_ptr<ARDOUR::Delivery> > DeliveryChanged;
+	PBD::Signal<void(std::weak_ptr<ARDOUR::Delivery> )> DeliveryChanged;
 
-	static PBD::Signal1<void,MixerStrip*> CatchDeletion;
+	static PBD::Signal<void(MixerStrip*)> CatchDeletion;
 
 	std::string state_id() const;
 
@@ -155,7 +155,7 @@ public:
 
 	void set_selected (bool yn);
 
-	void set_trigger_display (boost::shared_ptr<ARDOUR::TriggerBox>);
+	void set_trigger_display (std::shared_ptr<ARDOUR::TriggerBox>);
 
 	static MixerStrip* entered_mixer_strip() { return _entered_mixer_strip; }
 
@@ -177,6 +177,8 @@ private:
 	Width _width;
 	void*  _width_owner;
 
+	static int _scrollbar_spacer_height;
+
 	ArdourWidgets::ArdourButton hide_button;
 	ArdourWidgets::ArdourButton width_button;
 	ArdourWidgets::ArdourButton number_label;
@@ -192,7 +194,6 @@ private:
 	ProcessorBox processor_box;
 	GainMeter    gpm;
 	PannerUI     panners;
-	TriggerBoxWidget trigger_display;
 
 	Glib::RefPtr<Gtk::SizeGroup> button_size_group;
 
@@ -202,8 +203,8 @@ private:
 	Gtk::Table master_volume_table;
 	Gtk::Table bottom_button_table;
 
-	void vca_assign (boost::shared_ptr<ARDOUR::VCA>);
-	void vca_unassign (boost::shared_ptr<ARDOUR::VCA>);
+	void vca_assign (std::shared_ptr<ARDOUR::VCA>);
+	void vca_unassign (std::shared_ptr<ARDOUR::VCA>);
 
 	void meter_changed ();
 	void monitor_changed ();
@@ -238,10 +239,7 @@ private:
 
 	Gtk::Menu* _master_volume_menu;
 	ArdourWidgets::ArdourButton* _loudess_analysis_button;
-	boost::shared_ptr<AutomationController> _volume_controller;
-
-	void trim_start_touch ();
-	void trim_end_touch ();
+	std::shared_ptr<AutomationController> _volume_controller;
 
 	void setup_comment_button ();
 
@@ -285,18 +283,20 @@ private:
 	void route_property_changed (const PBD::PropertyChange&);
 	void name_button_resized (Gtk::Allocation&);
 	void name_changed ();
+	void dpi_reset ();
+	void update_spacer ();
 	void update_speed_display ();
 	void map_frozen ();
-	void hide_processor_editor (boost::weak_ptr<ARDOUR::Processor> processor);
+	void hide_processor_editor (std::weak_ptr<ARDOUR::Processor> processor);
 	void hide_redirect_editors ();
 
 	bool ignore_speed_adjustment;
 
 	static MixerStrip* _entered_mixer_strip;
 
-	virtual void bus_send_display_changed (boost::shared_ptr<ARDOUR::Route>);
+	virtual void bus_send_display_changed (std::shared_ptr<ARDOUR::Route>);
 
-	void set_current_delivery (boost::shared_ptr<ARDOUR::Delivery>);
+	void set_current_delivery (std::shared_ptr<ARDOUR::Delivery>);
 
 	void drop_send ();
 	PBD::ScopedConnection send_gone_connection;
@@ -315,8 +315,8 @@ private:
 	 *  the RC option editor.
 	 */
 	VisibilityGroup _visibility;
-	boost::optional<bool> override_solo_visibility () const;
-	boost::optional<bool> override_rec_mon_visibility () const;
+	std::optional<bool> override_solo_visibility () const;
+	std::optional<bool> override_rec_mon_visibility () const;
 
 	PBD::ScopedConnectionList _config_connection;
 

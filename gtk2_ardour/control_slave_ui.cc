@@ -19,7 +19,7 @@
 
 #include <string>
 
-#include <gtkmm/menu.h>
+#include <ytkmm/menu.h>
 
 #include "pbd/string_convert.h"
 
@@ -67,22 +67,22 @@ ControlSlaveUI::~ControlSlaveUI ()
 }
 
 void
-ControlSlaveUI::set_stripable (boost::shared_ptr<Stripable> s)
+ControlSlaveUI::set_stripable (std::shared_ptr<Stripable> s)
 {
 	connections.drop_connections ();
 
 	stripable = s;
 
 	if (stripable) {
-		boost::shared_ptr<GainControl> ac = stripable->gain_control();
+		std::shared_ptr<GainControl> ac = stripable->gain_control();
 		assert (ac);
 
 		ac->MasterStatusChange.connect (connections,
 		                                invalidator (*this),
-		                                boost::bind (&ControlSlaveUI::update_vca_display, this),
+		                                std::bind (&ControlSlaveUI::update_vca_display, this),
 		                                gui_context());
 
-		stripable->DropReferences.connect (connections, invalidator (*this), boost::bind (&ControlSlaveUI::set_stripable, this, boost::shared_ptr<Stripable>()), gui_context());
+		stripable->DropReferences.connect (connections, invalidator (*this), std::bind (&ControlSlaveUI::set_stripable, this, std::shared_ptr<Stripable>()), gui_context());
 	}
 
 	update_vca_display ();
@@ -121,13 +121,13 @@ ControlSlaveUI::update_vca_display ()
 void
 ControlSlaveUI::vca_menu_toggle (Gtk::CheckMenuItem* menuitem, uint32_t n)
 {
-	boost::shared_ptr<VCA> vca = _session->vca_manager().vca_by_number (n);
+	std::shared_ptr<VCA> vca = _session->vca_manager().vca_by_number (n);
 
 	if (!vca) {
 		return;
 	}
 
-	boost::shared_ptr<Slavable> sl = boost::dynamic_pointer_cast<Slavable> (stripable);
+	std::shared_ptr<Slavable> sl = std::dynamic_pointer_cast<Slavable> (stripable);
 
 	if (!sl) {
 		return;
@@ -143,13 +143,13 @@ ControlSlaveUI::vca_menu_toggle (Gtk::CheckMenuItem* menuitem, uint32_t n)
 void
 ControlSlaveUI::unassign_all ()
 {
-	boost::shared_ptr<Slavable> sl = boost::dynamic_pointer_cast<Slavable> (stripable);
+	std::shared_ptr<Slavable> sl = std::dynamic_pointer_cast<Slavable> (stripable);
 
 	if (!sl) {
 		return;
 	}
 
-	sl->unassign (boost::shared_ptr<VCA>());
+	sl->unassign (std::shared_ptr<VCA>());
 }
 
 bool
@@ -213,15 +213,15 @@ ControlSlaveUI::vca_button_release (GdkEventButton* ev, uint32_t n)
 	}
 
 	if (!items.empty()) {
-		context_menu->popup (1, ev->time);
-		return true;
+		context_menu->popup (ev->button, ev->time);
+		return false;
 	}
 
 	return false;
 }
 
 void
-ControlSlaveUI::add_vca_button (boost::shared_ptr<VCA> vca)
+ControlSlaveUI::add_vca_button (std::shared_ptr<VCA> vca)
 {
 	ArdourButton* vca_button = manage (new ArdourButton (ArdourButton::default_elements));
 
@@ -232,7 +232,7 @@ ControlSlaveUI::add_vca_button (boost::shared_ptr<VCA> vca)
 	vca_button->set_text (PBD::to_string (vca->number()));
 	vca_button->set_fixed_colors (vca->presentation_info().color(), vca->presentation_info().color ());
 
-	vca->presentation_info().PropertyChanged.connect (master_connections, invalidator (*this), boost::bind (&ControlSlaveUI::master_property_changed, this, _1), gui_context());
+	vca->presentation_info().PropertyChanged.connect (master_connections, invalidator (*this), std::bind (&ControlSlaveUI::master_property_changed, this, _1), gui_context());
 
 	pack_start (*vca_button);
 	vca_button->show ();

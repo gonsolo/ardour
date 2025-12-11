@@ -16,26 +16,26 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_trigger_clip_picker_h__
-#define __gtk_ardour_trigger_clip_picker_h__
+#pragma once
 
 #include <set>
 #include <string>
 
-#include <gtkmm/box.h>
-#include <gtkmm/filechooserdialog.h>
-#include <gtkmm/scale.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/table.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/box.h>
+#include <ytkmm/filechooserdialog.h>
+#include <ytkmm/scale.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/table.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
 
 #include "ardour/types.h"
 #include "ardour/session_handle.h"
 
 #include "widgets/ardour_dropdown.h"
 #include "widgets/ardour_button.h"
+#include "widgets/ardour_knob.h"
 
 #include "instrument_selector.h"
 
@@ -120,6 +120,7 @@ private:
 	Gtk::Table                   _auditable;
 	ArdourWidgets::ArdourButton  _play_btn;
 	ArdourWidgets::ArdourButton  _stop_btn;
+	ArdourWidgets::ArdourKnob    _gain_control;
 	ArdourWidgets::ArdourButton  _open_library_btn;
 	ArdourWidgets::ArdourButton  _refresh_btn;
 	ArdourWidgets::ArdourButton  _show_plugin_btn;
@@ -152,4 +153,3 @@ private:
 	sigc::connection          _idle_connection;
 };
 
-#endif

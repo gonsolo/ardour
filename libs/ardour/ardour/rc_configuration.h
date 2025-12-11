@@ -18,8 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_rc_configuration_h__
-#define __ardour_rc_configuration_h__
+#pragma once
 
 #include <map>
 #include <string>
@@ -43,10 +42,10 @@ class LIBARDOUR_API RCConfiguration : public PBD::Configuration
 	RCConfiguration();
 	~RCConfiguration();
 
-	void map_parameters (boost::function<void (std::string)>&);
+	void map_parameters (std::function<void (std::string)>&);
 	int set_state (XMLNode const &, int version);
 	XMLNode& get_state () const;
-	XMLNode& get_variables () const;
+	XMLNode& get_variables (std::string const & nodename) const;
 	void set_variables (XMLNode const &);
 
 	int load_state ();
@@ -60,6 +59,8 @@ class LIBARDOUR_API RCConfiguration : public PBD::Configuration
 	XMLNode* control_protocol_state () { return _control_protocol_state; }
 	XMLNode* transport_master_state () { return _transport_master_state; }
 
+	std::map<std::string,PBD::ConfigVariableBase*> _my_variables;
+
 	/* define accessor methods */
 
 #undef  CONFIG_VARIABLE
@@ -70,7 +71,7 @@ class LIBARDOUR_API RCConfiguration : public PBD::Configuration
 #define CONFIG_VARIABLE_SPECIAL(Type,var,name,value,mutator) \
 	Type get_##var () const { return var.get(); } \
 	bool set_##var (Type val) { bool ret = var.set (val); if (ret) { ParameterChanged (name); } return ret; }
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 
@@ -82,12 +83,14 @@ class LIBARDOUR_API RCConfiguration : public PBD::Configuration
 #undef  CONFIG_VARIABLE_SPECIAL
 #define CONFIG_VARIABLE(Type,var,name,value) PBD::ConfigVariable<Type> var;
 #define CONFIG_VARIABLE_SPECIAL(Type,var,name,value,mutator) PBD::ConfigVariableWithMutation<Type> var;
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 
 	XMLNode* _control_protocol_state;
 	XMLNode* _transport_master_state;
+
+	void build_metadata ();
 };
 
 /* XXX: rename this */
@@ -96,4 +99,3 @@ LIBARDOUR_API extern gain_t speed_quietning; /* see comment in configuration.cc 
 
 } // namespace ARDOUR
 
-#endif /* __ardour_configuration_h__ */

@@ -28,7 +28,8 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <boost/enable_shared_from_this.hpp>
+
+#include "temporal/tempo.h"
 
 #include "ardour/plugin.h"
 #include "ardour/plugin_scan_result.h"
@@ -44,7 +45,6 @@
 #define PATH_MAX 1024
 #endif
 
-typedef struct LV2_Evbuf_Impl LV2_Evbuf;
 
 namespace ARDOUR {
 
@@ -57,6 +57,7 @@ const void* lv2plugin_get_port_value(const char* port_symbol,
 
 class AudioEngine;
 class Session;
+struct LV2_Evbuf;
 
 class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 {
@@ -91,6 +92,12 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 
 	const void* extension_data (const char* uri) const;
 
+#ifdef LV2_EXTENDED
+	int  setup_export (const char*, LV2_Options_Option const* options = NULL);
+	int  finalize_export ();
+	bool can_export () const { return _export_interface; }
+#endif
+
 	const void* c_plugin();
 	const void* c_ui();
 	const void* c_ui_type();
@@ -105,7 +112,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	const LV2_Feature* const* features () { return _features; }
 
 	std::set<Evoral::Parameter> automatable () const;
-	virtual void set_automation_control (uint32_t, boost::shared_ptr<AutomationControl>);
+	virtual void set_automation_control (uint32_t, std::shared_ptr<AutomationControl>);
 
 	void activate ();
 	void deactivate ();
@@ -131,7 +138,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 
 	uint32_t designated_bypass_port ();
 
-	boost::shared_ptr<ScalePoints>
+	std::shared_ptr<ScalePoints>
 	get_scale_points(uint32_t port_index) const;
 
 	void set_insert_id(PBD::ID id);
@@ -144,8 +151,9 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	bool has_editor () const;
 	bool has_message_output () const;
 
-	void add_slave (boost::shared_ptr<Plugin>, bool);
-	void remove_slave (boost::shared_ptr<Plugin>);
+	void add_slave (std::shared_ptr<Plugin>, bool);
+	void remove_slave (std::shared_ptr<Plugin>);
+	void set_non_realtime (bool);
 
 	bool write_from_ui(uint32_t       index,
 	                   uint32_t       protocol,
@@ -170,7 +178,9 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	int work_response(uint32_t size, const void* data);
 
 	void                       set_property(uint32_t key, const Variant& value);
-	const PropertyDescriptors& get_supported_properties() const { return _property_descriptors; }
+	const PropertyDescriptors& get_supported_properties (bool readonly) const {
+		return readonly ? _ro_property_descriptors : _property_descriptors;
+	}
 	const ParameterDescriptor& get_property_descriptor(uint32_t id) const;
 	Variant                    get_property_value (uint32_t) const;
 	void                       announce_property_values();
@@ -218,6 +228,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	double        _current_bpm;
 	double        _prev_time_scale;  ///< previous Port::speed_ratio
 	PBD::ID       _insert_id;
+	bool          _non_realtime;
 	std::string   _plugin_state_dir;
 	uint32_t      _bpm_control_port_index;
 	uint32_t      _patch_port_in_index;
@@ -246,7 +257,8 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 		PORT_AUTOCTRL = 1 << 9,  ///< Event port supports auto:AutomationControl
 		PORT_CTRLED   = 1 << 10, ///< Port prop auto:AutomationControlled (can be self controlled)
 		PORT_CTRLER   = 1 << 11, ///< Port prop auto:AutomationController (can be self set)
-		PORT_NOAUTO   = 1 << 12  ///< Port don't allow to automate
+		PORT_NOAUTO   = 1 << 12, ///< Port don't allow to automate
+		PORT_OTHOPT   = 1 << 13  ///< Port of unknown data type with prop connectionOptional
 	} PortFlag;
 
 	typedef unsigned PortFlags;
@@ -258,6 +270,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	std::map<uint32_t, Variant>    _property_values;
 
 	PropertyDescriptors _property_descriptors;
+	PropertyDescriptors _ro_property_descriptors;
 
 	struct AutomationCtrl {
 		AutomationCtrl (const AutomationCtrl &other)
@@ -265,15 +278,15 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 			, guard (other.guard)
 		{ }
 
-		AutomationCtrl (boost::shared_ptr<ARDOUR::AutomationControl> c)
+		AutomationCtrl (std::shared_ptr<ARDOUR::AutomationControl> c)
 			: ac (c)
 			, guard (false)
 		{ }
-		boost::shared_ptr<ARDOUR::AutomationControl> ac;
+		std::shared_ptr<ARDOUR::AutomationControl> ac;
 		bool guard;
 	};
 
-	typedef boost::shared_ptr<AutomationCtrl> AutomationCtrlPtr;
+	typedef std::shared_ptr<AutomationCtrl> AutomationCtrlPtr;
 	typedef std::map<uint32_t, AutomationCtrlPtr> AutomationCtrlMap;
 	AutomationCtrlMap _ctrl_map;
 	AutomationCtrlPtr get_automation_control (uint32_t);
@@ -303,16 +316,17 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	Glib::Threads::Mutex _work_mutex;
 
 	Glib::Threads::Mutex                   _slave_lock;
-	std::set<boost::shared_ptr<LV2Plugin>> _slaves;
+	std::set<std::shared_ptr<LV2Plugin>> _slaves;
 
 #ifdef LV2_EXTENDED
 	static void queue_draw (LV2_Inline_Display_Handle);
 	static void midnam_update (LV2_Midnam_Handle);
 	static void bankpatch_notify (LV2_BankPatch_Handle, uint8_t, uint32_t, uint8_t);
 
-	const LV2_Inline_Display_Interface* _display_interface;
 	bool _inline_display_in_gui;
-	const LV2_Midnam_Interface*    _midname_interface;
+	const LV2_Inline_Display_Interface* _display_interface;
+	const LV2_Midnam_Interface* _midname_interface;
+	const LV2_Export_Interface* _export_interface;
 
 	uint32_t _bankpatch[16];
 	bool seen_bankpatch;
@@ -351,6 +365,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	static uint32_t      _ui_foreground_color;
 	static uint32_t      _ui_contrasting_color;
 	static unsigned long _ui_transient_win_id;
+	static float         _ui_update_hz;
 
 	mutable unsigned _state_version;
 
@@ -369,7 +384,7 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	void allocate_atom_event_buffers ();
 	void run (pframes_t nsamples, bool sync_work = false);
 
-	void load_supported_properties(PropertyDescriptors& descs);
+	void load_supported_properties(PropertyDescriptors& descs, bool writable);
 
 #ifdef LV2_EXTENDED
 	bool has_inline_display ();
@@ -389,15 +404,17 @@ class LIBARDOUR_API LV2Plugin : public ARDOUR::Plugin, public ARDOUR::Workee
 	void do_remove_preset (std::string);
 	void find_presets ();
 	void add_state (XMLNode *) const;
+
+	Temporal::GridIterator grid_iterator;
 };
 
 
-class LIBARDOUR_API LV2PluginInfo : public PluginInfo , public boost::enable_shared_from_this<ARDOUR::LV2PluginInfo> {
+class LIBARDOUR_API LV2PluginInfo : public PluginInfo , public std::enable_shared_from_this<ARDOUR::LV2PluginInfo> {
 public:
 	LV2PluginInfo (const char* plugin_uri);
 	~LV2PluginInfo ();
 
-	static PluginInfoList* discover (boost::function <void (std::string const&, PluginScanLogEntry::PluginScanResult, std::string const&, bool)> cb);
+	static PluginInfoList* discover (std::function <void (std::string const&, PluginScanLogEntry::PluginScanResult, std::string const&, bool)> cb);
 
 	PluginPtr load (Session& session);
 	std::vector<Plugin::PresetRecord> get_presets (bool user_only) const;
@@ -414,7 +431,7 @@ private:
 	bool _is_analyzer;
 };
 
-typedef boost::shared_ptr<LV2PluginInfo> LV2PluginInfoPtr;
+typedef std::shared_ptr<LV2PluginInfo> LV2PluginInfoPtr;
 
 } // namespace ARDOUR
 

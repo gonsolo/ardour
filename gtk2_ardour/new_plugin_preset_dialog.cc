@@ -17,14 +17,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/stock.h>
+#include <ytkmm/stock.h>
 #include "new_plugin_preset_dialog.h"
 #include "pbd/i18n.h"
 
 using namespace std;
 using namespace Gtk;
 
-NewPluginPresetDialog::NewPluginPresetDialog (boost::shared_ptr<ARDOUR::Plugin> p, std::string title, bool favorite_btn)
+NewPluginPresetDialog::NewPluginPresetDialog (std::shared_ptr<ARDOUR::Plugin> p, std::string title, bool favorite_btn)
 	: ArdourDialog (title)
 	, _replace (_("Replace existing preset with this name"))
 {

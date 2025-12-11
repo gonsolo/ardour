@@ -19,14 +19,16 @@
 
 #include <vector>
 
-#include <gtkmm/combobox.h>
-#include <gtkmm/box.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
-#include <gtkmm/treeview.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/notebook.h>
-#include <gtkmm/scrolledwindow.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/box.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/notebook.h>
+#include <ytkmm/scrolledwindow.h>
 
 namespace Gtk {
 	class CellRendererCombo;
@@ -121,7 +123,7 @@ class US2400ProtocolGUI : public Gtk::Notebook
 	void update_port_combos (std::vector<std::string> const&, std::vector<std::string> const&,
 	                         Gtk::ComboBox* input_combo,
 	                         Gtk::ComboBox* output_combo,
-	                         boost::shared_ptr<US2400::Surface> surface);
+	                         std::shared_ptr<US2400::Surface> surface);
 
 	PBD::ScopedConnectionList _port_connections;
 	void connection_handler ();
@@ -129,7 +131,7 @@ class US2400ProtocolGUI : public Gtk::Notebook
 	Glib::RefPtr<Gtk::ListStore> build_midi_port_list (std::vector<std::string> const & ports, bool for_input);
 	bool _ignore_profile_changed;
 	bool ignore_active_change;
-	void active_port_changed (Gtk::ComboBox* combo, boost::weak_ptr<US2400::Surface> ws, bool for_input);
+	void active_port_changed (Gtk::ComboBox* combo, std::weak_ptr<US2400::Surface> ws, bool for_input);
 };
 
 }

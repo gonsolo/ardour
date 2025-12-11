@@ -28,7 +28,7 @@
 #endif
 
 #include <glibmm/miscutils.h>
-#include <gtkmm/messagedialog.h>
+#include <ytkmm/messagedialog.h>
 #include <gtkmm2ext/utils.h>
 #include <gtkmm2ext/window_title.h>
 
@@ -60,29 +60,16 @@ using namespace Gtkmm2ext;
 using namespace PBD;
 
 void
-Editor::editor_mixer_button_toggled ()
+Editor::showhide_att_left (bool yn)
 {
-	Glib::RefPtr<Gtk::Action> act = ActionManager::get_action (X_("Editor"), X_("show-editor-mixer"));
-	if (act) {
-		Glib::RefPtr<Gtk::ToggleAction> tact = Glib::RefPtr<Gtk::ToggleAction>::cast_dynamic(act);
-		show_editor_mixer (tact->get_active());
-	}
-}
-
-void
-Editor::editor_list_button_toggled ()
-{
-	Glib::RefPtr<Gtk::Action> act = ActionManager::get_action (X_("Editor"), X_("show-editor-list"));
-	if (act) {
-		Glib::RefPtr<Gtk::ToggleAction> tact = Glib::RefPtr<Gtk::ToggleAction>::cast_dynamic(act);
-		show_editor_list (tact->get_active());
-	}
+	Tabbable::showhide_att_left (yn);
+	show_editor_mixer (yn);
 }
 
 void
 Editor::show_editor_mixer (bool yn)
 {
-	boost::shared_ptr<ARDOUR::Route> r;
+	std::shared_ptr<ARDOUR::Route> r;
 
 	show_editor_mixer_when_tracks_arrive = false;
 
@@ -127,6 +114,10 @@ Editor::show_editor_mixer (bool yn)
 
 				if ((atv = dynamic_cast<RouteTimeAxisView*> (*i)) != 0) {
 					r = atv->route();
+					if (r && r->is_hidden ()) {
+						r.reset ();
+						continue;
+					}
 					break;
 				}
 			}
@@ -151,8 +142,7 @@ Editor::show_editor_mixer (bool yn)
 		}
 
 		if (current_mixer_strip && current_mixer_strip->get_parent() == 0) {
-			global_hpacker.pack_start (*current_mixer_strip, Gtk::PACK_SHRINK );
-			global_hpacker.reorder_child (*current_mixer_strip, 0);
+			content_att_left.add (*current_mixer_strip);
 			current_mixer_strip->show ();
 		}
 
@@ -165,7 +155,7 @@ Editor::show_editor_mixer (bool yn)
 
 		if (current_mixer_strip) {
 			if (current_mixer_strip->get_parent() != 0) {
-				global_hpacker.remove (*current_mixer_strip);
+				content_att_left.remove ();
 			}
 		}
 	}
@@ -174,6 +164,15 @@ Editor::show_editor_mixer (bool yn)
 	/* XXX gtk problem here */
 	ensure_all_elements_drawn();
 #endif
+}
+
+std::shared_ptr<ARDOUR::Route>
+Editor::current_mixer_stripable () const
+{
+	if (current_mixer_strip) {
+		return current_mixer_strip->route ();
+	}
+	return std::shared_ptr<ARDOUR::Route> ();
 }
 
 #ifdef __APPLE__
@@ -209,7 +208,7 @@ Editor::set_selected_mixer_strip (TimeAxisView& view)
 	// if this is an automation track, then the mixer strip should
 	// show the parent
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable;
+	std::shared_ptr<ARDOUR::Stripable> stripable;
 	AutomationTimeAxisView* atv;
 
 	if ((atv = dynamic_cast<AutomationTimeAxisView*>(&view)) != 0) {
@@ -238,7 +237,7 @@ Editor::set_selected_mixer_strip (TimeAxisView& view)
 		create_editor_mixer ();
 	}
 
-	boost::shared_ptr<ARDOUR::Route> route = boost::dynamic_pointer_cast<ARDOUR::Route> (stripable);
+	std::shared_ptr<ARDOUR::Route> route = std::dynamic_pointer_cast<ARDOUR::Route> (stripable);
 	if (current_mixer_strip->route() == route) {
 		return;
 	}

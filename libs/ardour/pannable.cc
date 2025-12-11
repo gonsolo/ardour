@@ -39,21 +39,21 @@ using namespace std;
 using namespace PBD;
 using namespace ARDOUR;
 
-Pannable::Pannable (Session& s, Temporal::TimeDomain td)
-	: Automatable (s, td)
+Pannable::Pannable (Session& s, Temporal::TimeDomainProvider const & tdp)
+	: Automatable (s, tdp)
 	, SessionHandleRef (s)
-	, pan_azimuth_control (new PanControllable (s, "", this, PanAzimuthAutomation, td))
-	, pan_elevation_control (new PanControllable (s, "", this, PanElevationAutomation, td))
-	, pan_width_control (new PanControllable (s, "", this, PanWidthAutomation, td))
-	, pan_frontback_control (new PanControllable (s, "", this, PanFrontBackAutomation, td))
-	, pan_lfe_control (new PanControllable (s, "", this, PanLFEAutomation, td))
+	, pan_azimuth_control (new PanControllable (s, "", this, PanAzimuthAutomation, tdp))
+	, pan_elevation_control (new PanControllable (s, "", this, PanElevationAutomation, tdp))
+	, pan_width_control (new PanControllable (s, "", this, PanWidthAutomation, tdp))
+	, pan_frontback_control (new PanControllable (s, "", this, PanFrontBackAutomation, tdp))
+	, pan_lfe_control (new PanControllable (s, "", this, PanLFEAutomation, tdp))
 	, _auto_state (Off)
 	, _has_state (false)
 	, _responding_to_control_auto_state_change (0)
 {
 	//boost_debug_shared_ptr_mark_interesting (this, "pannable");
 
-	g_atomic_int_set (&_touching, 0);
+	_touching.store (0);
 
 	add_control (pan_azimuth_control);
 	add_control (pan_elevation_control);
@@ -63,17 +63,24 @@ Pannable::Pannable (Session& s, Temporal::TimeDomain td)
 
 	/* all controls change state together */
 
-	pan_azimuth_control->alist()->automation_state_changed.connect_same_thread (*this, boost::bind (&Pannable::control_auto_state_changed, this, _1));
-	pan_elevation_control->alist()->automation_state_changed.connect_same_thread (*this, boost::bind (&Pannable::control_auto_state_changed, this, _1));
-	pan_width_control->alist()->automation_state_changed.connect_same_thread (*this, boost::bind (&Pannable::control_auto_state_changed, this, _1));
-	pan_frontback_control->alist()->automation_state_changed.connect_same_thread (*this, boost::bind (&Pannable::control_auto_state_changed, this, _1));
-	pan_lfe_control->alist()->automation_state_changed.connect_same_thread (*this, boost::bind (&Pannable::control_auto_state_changed, this, _1));
+	pan_azimuth_control->alist()->automation_state_changed.connect_same_thread (*this, std::bind (&Pannable::control_auto_state_changed, this, _1));
+	pan_elevation_control->alist()->automation_state_changed.connect_same_thread (*this, std::bind (&Pannable::control_auto_state_changed, this, _1));
+	pan_width_control->alist()->automation_state_changed.connect_same_thread (*this, std::bind (&Pannable::control_auto_state_changed, this, _1));
+	pan_frontback_control->alist()->automation_state_changed.connect_same_thread (*this, std::bind (&Pannable::control_auto_state_changed, this, _1));
+	pan_lfe_control->alist()->automation_state_changed.connect_same_thread (*this, std::bind (&Pannable::control_auto_state_changed, this, _1));
 
-	pan_azimuth_control->Changed.connect_same_thread (*this, boost::bind (&Pannable::value_changed, this));
-	pan_elevation_control->Changed.connect_same_thread (*this, boost::bind (&Pannable::value_changed, this));
-	pan_width_control->Changed.connect_same_thread (*this, boost::bind (&Pannable::value_changed, this));
-	pan_frontback_control->Changed.connect_same_thread (*this, boost::bind (&Pannable::value_changed, this));
-	pan_lfe_control->Changed.connect_same_thread (*this, boost::bind (&Pannable::value_changed, this));
+	pan_azimuth_control->Changed.connect_same_thread (*this, std::bind (&Pannable::value_changed, this));
+	pan_elevation_control->Changed.connect_same_thread (*this, std::bind (&Pannable::value_changed, this));
+	pan_width_control->Changed.connect_same_thread (*this, std::bind (&Pannable::value_changed, this));
+	pan_frontback_control->Changed.connect_same_thread (*this, std::bind (&Pannable::value_changed, this));
+	pan_lfe_control->Changed.connect_same_thread (*this, std::bind (&Pannable::value_changed, this));
+
+	pan_azimuth_control->add_visually_linked_control (pan_width_control);
+	pan_azimuth_control->add_visually_linked_control (pan_elevation_control);
+	pan_width_control->add_visually_linked_control (pan_azimuth_control);
+	pan_width_control->add_visually_linked_control (pan_elevation_control);
+	pan_elevation_control->add_visually_linked_control (pan_azimuth_control);
+	pan_elevation_control->add_visually_linked_control (pan_width_control);
 }
 
 Pannable::~Pannable ()
@@ -103,7 +110,7 @@ Pannable::control_auto_state_changed (AutoState new_state)
 }
 
 void
-Pannable::set_panner (boost::shared_ptr<Panner> p)
+Pannable::set_panner (std::shared_ptr<Panner> p)
 {
 	_panner = p;
 }
@@ -111,7 +118,7 @@ Pannable::set_panner (boost::shared_ptr<Panner> p)
 const std::set<Evoral::Parameter>&
 Pannable::what_can_be_automated() const
 {
-	boost::shared_ptr<Panner> const panner = _panner.lock();
+	std::shared_ptr<Panner> const panner = _panner.lock();
 	if (panner) {
 		return panner->what_can_be_automated ();
 	}
@@ -139,7 +146,7 @@ Pannable::set_automation_state (AutoState state)
 		const Controls& c (controls());
 
 		for (Controls::const_iterator ci = c.begin(); ci != c.end(); ++ci) {
-			boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl>(ci->second);
+			std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(ci->second);
 			if (ac) {
 				ac->alist()->set_automation_state (state);
 			}
@@ -156,12 +163,12 @@ Pannable::start_touch (timepos_t const & when)
 	const Controls& c (controls());
 
 	for (Controls::const_iterator ci = c.begin(); ci != c.end(); ++ci) {
-		boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl>(ci->second);
+		std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(ci->second);
 		if (ac) {
 			ac->alist()->start_touch (when);
 		}
 	}
-	g_atomic_int_set (&_touching, 1);
+	_touching.store (1);
 }
 
 void
@@ -170,12 +177,12 @@ Pannable::stop_touch (timepos_t const & when)
 	const Controls& c (controls());
 
 	for (Controls::const_iterator ci = c.begin(); ci != c.end(); ++ci) {
-		boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl>(ci->second);
+		std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(ci->second);
 		if (ac) {
 			ac->alist()->stop_touch (when);
 		}
 	}
-	g_atomic_int_set (&_touching, 0);
+	_touching.store (0);
 }
 
 XMLNode&
@@ -266,3 +273,14 @@ Pannable::set_state (const XMLNode& root, int version)
 
 	return 0;
 }
+
+void
+Pannable::start_domain_bounce (Temporal::DomainBounceInfo&)
+{
+}
+
+void
+Pannable::finish_domain_bounce (Temporal::DomainBounceInfo&)
+{
+}
+

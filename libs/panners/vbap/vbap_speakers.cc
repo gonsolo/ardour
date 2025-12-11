@@ -45,11 +45,11 @@ using namespace std;
 
 const double VBAPSpeakers::MIN_VOL_P_SIDE_LGTH = 0.01;
 
-VBAPSpeakers::VBAPSpeakers (boost::shared_ptr<Speakers> s)
+VBAPSpeakers::VBAPSpeakers (std::shared_ptr<Speakers> s)
 	: _dimension (2)
 	, _parent (s)
 {
-	_parent->Changed.connect_same_thread (speaker_connection, boost::bind (&VBAPSpeakers::update, this));
+	_parent->Changed.connect_same_thread (speaker_connection, std::bind (&VBAPSpeakers::update, this));
 	update ();
 }
 

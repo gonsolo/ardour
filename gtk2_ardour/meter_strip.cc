@@ -61,9 +61,9 @@ using namespace Gtkmm2ext;
 using namespace std;
 using namespace ArdourMeter;
 
-PBD::Signal1<void,MeterStrip*> MeterStrip::CatchDeletion;
-PBD::Signal0<void> MeterStrip::MetricChanged;
-PBD::Signal0<void> MeterStrip::ConfigurationChanged;
+PBD::Signal<void(MeterStrip*)> MeterStrip::CatchDeletion;
+PBD::Signal<void()> MeterStrip::MetricChanged;
+PBD::Signal<void()> MeterStrip::ConfigurationChanged;
 
 #define PX_SCALE(pxmin, dflt) rint(std::max((double)pxmin, (double)dflt * UIConfiguration::instance().get_ui_scale()))
 
@@ -124,7 +124,7 @@ MeterStrip::MeterStrip (int metricmode, MeterType mt)
 	UIConfiguration::instance().DPIReset.connect (sigc::mem_fun (*this, &MeterStrip::on_theme_changed));
 }
 
-MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
+MeterStrip::MeterStrip (Session* sess, std::shared_ptr<ARDOUR::Route> rt)
 	: SessionHandlePtr (sess)
 	, RouteUI ((Session*) 0)
 	, _route (rt)
@@ -155,8 +155,8 @@ MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
 	level_meter->set_meter (_route->shared_peak_meter().get());
 	level_meter->clear_meters();
 	level_meter->setup_meters (220, meter_width, 6);
-	level_meter->ButtonPress.connect_same_thread (level_meter_connection, boost::bind (&MeterStrip::level_meter_button_press, this, _1));
-	_route->shared_peak_meter()->MeterTypeChanged.connect (meter_route_connections, invalidator (*this), boost::bind (&MeterStrip::meter_type_changed, this, _1), gui_context());
+	level_meter->ButtonPress.connect_same_thread (level_meter_connection, std::bind (&MeterStrip::level_meter_button_press, this, _1));
+	_route->shared_peak_meter()->MeterTypeChanged.connect (meter_route_connections, invalidator (*this), std::bind (&MeterStrip::meter_type_changed, this, _1), gui_context());
 
 	meter_align.set(0.5, 0.5, 0.0, 1.0);
 	meter_align.add(*level_meter);
@@ -290,7 +290,7 @@ MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
 	nfo_vbox.show();
 	namenumberbx.show();
 
-	if (boost::dynamic_pointer_cast<Track>(_route)) {
+	if (std::dynamic_pointer_cast<Track>(_route)) {
 		monitor_input_button->show();
 		monitor_disk_button->show();
 	} else {
@@ -299,7 +299,7 @@ MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
 	}
 
 	_route->shared_peak_meter()->ConfigurationChanged.connect (
-			meter_route_connections, invalidator (*this), boost::bind (&MeterStrip::meter_configuration_changed, this, _1), gui_context()
+			meter_route_connections, invalidator (*this), std::bind (&MeterStrip::meter_configuration_changed, this, _1), gui_context()
 			);
 
 	ResetAllPeakDisplays.connect (sigc::mem_fun(*this, &MeterStrip::reset_peak_display));
@@ -315,7 +315,7 @@ MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
 	meter_ticks1_area.signal_expose_event().connect (sigc::mem_fun(*this, &MeterStrip::meter_ticks1_expose));
 	meter_ticks2_area.signal_expose_event().connect (sigc::mem_fun(*this, &MeterStrip::meter_ticks2_expose));
 
-	_route->DropReferences.connect (meter_route_connections, invalidator (*this), boost::bind (&MeterStrip::self_delete, this), gui_context());
+	_route->DropReferences.connect (meter_route_connections, invalidator (*this), std::bind (&MeterStrip::self_delete, this), gui_context());
 
 	peak_display.signal_button_release_event().connect (sigc::mem_fun(*this, &MeterStrip::peak_button_release), false);
 	name_label.signal_button_release_event().connect (sigc::mem_fun(*this, &MeterStrip::name_label_button_release), false);
@@ -329,12 +329,12 @@ MeterStrip::MeterStrip (Session* sess, boost::shared_ptr<ARDOUR::Route> rt)
 	if (_route->is_master()) {
 		_strip_type = 4;
 	}
-	else if (boost::dynamic_pointer_cast<AudioTrack>(_route) == 0
-			&& boost::dynamic_pointer_cast<MidiTrack>(_route) == 0) {
+	else if (std::dynamic_pointer_cast<AudioTrack>(_route) == 0
+			&& std::dynamic_pointer_cast<MidiTrack>(_route) == 0) {
 		/* non-master bus */
 		_strip_type = 3;
 	}
-	else if (boost::dynamic_pointer_cast<MidiTrack>(_route)) {
+	else if (std::dynamic_pointer_cast<MidiTrack>(_route)) {
 		_strip_type = 2;
 	}
 	else {
@@ -475,8 +475,8 @@ MeterStrip::meter_configuration_changed (ChanCount c)
 		}
 	}
 
-	bool is_audio_track = _route && boost::dynamic_pointer_cast<AudioTrack>(_route) != 0;
-	bool is_midi_track = _route && boost::dynamic_pointer_cast<MidiTrack>(_route) != 0;
+	bool is_audio_track = _route && std::dynamic_pointer_cast<AudioTrack>(_route) != 0;
+	bool is_midi_track = _route && std::dynamic_pointer_cast<MidiTrack>(_route) != 0;
 
 	if (!is_audio_track && (is_midi_track || /* MIDI Bus */ (type == (1 << DataType::MIDI)))) {
 		meter_ticks1_area.set_name ("MidiTrackMetricsLeft");
@@ -1010,13 +1010,13 @@ MeterStrip::color () const
 }
 
 void
-MeterStrip::gain_start_touch ()
+MeterStrip::gain_start_touch (int)
 {
 	_route->gain_control ()->start_touch (timepos_t (_session->transport_sample ()));
 }
 
 void
-MeterStrip::gain_end_touch ()
+MeterStrip::gain_end_touch (int)
 {
 	_route->gain_control ()->stop_touch (timepos_t (_session->transport_sample ()));
 }

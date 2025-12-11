@@ -16,13 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_bbt_marker_dialog_h__
-#define __ardour_gtk_bbt_marker_dialog_h__
+#pragma once
 
-#include <gtkmm/box.h>
-#include <gtkmm/entry.h>
-#include <gtkmm/label.h>
-#include <gtkmm/spinbutton.h>
+#include <ytkmm/box.h>
+#include <ytkmm/entry.h>
+#include <ytkmm/label.h>
+#include <ytkmm/spinbutton.h>
 
 #include "temporal/tempo.h"
 #include "temporal/types.h"
@@ -49,11 +48,11 @@ private:
 	Gtk::HBox       bbt_box;
 	Gtk::SpinButton bar_entry;
 	Gtk::SpinButton beat_entry;
-	Gtk::Label      entry_label;
+	Gtk::Label      bar_label;
+	Gtk::Label      beat_label;
 
 	Gtk::HBox       name_box;
 	Gtk::Entry      name_entry;
 	Gtk::Label      name_label;
 };
 
-#endif /* __ardour_gtk_bbt_marker_dialog_h__ */

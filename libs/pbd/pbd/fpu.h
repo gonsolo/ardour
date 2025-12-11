@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_fpu_h__
-#define __pbd_fpu_h__
+#pragma once
 
 #include "pbd/libpbd_visibility.h"
 
@@ -34,6 +33,7 @@ class LIBPBD_API FPU {
 		HasAVX = 0x10,
 		HasNEON = 0x20,
 		HasFMA = 0x40,
+		HasAVX512F = 0x80,
 	};
 
   public:
@@ -47,6 +47,7 @@ class LIBPBD_API FPU {
 	bool has_sse () const { return _flags & HasSSE; }
 	bool has_sse2 () const { return _flags & HasSSE2; }
 	bool has_avx () const { return _flags & HasAVX; }
+	bool has_avx512f () const { return _flags & HasAVX512F; }
 	bool has_fma() const { return _flags & HasFMA; }
 	bool has_neon () const { return _flags & HasNEON; }
 
@@ -60,4 +61,3 @@ class LIBPBD_API FPU {
 
 }
 
-#endif /* __pbd_fpu_h__ */

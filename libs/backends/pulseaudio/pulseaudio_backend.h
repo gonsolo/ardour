@@ -19,17 +19,16 @@
 #ifndef __libbackend_pulse_audiobackend_h__
 #define __libbackend_pulse_audiobackend_h__
 
+#include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
 #include <pthread.h>
-#include <stdint.h>
 
 #include <pulse/pulseaudio.h>
-
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/natsort.h"
 
@@ -60,7 +59,7 @@ private:
 	uint8_t   _data[MaxPulseMidiEventSize];
 };
 
-typedef std::vector<boost::shared_ptr<PulseMidiEvent> > PulseMidiBuffer;
+typedef std::vector<std::shared_ptr<PulseMidiEvent> > PulseMidiBuffer;
 
 
 class PulseAudioPort : public BackendPort
@@ -108,8 +107,6 @@ public:
 	std::vector<DeviceStatus> enumerate_devices () const;
 	std::vector<float> available_sample_rates (const std::string& device) const;
 	std::vector<uint32_t> available_buffer_sizes (const std::string& device) const;
-	uint32_t available_input_channel_count (const std::string& device) const;
-	uint32_t available_output_channel_count (const std::string& device) const;
 
 	bool can_change_sample_rate_when_running () const;
 	bool can_change_buffer_size_when_running () const;
@@ -119,8 +116,6 @@ public:
 	int set_sample_rate (float);
 	int set_buffer_size (uint32_t);
 	int set_interleaved (bool yn);
-	int set_input_channels (uint32_t);
-	int set_output_channels (uint32_t);
 	int set_systemic_input_latency (uint32_t);
 	int set_systemic_output_latency (uint32_t);
 
@@ -134,8 +129,6 @@ public:
 	float       sample_rate () const;
 	uint32_t    buffer_size () const;
 	bool        interleaved () const;
-	uint32_t    input_channels () const;
-	uint32_t    output_channels () const;
 	uint32_t    systemic_input_latency () const;
 	uint32_t    systemic_output_latency () const;
 	uint32_t    systemic_midi_input_latency (std::string const) const { return 0; }
@@ -170,7 +163,7 @@ public:
 	samplepos_t sample_time_at_cycle_start ();
 	pframes_t   samples_since_cycle_start ();
 
-	int create_process_thread (boost::function<void()> func);
+	int create_process_thread (std::function<void()> func);
 	int      join_process_threads ();
 	bool     in_process_thread ();
 	uint32_t process_thread_count ();
@@ -282,10 +275,10 @@ private:
 
 	struct ThreadData {
 		PulseAudioBackend*      engine;
-		boost::function<void()> f;
+		std::function<void()> f;
 		size_t                  stacksize;
 
-		ThreadData (PulseAudioBackend* e, boost::function<void()> fp, size_t stacksz)
+		ThreadData (PulseAudioBackend* e, std::function<void()> fp, size_t stacksz)
 			: engine (e), f (fp), stacksize (stacksz) {}
 	};
 

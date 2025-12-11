@@ -74,7 +74,7 @@ using namespace Glib;
 using namespace ArdourSurface;
 using namespace Gtkmm2ext;
 
-#include "pbd/abstract_ui.cc" // instantiate template
+#include "pbd/abstract_ui.inc.cc" // instantiate template
 
 #define ABLETON 0x2982
 #define PUSH2   0x1967
@@ -94,6 +94,47 @@ row_interval_semitones (const Push2::RowInterval row_interval, const bool inkey)
 	}
 
 	return 5;
+}
+
+bool
+Push2::available ()
+{
+	bool rv = LIBUSB_SUCCESS == libusb_init (0);
+	if (rv) {
+		libusb_exit (0);
+	}
+	return rv;
+}
+
+bool
+Push2::match_usb (uint16_t vendor, uint16_t device)
+{
+	return vendor == ABLETON && device == PUSH2;
+}
+
+bool
+Push2::probe (std::string& i, std::string& o)
+{
+	vector<string> midi_inputs;
+	vector<string> midi_outputs;
+	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsOutput|IsTerminal), midi_inputs);
+	AudioEngine::instance()->get_ports ("", DataType::MIDI, PortFlags (IsInput|IsTerminal), midi_outputs);
+
+	auto has_push2 = [](string const& s) {
+		std::string pn = AudioEngine::instance()->get_hardware_port_name_by_name (s);
+		return pn.find ("Ableton Push 2 MIDI 1") != string::npos;
+	};
+
+	auto pi = std::find_if (midi_inputs.begin (), midi_inputs.end (), has_push2);
+	auto po = std::find_if (midi_outputs.begin (), midi_outputs.end (), has_push2);
+
+	if (pi == midi_inputs.end () || po == midi_outputs.end ()) {
+		return false;
+	}
+
+	i = *pi;
+	o = *po;
+	return true;
 }
 
 Push2::Push2 (ARDOUR::Session& s)
@@ -139,11 +180,19 @@ Push2::Push2 (ARDOUR::Session& s)
 
 	run_event_loop ();
 	port_setup ();
+
+	std::string  pn_in, pn_out;
+	if (probe (pn_in, pn_out)) {
+		_async_in->connect (pn_in);
+		_async_out->connect (pn_out);
+	}
 }
 
 Push2::~Push2 ()
 {
 	DEBUG_TRACE (DEBUG::Push2, "push2 control surface object being destroyed\n");
+
+	stop_event_loop ();
 
 	MIDISurface::drop ();
 
@@ -162,10 +211,7 @@ Push2::~Push2 ()
 	_track_mix_layout = 0;
 	delete _cue_layout;
 	_cue_layout = 0;
-
-	stop_event_loop ();
 }
-
 
 void
 Push2::run_event_loop ()
@@ -197,7 +243,7 @@ Push2::begin_using_device ()
 	vblank_timeout->attach (main_loop()->get_context());
 
 	init_buttons (true);
-	init_touch_strip ();
+	init_touch_strip (false);
 	reset_pad_colors ();
 	splash ();
 
@@ -280,7 +326,7 @@ Push2::strip_buttons_off ()
 	                             Lower1, Lower2, Lower3, Lower4, Lower5, Lower6, Lower7, Lower8, };
 
 	for (size_t n = 0; n < sizeof (strip_buttons) / sizeof (strip_buttons[0]); ++n) {
-		boost::shared_ptr<Button> b = _id_button_map[strip_buttons[n]];
+		std::shared_ptr<Button> b = _id_button_map[strip_buttons[n]];
 
 		b->set_color (LED::Black);
 		b->set_state (LED::OneShot24th);
@@ -307,7 +353,7 @@ Push2::init_buttons (bool startup)
 
 
 		for (size_t n = 0; n < sizeof (buttons) / sizeof (buttons[0]); ++n) {
-			boost::shared_ptr<Button> b = _id_button_map[buttons[n]];
+			std::shared_ptr<Button> b = _id_button_map[buttons[n]];
 
 			b->set_color (LED::White);
 			b->set_state (LED::NoTransition);
@@ -321,7 +367,7 @@ Push2::init_buttons (bool startup)
 		                           Accent, Note };
 
 		for (size_t n = 0; n < sizeof (off_buttons) / sizeof (off_buttons[0]); ++n) {
-			boost::shared_ptr<Button> b = _id_button_map[off_buttons[n]];
+			std::shared_ptr<Button> b = _id_button_map[off_buttons[n]];
 
 			b->set_color (LED::Black);
 			b->set_state (LED::OneShot24th);
@@ -340,12 +386,6 @@ Push2::init_buttons (bool startup)
 			write (b.second->state_msg());
 		}
 	}
-}
-
-bool
-Push2::probe ()
-{
-	return true;
 }
 
 void
@@ -414,16 +454,10 @@ Push2::set_active (bool yn)
 }
 
 void
-Push2::init_touch_strip ()
+Push2::init_touch_strip (bool shift)
 {
-	MidiByteArray msg (9, 0xf0, 0x00, 0x21, 0x1d, 0x01, 0x01, 0x17, 0x00, 0xf7);
-	/* flags are the final byte (ignore end-of-sysex */
-
-	/* show bar, not point
-	   autoreturn to center
-	   bar starts at center
-	*/
-	msg[7] = (1<<4) | (1<<5) | (1<<6);
+	const int bits = (shift ? 0xc : 0x68);
+	const MidiByteArray msg (9, 0xf0, 0x00, 0x21, 0x1d, 0x01, 0x01, 0x17, bits, 0xf7);
 	write (msg);
 }
 
@@ -466,14 +500,14 @@ Push2::handle_midi_controller_message (MIDI::Parser&, MIDI::EventTwoBytes* ev)
 	if (ev->value) {
 		/* any press cancels any pending long press timeouts */
 		for (std::set<ButtonID>::iterator x = _buttons_down.begin(); x != _buttons_down.end(); ++x) {
-			boost::shared_ptr<Button> bb = _id_button_map[*x];
+			std::shared_ptr<Button> bb = _id_button_map[*x];
 			bb->timeout_connection.disconnect ();
 		}
 	}
 
 	if (b != _cc_button_map.end()) {
 
-		boost::shared_ptr<Button> button = b->second;
+		std::shared_ptr<Button> button = b->second;
 
 		if (ev->value) {
 			_buttons_down.insert (button->id);
@@ -618,10 +652,10 @@ Push2::handle_midi_note_on_message (MIDI::Parser& parser, MIDI::EventTwoBytes* e
 		return;
 	}
 
-	boost::shared_ptr<const Pad> pad_pressed = pm->second;
+	std::shared_ptr<const Pad> pad_pressed = pm->second;
 
 	if (_current_layout == _cue_layout) {
-		_current_layout->pad_press (pad_pressed->x, pad_pressed->y);
+		_current_layout->pad_press (pad_pressed->x, pad_pressed->y, ev->velocity);
 		return;
 	}
 
@@ -632,7 +666,7 @@ Push2::handle_midi_note_on_message (MIDI::Parser& parser, MIDI::EventTwoBytes* e
 	}
 
 	for (FNPadMap::iterator pi = pads_with_note.first; pi != pads_with_note.second; ++pi) {
-		boost::shared_ptr<Pad> pad = pi->second;
+		std::shared_ptr<Pad> pad = pi->second;
 
 		if (pad->do_when_pressed == Pad::FlashOn) {
 			pad->set_color (_contrast_color);
@@ -666,7 +700,7 @@ Push2::handle_midi_note_off_message (MIDI::Parser&, MIDI::EventTwoBytes* ev)
 		return;
 	}
 
-	boost::shared_ptr<const Pad> const pad_pressed = pm->second;
+	std::shared_ptr<const Pad> const pad_pressed = pm->second;
 
 	if (_current_layout == _cue_layout) {
 		_current_layout->pad_release (pad_pressed->x, pad_pressed->y);
@@ -679,7 +713,7 @@ Push2::handle_midi_note_off_message (MIDI::Parser&, MIDI::EventTwoBytes* ev)
 	}
 
 	for (FNPadMap::iterator pi = pads_with_note.first; pi != pads_with_note.second; ++pi) {
-		boost::shared_ptr<Pad> pad = pi->second;
+		std::shared_ptr<Pad> pad = pi->second;
 
 		pad->set_color (pad->perma_color);
 		pad->set_state (LED::NoTransition);
@@ -702,15 +736,15 @@ Push2::notify_record_state_changed ()
 	}
 
 	switch (session->record_status ()) {
-	case Session::Disabled:
+	case Disabled:
 		b->second->set_color (LED::White);
 		b->second->set_state (LED::NoTransition);
 		break;
-	case Session::Enabled:
+	case Enabled:
 		b->second->set_color (LED::Red);
 		b->second->set_state (LED::Blinking4th);
 		break;
-	case Session::Recording:
+	case Recording:
 		b->second->set_color (LED::Red);
 		b->second->set_state (LED::OneShot24th);
 		break;
@@ -722,7 +756,7 @@ Push2::notify_record_state_changed ()
 void
 Push2::notify_transport_state_changed ()
 {
-	boost::shared_ptr<Button> b = _id_button_map[Play];
+	std::shared_ptr<Button> b = _id_button_map[Play];
 
 	if (session->transport_rolling()) {
 		b->set_state (LED::OneShot24th);
@@ -730,7 +764,7 @@ Push2::notify_transport_state_changed ()
 	} else {
 
 		/* disable any blink on FixedLength from pending edit range op */
-		boost::shared_ptr<Button> fl = _id_button_map[FixedLength];
+		std::shared_ptr<Button> fl = _id_button_map[FixedLength];
 
 		fl->set_color (LED::Black);
 		fl->set_state (LED::NoTransition);
@@ -823,7 +857,7 @@ Push2::set_state (const XMLNode & node, int version)
 void
 Push2::other_vpot (int n, int delta)
 {
-	boost::shared_ptr<Amp> click_gain;
+	std::shared_ptr<Amp> click_gain;
 	switch (n) {
 	case 0:
 		/* tempo control */
@@ -832,7 +866,7 @@ Push2::other_vpot (int n, int delta)
 		/* metronome gain control */
 		click_gain = session->click_gain();
 		if (click_gain) {
-			boost::shared_ptr<AutomationControl> ac = click_gain->gain_control();
+			std::shared_ptr<AutomationControl> ac = click_gain->gain_control();
 			if (ac) {
 				ac->set_value (ac->interface_to_internal (
 					               min (ac->upper(), max (ac->lower(), ac->internal_to_interface (ac->get_value()) + (delta/256.0)))),
@@ -843,7 +877,7 @@ Push2::other_vpot (int n, int delta)
 	case 2:
 		/* master gain control */
 		if (_master) {
-			boost::shared_ptr<AutomationControl> ac = _master->gain_control();
+			std::shared_ptr<AutomationControl> ac = _master->gain_control();
 			if (ac) {
 				ac->set_value (ac->interface_to_internal (
 					               min (ac->upper(), max (ac->lower(), ac->internal_to_interface (ac->get_value()) + (delta/256.0)))),
@@ -864,7 +898,7 @@ Push2::other_vpot_touch (int n, bool touching)
 		break;
 	case 2:
 		if (_master) {
-			boost::shared_ptr<AutomationControl> ac = _master->gain_control();
+			std::shared_ptr<AutomationControl> ac = _master->gain_control();
 			if (ac) {
 				const timepos_t now (session->audible_sample());
 				if (touching) {
@@ -881,10 +915,11 @@ void
 Push2::start_shift ()
 {
 	_modifier_state = ModifierState (_modifier_state | ModShift);
-	boost::shared_ptr<Button> b = _id_button_map[Shift];
+	std::shared_ptr<Button> b = _id_button_map[Shift];
 	b->set_color (LED::White);
 	b->set_state (LED::Blinking16th);
 	write (b->state_msg());
+	init_touch_strip (true);
 }
 
 void
@@ -892,11 +927,12 @@ Push2::end_shift ()
 {
 	if (_modifier_state & ModShift) {
 		_modifier_state = ModifierState (_modifier_state & ~(ModShift));
-		boost::shared_ptr<Button> b = _id_button_map[Shift];
+		std::shared_ptr<Button> b = _id_button_map[Shift];
 		b->timeout_connection.disconnect ();
 		b->set_color (LED::White);
 		b->set_state (LED::OneShot24th);
 		write (b->state_msg());
+		init_touch_strip (false);
 	}
 }
 
@@ -926,7 +962,7 @@ Push2::pad_filter (MidiBuffer& in, MidiBuffer& out) const
 				PadMap::const_iterator nni = _nn_pad_map.find (n);
 
 				if (nni != _nn_pad_map.end()) {
-					boost::shared_ptr<const Pad> pad = nni->second;
+					std::shared_ptr<const Pad> pad = nni->second;
 					/* shift for output to the shadow port */
 					if (pad->filtered >= 0) {
 						(*ev).set_note (pad->filtered + (_octave_shift * 12));
@@ -991,7 +1027,7 @@ Push2::pad_note (int row, int col) const
 void
 Push2::update_selection_color ()
 {
-	boost::shared_ptr<MidiTrack> current_midi_track = _current_pad_target.lock();
+	std::shared_ptr<MidiTrack> current_midi_track = _current_pad_target.lock();
 
 	if (!current_midi_track) {
 		return;
@@ -1144,7 +1180,7 @@ Push2::set_pad_scale_in_key (const int               scale_root,
 		for (int col = 0; col < 8 && n != notes.end (); ++col) {
 			const int                     note  = *n++;
 			const int                     index = 36 + (row * 8) + col;
-			const boost::shared_ptr<Pad>& pad   = _nn_pad_map[index];
+			const std::shared_ptr<Pad>& pad   = _nn_pad_map[index];
 
 			pad->filtered = note; // Generated note number
 
@@ -1184,7 +1220,7 @@ Push2::set_pad_scale_chromatic (const int               scale_root,
 		for (int col = 0; col < 8; ++col) {
 			const int                     note  = leftmost_note + col;
 			const int                     index = 36 + (row * 8) + col;
-			const boost::shared_ptr<Pad>& pad   = _nn_pad_map[index];
+			const std::shared_ptr<Pad>& pad   = _nn_pad_map[index];
 
 			pad->filtered = note; // Generated note number
 
@@ -1293,7 +1329,7 @@ Push2::set_percussive_mode (bool yn)
 		for (int col = 0; col < 4; ++col) {
 
 			int index = 36 + (row*8) + col;
-			boost::shared_ptr<Pad> pad = _nn_pad_map[index];
+			std::shared_ptr<Pad> pad = _nn_pad_map[index];
 
 			pad->filtered = drum_note;
 			drum_note++;
@@ -1305,7 +1341,7 @@ Push2::set_percussive_mode (bool yn)
 		for (int col = 4; col < 8; ++col) {
 
 			int index = 36 + (row*8) + col;
-			boost::shared_ptr<Pad> pad = _nn_pad_map[index];
+			std::shared_ptr<Pad> pad = _nn_pad_map[index];
 
 			pad->filtered = drum_note;
 			drum_note++;
@@ -1325,16 +1361,16 @@ Push2::current_layout () const
 void
 Push2::stripable_selection_changed ()
 {
-	boost::shared_ptr<MidiPort> pad_port = boost::dynamic_pointer_cast<AsyncMIDIPort>(_async_in)->shadow_port();
-	boost::shared_ptr<MidiTrack> current_midi_track = _current_pad_target.lock();
-	boost::shared_ptr<MidiTrack> new_pad_target;
+	std::shared_ptr<MidiPort> pad_port = std::dynamic_pointer_cast<AsyncMIDIPort>(_async_in)->shadow_port();
+	std::shared_ptr<MidiTrack> current_midi_track = _current_pad_target.lock();
+	std::shared_ptr<MidiTrack> new_pad_target;
 	StripableNotificationList const & selected (last_selected());
 
 	/* See if there's a MIDI track selected */
 
 	for (StripableNotificationList::const_iterator si = selected.begin(); si != selected.end(); ++si) {
 
-		new_pad_target = boost::dynamic_pointer_cast<MidiTrack> ((*si).lock());
+		new_pad_target = std::dynamic_pointer_cast<MidiTrack> ((*si).lock());
 
 		if (new_pad_target) {
 			break;
@@ -1381,7 +1417,7 @@ Push2::stripable_selection_changed ()
 	tml->set_stripable (first_selected_stripable());
 }
 
-boost::shared_ptr<Push2::Button>
+std::shared_ptr<Push2::Button>
 Push2::button_by_id (ButtonID bid)
 {
 	return _id_button_map[bid];
@@ -1560,17 +1596,17 @@ Push2::set_pressure_mode (PressureMode pm)
 	write (msg);
 }
 
-boost::shared_ptr<Push2::Pad>
+std::shared_ptr<Push2::Pad>
 Push2::pad_by_xy (int x, int y)
 {
-	vector<boost::shared_ptr<Pad> >::size_type index = (x * 8) + y;
+	vector<std::shared_ptr<Pad> >::size_type index = (x * 8) + y;
 	if (index >= _xy_pad_map.size()) {
-		return boost::shared_ptr<Pad>();
+		return std::shared_ptr<Pad>();
 	}
 	return _xy_pad_map[index];
 }
 
-boost::shared_ptr<Push2::Button>
+std::shared_ptr<Push2::Button>
 Push2::lower_button_by_column (uint32_t col)
 {
 	assert (col < 8);
@@ -1602,5 +1638,5 @@ Push2::lower_button_by_column (uint32_t col)
 		break;
 	}
 	/*NOTREACHED*/
-	return boost::shared_ptr<Push2::Button>();
+	return std::shared_ptr<Push2::Button>();
 }

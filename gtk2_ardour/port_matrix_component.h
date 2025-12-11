@@ -16,12 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_port_matrix_component_h__
-#define __gtk_ardour_port_matrix_component_h__
+#pragma once
 
-#include <stdint.h>
-#include <gtkmm/eventbox.h>
-#include <boost/shared_ptr.hpp>
+#include <cstdint>
+#include <memory>
+
+#include <ytkmm/eventbox.h>
 
 class PortMatrix;
 class PortMatrixBody;
@@ -169,9 +169,9 @@ protected:
 
 	void set_source_rgb (cairo_t *, Gdk::Color const &);
 	void set_source_rgba (cairo_t *, Gdk::Color const &, double);
-	uint32_t group_size (boost::shared_ptr<const PortGroup>) const;
-	uint32_t channel_to_position (ARDOUR::BundleChannel, boost::shared_ptr<const PortGroup>) const;
-	virtual ARDOUR::BundleChannel position_to_channel (double, double, boost::shared_ptr<const PortGroup>) const;
+	uint32_t group_size (std::shared_ptr<const PortGroup>) const;
+	uint32_t channel_to_position (ARDOUR::BundleChannel, std::shared_ptr<const PortGroup>) const;
+	virtual ARDOUR::BundleChannel position_to_channel (double, double, std::shared_ptr<const PortGroup>) const;
 
 	/** Render the complete component to a cairo context. */
 	virtual void render (cairo_t *) = 0;
@@ -192,4 +192,3 @@ private:
 	bool _dimension_computation_required; ///< true if the dimensions are out of date
 };
 
-#endif

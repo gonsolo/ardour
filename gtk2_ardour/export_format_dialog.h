@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_format_dialog_h__
-#define __export_format_dialog_h__
+#pragma once
 
 #include "ardour/types.h"
 #include "ardour/export_format_manager.h"
@@ -38,18 +37,18 @@
 #undef interface
 #endif
 
-#include <gtkmm/adjustment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/entry.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/radiobutton.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/entry.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/radiobutton.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
+#include <ytkmm/treeview.h>
 
 class ExportFormatDialog : public ArdourDialog, public PBD::ScopedConnectionList
 {
@@ -62,7 +61,7 @@ private:
 	typedef ARDOUR::ExportFormatManager::WeakSampleFormatPtr WeakSampleFormatPtr;
 	typedef ARDOUR::ExportFormatManager::WeakDitherTypePtr WeakDitherTypePtr;
 
-	typedef boost::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
+	typedef std::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
 
 
 public:
@@ -116,7 +115,7 @@ private:
 	void change_dither_type_selection (bool select, WeakDitherTypePtr type);
 
 	template<typename T, typename ColsT>
-	void change_selection (bool select, boost::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore> & list, Gtk::TreeView & view, ColsT & cols);
+	void change_selection (bool select, std::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore> & list, Gtk::TreeView & view, ColsT & cols);
 
 	void change_quality_compatibility (bool compatibility, WeakQualityPtr quality);
 	void change_format_compatibility (bool compatibility, WeakFormatPtr format);
@@ -125,7 +124,7 @@ private:
 	void change_dither_type_compatibility (bool compatibility, WeakDitherTypePtr type);
 
 	template<typename T, typename ColsT>
-	void change_compatibility (bool compatibility, boost::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore> & list, ColsT & cols,
+	void change_compatibility (bool compatibility, std::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore> & list, ColsT & cols,
 	                           std::string const & c_incompatible = "red", std::string const & c_compatible = "white");
 
 	void update_description();
@@ -164,17 +163,17 @@ private:
 	void empty_encoding_option_table ();
 	void remove_widget (Gtk::Widget & to_remove, Gtk::Container * remove_from);
 
-	void show_linear_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatLinear> ptr);
-	void show_ogg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatOggVorbis> ptr);
-	void show_flac_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatFLAC> ptr);
-	void show_bwf_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatBWF> ptr);
-	void show_opus_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatOggOpus> ptr);
-	void show_mpeg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatMPEG> ptr);
-	void show_ffmpeg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatFFMPEG> ptr);
+	void show_linear_enconding_options (std::shared_ptr<ARDOUR::ExportFormatLinear> ptr);
+	void show_ogg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatOggVorbis> ptr);
+	void show_flac_enconding_options (std::shared_ptr<ARDOUR::ExportFormatFLAC> ptr);
+	void show_bwf_enconding_options (std::shared_ptr<ARDOUR::ExportFormatBWF> ptr);
+	void show_opus_enconding_options (std::shared_ptr<ARDOUR::ExportFormatOggOpus> ptr);
+	void show_mpeg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatMPEG> ptr);
+	void show_ffmpeg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatFFMPEG> ptr);
 
-	void fill_sample_format_lists (boost::shared_ptr<ARDOUR::HasSampleFormat> ptr);
-	void fill_codec_quality_lists (boost::shared_ptr<ARDOUR::HasCodecQuality> ptr);
-	void fill_sample_rate_lists (boost::shared_ptr<ARDOUR::ExportFormat> ptr);
+	void fill_sample_format_lists (std::shared_ptr<ARDOUR::HasSampleFormat> ptr);
+	void fill_codec_quality_lists (std::shared_ptr<ARDOUR::HasCodecQuality> ptr);
+	void fill_sample_rate_lists (std::shared_ptr<ARDOUR::ExportFormat> ptr);
 
 	/*** GUI components ***/
 
@@ -412,4 +411,3 @@ private:
 
 };
 
-#endif /* __export_format_dialog_h__ */

@@ -41,20 +41,20 @@ using namespace ArdourSurface::FP_NAMESPACE;
 using namespace ArdourSurface::FP_NAMESPACE::FP8Types;
 
 #define BindMethod(ID, CB) \
-	_ctrls.button (FP8Controls::ID).released.connect_same_thread (button_connections, boost::bind (&FaderPort8:: CB, this));
+	_ctrls.button (FP8Controls::ID).released.connect_same_thread (button_connections, std::bind (&FaderPort8:: CB, this));
 
 #define BindMethod2(ID, ACT, CB) \
-	_ctrls.button (FP8Controls::ID). ACT .connect_same_thread (button_connections, boost::bind (&FaderPort8:: CB, this));
+	_ctrls.button (FP8Controls::ID). ACT .connect_same_thread (button_connections, std::bind (&FaderPort8:: CB, this));
 
 #define BindFunction(ID, ACT, CB, ...) \
-	_ctrls.button (FP8Controls::ID). ACT .connect_same_thread (button_connections, boost::bind (&FaderPort8:: CB, this, __VA_ARGS__));
+	_ctrls.button (FP8Controls::ID). ACT .connect_same_thread (button_connections, std::bind (&FaderPort8:: CB, this, __VA_ARGS__));
 
 #define BindAction(ID, GRP, ITEM) \
-	_ctrls.button (FP8Controls::ID).released.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_action, this, GRP, ITEM));
+	_ctrls.button (FP8Controls::ID).released.connect_same_thread (button_connections, std::bind (&FaderPort8::button_action, this, GRP, ITEM));
 
 #define BindUserAction(ID) \
-	_ctrls.button (ID).pressed.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_user, this, true, ID)); \
-_ctrls.button (ID).released.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_user, this, false, ID));
+	_ctrls.button (ID).pressed.connect_same_thread (button_connections, std::bind (&FaderPort8::button_user, this, true, ID)); \
+_ctrls.button (ID).released.connect_same_thread (button_connections, std::bind (&FaderPort8::button_user, this, false, ID));
 
 
 /* Bind button signals (press, release) to callback methods
@@ -78,7 +78,7 @@ FaderPort8::setup_actions ()
 #ifdef FP8_MUTESOLO_UNDO
 	BindMethod (BtnSoloClear, button_solo_clear);
 #else
-	BindAction (BtnSoloClear, "Main", "cancel-solo");
+	BindMethod (BtnSoloClear, cancel_all_solo);
 #endif
 	BindMethod (BtnMuteClear, button_mute_clear);
 
@@ -99,11 +99,11 @@ FaderPort8::setup_actions ()
 	BindFunction (BtnAWrite, released, button_automation, ARDOUR::Write);
 	BindFunction (BtnALatch, released, button_automation, ARDOUR::Latch);
 
-	_ctrls.button (FP8Controls::BtnEncoder).pressed.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_encoder, this));
+	_ctrls.button (FP8Controls::BtnEncoder).pressed.connect_same_thread (button_connections, std::bind (&FaderPort8::button_encoder, this));
 #ifdef FADERPORT2
-	_ctrls.button (FP8Controls::BtnParam).pressed.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_encoder, this));
+	_ctrls.button (FP8Controls::BtnParam).pressed.connect_same_thread (button_connections, std::bind (&FaderPort8::button_encoder, this));
 #else
-	_ctrls.button (FP8Controls::BtnParam).pressed.connect_same_thread (button_connections, boost::bind (&FaderPort8::button_parameter, this));
+	_ctrls.button (FP8Controls::BtnParam).pressed.connect_same_thread (button_connections, std::bind (&FaderPort8::button_parameter, this));
 #endif
 
 
@@ -177,7 +177,7 @@ FaderPort8::button_metronom ()
 void
 FaderPort8::button_bypass ()
 {
-	boost::shared_ptr<PluginInsert> pi = _plugin_insert.lock();
+	std::shared_ptr<PluginInsert> pi = _plugin_insert.lock();
 	if (pi) {
 		pi->enable (! pi->enabled ());
 	} else {
@@ -188,7 +188,7 @@ FaderPort8::button_bypass ()
 void
 FaderPort8::button_open ()
 {
-	boost::shared_ptr<PluginInsert> pi = _plugin_insert.lock();
+	std::shared_ptr<PluginInsert> pi = _plugin_insert.lock();
 	if (pi) {
 		pi->ToggleUI (); /* EMIT SIGNAL */
 	} else {
@@ -256,8 +256,8 @@ FaderPort8::button_automation (ARDOUR::AutoState as)
 		case ModeSend:
 			if (first_selected_stripable()) {
 #if 0 // Send Level Automation
-				boost::shared_ptr<Stripable> s = first_selected_stripable();
-				boost::shared_ptr<AutomationControl> send;
+				std::shared_ptr<Stripable> s = first_selected_stripable();
+				std::shared_ptr<AutomationControl> send;
 				uint32_t i = 0;
 				while (0 != (send = s->send_level_controllable (i))) {
 					send->set_automation_state (as);
@@ -276,13 +276,13 @@ FaderPort8::button_automation (ARDOUR::AutoState as)
 	StripableList all;
 	session->get_stripables (all);
 	for (StripableList::const_iterator i = all.begin(); i != all.end(); ++i) {
-		if ((*i)->is_master() || (*i)->is_monitor()) {
+		if ((*i)->is_singleton ()) {
 			continue;
 		}
 		if (!(*i)->is_selected()) {
 			continue;
 		}
-		boost::shared_ptr<AutomationControl> ac;
+		std::shared_ptr<AutomationControl> ac;
 		switch (fadermode) {
 			case ModeTrack:
 				ac = (*i)->gain_control ();
@@ -328,20 +328,20 @@ FaderPort8::button_solo_clear ()
 		StripableList all;
 		session->get_stripables (all);
 		for (StripableList::const_iterator i = all.begin(); i != all.end(); ++i) {
-			if ((*i)->is_master() || (*i)->is_auditioner() || (*i)->is_monitor()) {
+			if ((*i)->is_singleton () || (*i)->is_auditioner()) {
 				continue;
 			}
-			boost::shared_ptr<SoloControl> sc = (*i)->solo_control();
+			std::shared_ptr<SoloControl> sc = (*i)->solo_control();
 			if (sc && sc->self_soloed ()) {
-				_solo_state.push_back (boost::weak_ptr<AutomationControl>(sc));
+				_solo_state.push_back (std::weak_ptr<AutomationControl>(sc));
 			}
 		}
 		cancel_all_solo (); // AccessAction ("Main", "cancel-solo");
 	} else {
 		/* restore solo */
-		boost::shared_ptr<ControlList> cl (new ControlList);
-		for (std::vector <boost::weak_ptr<AutomationControl> >::const_iterator i = _solo_state.begin(); i != _solo_state.end(); ++i) {
-			boost::shared_ptr<AutomationControl> ac = (*i).lock();
+		std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
+		for (std::vector <std::weak_ptr<AutomationControl> >::const_iterator i = _solo_state.begin(); i != _solo_state.end(); ++i) {
+			std::shared_ptr<AutomationControl> ac = (*i).lock();
 			if (!ac) {
 				continue;
 			}
@@ -363,9 +363,9 @@ FaderPort8::button_mute_clear ()
 		_mute_state = session->cancel_all_mute ();
 	} else {
 		/* restore mute */
-		boost::shared_ptr<ControlList> cl (new ControlList);
-		for (std::vector <boost::weak_ptr<AutomationControl> >::const_iterator i = _mute_state.begin(); i != _mute_state.end(); ++i) {
-			boost::shared_ptr<AutomationControl> ac = (*i).lock();
+		std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
+		for (std::vector <std::weak_ptr<AutomationControl> >::const_iterator i = _mute_state.begin(); i != _mute_state.end(); ++i) {
+			std::shared_ptr<AutomationControl> ac = (*i).lock();
 			if (!ac) {
 				continue;
 			}
@@ -401,9 +401,9 @@ FaderPort8::button_action (const std::string& group, const std::string& item)
 void
 FaderPort8::handle_encoder_pan (int steps)
 {
-	boost::shared_ptr<Stripable> s = first_selected_stripable();
+	std::shared_ptr<Stripable> s = first_selected_stripable();
 	if (s) {
-		boost::shared_ptr<AutomationControl> ac;
+		std::shared_ptr<AutomationControl> ac;
 		if (shift_mod () || _ctrls.fader_mode() == ModePan) {
 			ac = s->pan_width_control ();
 		} else {
@@ -428,7 +428,7 @@ FaderPort8::handle_encoder_link (int steps)
 	if (_link_control.expired ()) {
 		return;
 	}
-	boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl> (_link_control.lock ());
+	std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl> (_link_control.lock ());
 	if (!ac) {
 		return;
 	}
@@ -464,9 +464,9 @@ void
 FaderPort8::button_arm (bool press)
 {
 #ifdef FADERPORT2
-	boost::shared_ptr<Stripable> s = first_selected_stripable();
+	std::shared_ptr<Stripable> s = first_selected_stripable();
 	if (press && s) {
-		boost::shared_ptr<Track> t = boost::dynamic_pointer_cast<Track>(s);
+		std::shared_ptr<Track> t = std::dynamic_pointer_cast<Track>(s);
 		if (t) {
 			t->rec_enable_control()->set_value (!t->rec_enable_control()->get_value(), PBD::Controllable::UseGroup);
 		}
@@ -547,8 +547,8 @@ FaderPort8::button_encoder ()
 		case NavMaster:
 			{
 				/* master || monitor level -- reset to 0dB */
-				boost::shared_ptr<AutomationControl> ac;
-				if (session->monitor_active() && !_ctrls.button (FP8Controls::BtnMaster).is_pressed ()) {
+				std::shared_ptr<AutomationControl> ac;
+				if (session->monitor_out() && !_ctrls.button (FP8Controls::BtnMaster).is_pressed ()) {
 					ac = session->monitor_out()->gain_control ();
 				} else if (session->master_out()) {
 					ac = session->master_out()->gain_control ();
@@ -627,8 +627,8 @@ FaderPort8::encoder_navigate (bool neg, int steps)
 		case NavMaster:
 			{
 				/* master || monitor level */
-				boost::shared_ptr<AutomationControl> ac;
-				if (session->monitor_active() && !_ctrls.button (FP8Controls::BtnMaster).is_pressed ()) {
+				std::shared_ptr<AutomationControl> ac;
+				if (session->monitor_out() && !_ctrls.button (FP8Controls::BtnMaster).is_pressed ()) {
 					ac = session->monitor_out()->gain_control ();
 				} else if (session->master_out()) {
 					ac = session->master_out()->gain_control ();

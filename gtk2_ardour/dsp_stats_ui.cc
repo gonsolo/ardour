@@ -16,7 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/frame.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/frame.h>
 
 #include "gtkmm2ext/utils.h"
 
@@ -89,12 +90,15 @@ DspStatisticsGUI::DspStatisticsGUI ()
 	info_text.set_markup (_("The measurements shown below are <b>worst case</b>.\n"
 	                        "\n"
 	                        "This is more important in determining system load\n"
-	                        "than an average. To see average values mouse-over\n"
-	                        "any line"));
+	                        "than an average. To see average values, mouse-over\n"
+	                        "any line:"));
+	Gtk::Alignment *i_align = Gtk::manage (new Gtk::Alignment());
+	i_align->set_padding (6, 6, 6, 6);
+	i_align->add (info_text);
 
 	Gtk::Frame* frame = manage (new Gtk::Frame);
 	frame->set_shadow_type (Gtk::SHADOW_IN);
-	frame->add (info_text);
+	frame->add (*i_align);
 
 	pack_start (*frame, false, false);
 	pack_start (table, true, true, 20);

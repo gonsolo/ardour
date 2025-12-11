@@ -19,10 +19,10 @@
 #ifndef _gtkardour_ioplugin_window_h_
 #define _gtkardour_ioplugin_window_h_
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/menu.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/menu.h>
 
 #include "pbd/signals.h"
 
@@ -35,11 +35,11 @@ namespace ARDOUR
 {
 	class IO;
 	class IOPlug;
-	class PlugInsertBase;
 	class Port;
 }
 
 class IOSelectorWindow;
+class PluginWindowProxy;
 
 class IOPluginWindow : public ArdourWindow
 {
@@ -47,39 +47,6 @@ public:
 	IOPluginWindow ();
 
 	void set_session (ARDOUR::Session*);
-
-	class PluginWindowProxy : public WM::ProxyBase
-	{
-	public:
-		PluginWindowProxy (std::string const&, boost::weak_ptr<ARDOUR::PlugInsertBase>);
-		~PluginWindowProxy ();
-		Gtk::Window* get (bool create = false);
-
-		void show_the_right_window ();
-
-		ARDOUR::SessionHandlePtr* session_handle ()
-		{
-			return 0;
-		}
-
-		void set_custom_ui_mode (bool use_custom)
-		{
-			_want_custom = use_custom;
-		}
-
-		int      set_state (const XMLNode&, int);
-		XMLNode& get_state () const;
-
-	private:
-		void plugin_going_away ();
-
-		boost::weak_ptr<ARDOUR::PlugInsertBase> _pib;
-
-		bool _is_custom;
-		bool _want_custom;
-
-		PBD::ScopedConnection _going_away_connection;
-	};
 
 protected:
 	void on_show ();
@@ -108,7 +75,7 @@ private:
 	class IOButton : public IOButtonBase
 	{
 	public:
-		IOButton (boost::shared_ptr<ARDOUR::IO>, bool pre);
+		IOButton (std::shared_ptr<ARDOUR::IO>, bool pre);
 		~IOButton ();
 
 	private:
@@ -117,13 +84,13 @@ private:
 		bool button_release (GdkEventButton*);
 		void button_resized (Gtk::Allocation&);
 		void port_pretty_name_changed (std::string);
-		void port_connected_or_disconnected (boost::weak_ptr<ARDOUR::Port>, boost::weak_ptr<ARDOUR::Port>);
-		void maybe_add_bundle_to_menu (boost::shared_ptr<ARDOUR::Bundle>);
+		void port_connected_or_disconnected (std::weak_ptr<ARDOUR::Port>, std::weak_ptr<ARDOUR::Port>);
+		void maybe_add_bundle_to_menu (std::shared_ptr<ARDOUR::Bundle>);
 		void disconnect ();
-		void bundle_chosen (boost::shared_ptr<ARDOUR::Bundle>);
+		void bundle_chosen (std::shared_ptr<ARDOUR::Bundle>);
 		void edit_io_configuration ();
 
-		boost::shared_ptr<ARDOUR::IO> _io;
+		std::shared_ptr<ARDOUR::IO> _io;
 		bool                          _pre;
 		Gtk::Menu                     _menu;
 		IOSelectorWindow*             _io_selector;
@@ -132,7 +99,7 @@ private:
 	class IOPlugUI : public Gtk::Alignment
 	{
 	public:
-		IOPlugUI (boost::shared_ptr<ARDOUR::IOPlug>);
+		IOPlugUI (std::shared_ptr<ARDOUR::IOPlug>);
 
 	private:
 		bool button_press_event (GdkEventButton*);
@@ -140,6 +107,7 @@ private:
 		void self_delete (); /* implicit */
 		void self_remove (); /* explicit */
 		void edit_plugin (bool);
+		void rename ();
 
 		Gtk::Frame                        _frame;
 		Gtk::VBox                         _box;
@@ -147,7 +115,7 @@ private:
 		IOButton                          _btn_output;
 		ArdourWidgets::ArdourButton       _btn_ioplug;
 		PluginWindowProxy*                _window_proxy;
-		boost::shared_ptr<ARDOUR::IOPlug> _iop;
+		std::shared_ptr<ARDOUR::IOPlug>   _iop;
 		PBD::ScopedConnection             _going_away_connection;
 	};
 

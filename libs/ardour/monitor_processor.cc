@@ -48,7 +48,7 @@ namespace ARDOUR {
 }
 
 MonitorProcessor::MonitorProcessor (Session& s)
-	: Processor (s, X_("MonitorOut"), Temporal::AudioTime)
+	: Processor (s, X_("MonitorOut"), Temporal::TimeDomainProvider (Temporal::AudioTime))
 	, solo_cnt (0)
 	, _monitor_active (false)
 
@@ -108,6 +108,22 @@ MonitorProcessor::allocate_channels (uint32_t size)
 
 	while (_channels.size() < size) {
 		_channels.push_back (new ChannelRecord (n));
+
+		/* update solo_cnt when Solo changes */
+		std::shared_ptr<Controllable> sc = _channels.back()->soloed_control;
+		std::weak_ptr<Controllable> wc (sc);
+		sc->Changed.connect_same_thread (*this, [this, wc](bool, PBD::Controllable::GroupControlDisposition)
+				{
+					std::shared_ptr<Controllable> ac = wc.lock ();
+					if (ac && ac->get_value () > 0) {
+						solo_cnt++;
+					} else {
+						if (solo_cnt > 0) {
+							solo_cnt--;
+						}
+					}
+					update_monitor_state ();
+				});
 	}
 }
 
@@ -391,18 +407,8 @@ MonitorProcessor::set_cut (uint32_t chn, bool yn)
 void
 MonitorProcessor::set_solo (uint32_t chn, bool solo)
 {
-	if (solo != _channels[chn]->soloed) {
-		_channels[chn]->soloed = solo;
-
-		if (solo) {
-			solo_cnt++;
-		} else {
-			if (solo_cnt > 0) {
-				solo_cnt--;
-			}
-		}
-	}
-	update_monitor_state ();
+	_channels[chn]->soloed = solo;
+	/* update_monitor_state is called via the Changed signal */
 }
 
 void
@@ -497,40 +503,40 @@ MonitorProcessor::update_monitor_state ()
 	}
 }
 
-boost::shared_ptr<Controllable>
+std::shared_ptr<Controllable>
 MonitorProcessor::channel_cut_control (uint32_t chn) const
 {
 	if (chn < _channels.size()) {
 		return _channels[chn]->cut_control;
 	}
-	return boost::shared_ptr<Controllable>();
+	return std::shared_ptr<Controllable>();
 }
 
-boost::shared_ptr<Controllable>
+std::shared_ptr<Controllable>
 MonitorProcessor::channel_dim_control (uint32_t chn) const
 {
 	if (chn < _channels.size()) {
 		return _channels[chn]->dim_control;
 	}
-	return boost::shared_ptr<Controllable>();
+	return std::shared_ptr<Controllable>();
 }
 
-boost::shared_ptr<Controllable>
+std::shared_ptr<Controllable>
 MonitorProcessor::channel_polarity_control (uint32_t chn) const
 {
 	if (chn < _channels.size()) {
 		return _channels[chn]->polarity_control;
 	}
-	return boost::shared_ptr<Controllable>();
+	return std::shared_ptr<Controllable>();
 }
 
-boost::shared_ptr<Controllable>
+std::shared_ptr<Controllable>
 MonitorProcessor::channel_solo_control (uint32_t chn) const
 {
 	if (chn < _channels.size()) {
 		return _channels[chn]->soloed_control;
 	}
-	return boost::shared_ptr<Controllable>();
+	return std::shared_ptr<Controllable>();
 }
 
 MonitorProcessor::ChannelRecord::ChannelRecord (uint32_t chn)

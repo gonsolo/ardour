@@ -36,11 +36,11 @@ using namespace std;
 using namespace ARDOUR;
 using namespace PBD;
 
-ReturnUI::ReturnUI (Gtk::Window* parent, boost::shared_ptr<Return> r, Session* session)
+ReturnUI::ReturnUI (Gtk::Window* parent, std::shared_ptr<Return> r, Session* session)
 	:_return (r)
 	, _gpm (session, 250)
 {
-	_gpm.set_controls (boost::shared_ptr<Route>(), r->meter(), r->amp(), r->gain_control());
+	_gpm.set_controls (std::shared_ptr<Stripable>(), r->meter(), r->amp(), r->gain_control());
 
 	_hbox.pack_start (_gpm, true, true);
 	set_name (X_("ReturnUIFrame"));
@@ -59,7 +59,7 @@ ReturnUI::ReturnUI (Gtk::Window* parent, boost::shared_ptr<Return> r, Session* s
 	show_all ();
 
 	_return->set_metering (true);
-	_return->input()->changed.connect (input_change_connection, invalidator (*this), boost::bind (&ReturnUI::ins_changed, this, _1, _2), gui_context());
+	_return->input()->changed.connect (input_change_connection, invalidator (*this), std::bind (&ReturnUI::ins_changed, this, _1, _2), gui_context());
 
 	_gpm.setup_meters ();
 	_gpm.set_fader_name (X_("ReturnUIFader"));
@@ -100,7 +100,7 @@ ReturnUI::fast_update ()
 	}
 }
 
-ReturnUIWindow::ReturnUIWindow (boost::shared_ptr<Return> r, ARDOUR::Session* s)
+ReturnUIWindow::ReturnUIWindow (std::shared_ptr<Return> r, ARDOUR::Session* s)
 	: ArdourWindow (string(_("Return ")) + r->name())
 {
 	ui = new ReturnUI (this, r, s);

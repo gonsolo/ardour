@@ -26,7 +26,7 @@
 #include <exception>
 #include <limits>
 
-/* int62_t is a class the functions as a 62 bit signed integer complete with a flag that can be used to indicate a boolean property of
+/* int62_t is a class that functions as a 63 bit signed integer with a flag that can be used to indicate a boolean property of
  * the object. The flag is stored inside the 64 bit integer used by the object (as a single bit), and all operations on the object that
  * change either the flag or the value are atomic.
  *
@@ -38,10 +38,12 @@ class alignas(16) int62_t {
   protected:
 	/* std::atomic<> takes care of memory barriers for us; the actual load and stores
 	   are atomic on architectures that we're likely to care about.
+	   The 2nd highest bit is used for the flag, and the highest bit is used for the sign.
+	   Watch out for the impact of two's complement and overflow to and from the flag bit.
 	*/
 	std::atomic<int64_t> v;
 
-	/* this defines the bit used to indicate "flag" or not */
+	/* this defines the bit used to indicate "flag" or not: the 2nd highest bit */
 	static const int64_t flagbit_mask = (1LL<<62);
 
   protected:
@@ -59,7 +61,7 @@ class alignas(16) int62_t {
 
 	int62_t () : v (0) {}
 	int62_t  (bool bc, int64_t vc) : v (build (bc, vc)) {}
-	int62_t (int62_t const & other) { v.store (other.v.load()); }
+	int62_t (int62_t const & other) { v.store (other.v.load(std::memory_order_acquire), std::memory_order_release); }
 
 	static const int64_t max = 4611686018427387903; /* 2^62 - 1 */
 	static const int64_t min = -2305843009213693952;
@@ -67,8 +69,8 @@ class alignas(16) int62_t {
 	bool    flagged() const { return flagged (v); }
 	int64_t val() const { return int62(v); }
 
-	int62_t& operator= (int64_t n) { v.store (build (flagged (v.load()), n)); return *this; }
-	int62_t& operator= (int62_t const & other) { v.store (other.v.load()); return *this; }
+	int62_t& operator= (int64_t n) { v.store (build (flagged (v.load(std::memory_order_acquire)), n), std::memory_order_release); return *this; }
+	int62_t& operator= (int62_t const & other) { v.store (other.v.load(std::memory_order_acquire), std::memory_order_release); return *this; }
 
 	/* there's a pattern to many of these operators:
 
@@ -85,19 +87,19 @@ class alignas(16) int62_t {
 	   rather than two separate loads for each "part".
 	*/
 
-	int62_t operator- () const          { const int64_t vv = v.load(); return int62_t (flagged (vv), -int62(vv)); }
+	int62_t operator- () const          { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), -int62(vv)); }
 
-	int62_t operator+ (int64_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) + n); }
-	int62_t operator- (int64_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) - n); }
-	int62_t operator* (int64_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) * n); }
-	int62_t operator/ (int64_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) / n); }
-	int62_t operator% (int64_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) % n); }
+	int62_t operator+ (int64_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) + n); }
+	int62_t operator- (int64_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) - n); }
+	int62_t operator* (int64_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) * n); }
+	int62_t operator/ (int64_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) / n); }
+	int62_t operator% (int64_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) % n); }
 
-	int62_t operator+ (int62_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) + n.val()); }
-	int62_t operator- (int62_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) - n.val()); }
-	int62_t operator* (int62_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) * n.val()); }
-	int62_t operator/ (int62_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) / n.val()); }
-	int62_t operator% (int62_t n) const { const int64_t vv = v.load(); return int62_t (flagged (vv), int62 (vv) % n.val()); }
+	int62_t operator+ (int62_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) + n.val()); }
+	int62_t operator- (int62_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) - n.val()); }
+	int62_t operator* (int62_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) * n.val()); }
+	int62_t operator/ (int62_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) / n.val()); }
+	int62_t operator% (int62_t n) const { const int64_t vv = v.load(std::memory_order_acquire); return int62_t (flagged (vv), int62 (vv) % n.val()); }
 
  	/* comparison operators .. will throw if the two objects have different
 	 * flag settings (which is assumed to indicate that they differ in some
@@ -118,8 +120,8 @@ class alignas(16) int62_t {
 	 * the semantics are well defined and the computation cost is trivial
 	 */
 
-	bool operator!= (int62_t const & other) const { const int64_t vv = v.load(); if (flagged (vv) != other.flagged()) return true; return int62 (vv) != other.val(); }
-	bool operator== (int62_t const & other) const { const int64_t vv = v.load(); if (flagged (vv) != other.flagged()) return false; return int62 (vv) == other.val(); }
+	bool operator!= (int62_t const & other) const { const int64_t vv = v.load(std::memory_order_acquire); if (flagged (vv) != other.flagged()) return true; return int62 (vv) != other.val(); }
+	bool operator== (int62_t const & other) const { const int64_t vv = v.load(std::memory_order_acquire); if (flagged (vv) != other.flagged()) return false; return int62 (vv) == other.val(); }
 
 	explicit operator int64_t() const { return int62(v); }
 
@@ -133,103 +135,83 @@ class alignas(16) int62_t {
 	int62_t abs() const { const int64_t tmp = v; return int62_t (flagged(tmp), ::llabs(int62(tmp))); }
 
 	int62_t& operator+= (int64_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) + n);
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) + n);
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			newval = build (flagged (oldval), int62 (oldval) + n);
 		}
 		return *this;
 	}
 	int62_t& operator-= (int64_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) - n);
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) - n);
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			newval = build (flagged (oldval), int62 (oldval) - n);
 		}
 		return *this;
 	}
 	int62_t& operator*= (int64_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) * n);
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) * n);
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			newval = build (flagged (oldval), int62 (oldval) * n);
 		}
 		return *this;
 	}
 	int62_t& operator/= (int64_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) / n);
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) / n);
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			newval = build (flagged (oldval), int62 (oldval) / n);
 		}
 		return *this;
 	}
 	int62_t& operator%= (int64_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) % n);
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) % n);
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			 newval = build (flagged (oldval), int62 (oldval) % n);
 		}
 		return *this;
 	}
 
 	int62_t& operator+= (int62_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) + n.val());
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) + n.val());
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			 newval = build (flagged (oldval), int62 (oldval) + n.val());
 		}
 		return *this;
 	}
 	int62_t& operator-= (int62_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) - n.val());
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) - n.val());
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			 newval = build (flagged (oldval), int62 (oldval) - n.val());
 		}
 		return *this;
 	}
 	int62_t& operator*= (int62_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) * n.val());
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) * n.val());
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			 newval = build (flagged (oldval), int62 (oldval) * n.val());
 		}
 		return *this;
 	}
 	int62_t& operator/= (int62_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t newval = build (flagged (oldval), int62 (oldval) / n.val());
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t newval = build (flagged (oldval), int62 (oldval) / n.val());
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			 newval = build (flagged (oldval), int62 (oldval) / n.val());
 		}
 		return *this;
 	}
 	int62_t& operator%= (int62_t n) {
-		while (1) {
-			int64_t oldval = v.load (std::memory_order_relaxed);
-			int64_t  newval = build (flagged (oldval), int62 (oldval) % n.val());
-			if (v.compare_exchange_weak (oldval, newval)) {
-				break;
-			}
+		int64_t oldval = v.load (std::memory_order_acquire);
+		int64_t  newval = build (flagged (oldval), int62 (oldval) % n.val());
+		while (!v.compare_exchange_weak (oldval, newval, std::memory_order_release, std::memory_order_relaxed)) {
+			  newval = build (flagged (oldval), int62 (oldval) % n.val());
 		}
 		return *this;
 	}

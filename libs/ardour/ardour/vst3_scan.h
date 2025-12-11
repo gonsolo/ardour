@@ -19,9 +19,10 @@
 #ifndef _ardour_vst3_scan_h_
 #define _ardour_vst3_scan_h_
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/xml++.h"
 
@@ -75,7 +76,7 @@ LIBARDOUR_API extern std::string
 vst3_valid_cache_file (std::string const& module_path, bool verbose = false, bool* is_new = NULL);
 
 LIBARDOUR_API extern bool
-vst3_scan_and_cache (std::string const& module_path, std::string const& bundle_path, boost::function<void (std::string const&, std::string const&, VST3Info const&)> cb, bool verbose = false);
+vst3_scan_and_cache (std::string const& module_path, std::string const& bundle_path, std::function<void (std::string const&, std::string const&, VST3Info const&)> cb, bool verbose = false);
 
 } // namespace ARDOUR
 

@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __lxvst_plugin_ui_h__
-#define __lxvst_plugin_ui_h__
+#pragma once
 
 #include "pbd/signals.h"
 #include "vst_plugin_ui.h"
@@ -33,7 +32,7 @@ namespace ARDOUR {
 class LXVSTPluginUI : public VSTPluginUI
 {
 public:
-	LXVSTPluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase>, boost::shared_ptr<ARDOUR::VSTPlugin>);
+	LXVSTPluginUI (std::shared_ptr<ARDOUR::PlugInsertBase>, std::shared_ptr<ARDOUR::VSTPlugin>);
 	~LXVSTPluginUI ();
 
 	int get_preferred_height ();
@@ -54,4 +53,3 @@ private:
 
 #endif //LXVST_SUPPORT
 
-#endif

@@ -19,11 +19,11 @@
 #ifndef _gtkardour_plugin_dspload_ui_h_
 #define _gtkardour_plugin_dspload_ui_h_
 
-#include <gtkmm/widget.h>
-#include <gtkmm/table.h>
-#include <gtkmm/label.h>
-#include <gtkmm/drawingarea.h>
-#include <gtkmm/separator.h>
+#include <ytkmm/widget.h>
+#include <ytkmm/table.h>
+#include <ytkmm/label.h>
+#include <ytkmm/drawingarea.h>
+#include <ytkmm/separator.h>
 
 #include "widgets/ardour_button.h"
 
@@ -32,7 +32,7 @@
 class PluginLoadStatsGui : public Gtk::Table
 {
 public:
-	PluginLoadStatsGui (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+	PluginLoadStatsGui (std::shared_ptr<ARDOUR::PlugInsertBase>);
 
 	void start_updating ();
 	void stop_updating ();
@@ -47,7 +47,7 @@ private:
 		_pib->clear_stats ();
 	}
 
-	boost::shared_ptr<ARDOUR::PlugInsertBase> _pib;
+	std::shared_ptr<ARDOUR::PlugInsertBase> _pib;
 	sigc::connection update_cpu_label_connection;
 
 	Gtk::Label _lbl_min;

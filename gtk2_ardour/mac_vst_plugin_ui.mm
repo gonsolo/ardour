@@ -16,9 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm.h>
-#include <gtk/gtk.h>
-#include <gdk/gdkquartz.h>
+#include <ytkmm/ytkmm.h>
+#include <ytk/ytk.h>
+#include <ydk/gdkquartz.h>
 
 #include "gui_thread.h"
 #include "ardour/plugin_insert.h"
@@ -58,15 +58,15 @@ struct ERect{
 @end
 
 VSTPluginUI*
-create_mac_vst_gui (boost::shared_ptr<PlugInsertBase> pib)
+create_mac_vst_gui (std::shared_ptr<PlugInsertBase> pib)
 {
 	/* PluginUIWindow::create_mac_vst_editor assures this cast works */
-	boost::shared_ptr<MacVSTPlugin> mvst =  boost::dynamic_pointer_cast<MacVSTPlugin> (pib->plugin());
+	std::shared_ptr<MacVSTPlugin> mvst =  std::dynamic_pointer_cast<MacVSTPlugin> (pib->plugin());
 	return new MacVSTPluginUI (pib, mvst);
 }
 
 
-MacVSTPluginUI::MacVSTPluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::shared_ptr<VSTPlugin> vst)
+MacVSTPluginUI::MacVSTPluginUI (std::shared_ptr<PlugInsertBase> pib, std::shared_ptr<VSTPlugin> vst)
 	: VSTPluginUI (pib, vst)
 	, _ns_view (0)
 {
@@ -81,7 +81,7 @@ MacVSTPluginUI::MacVSTPluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::sh
 	pack_start (low_box, true, true);
 	low_box.show ();
 
-	vst->LoadPresetProgram.connect (_program_connection, invalidator (*this), boost::bind (&MacVSTPluginUI::set_program, this), gui_context());
+	vst->LoadPresetProgram.connect (_program_connection, invalidator (*this), std::bind (&MacVSTPluginUI::set_program, this), gui_context());
 
 	_ns_view = [[NSView new] retain];
 

@@ -44,7 +44,7 @@ using namespace std;
 using namespace ARDOUR;
 using namespace PBD;
 
-AudioPlaylistSource::AudioPlaylistSource (Session& s, const ID& orig, const std::string& name, boost::shared_ptr<AudioPlaylist> p,
+AudioPlaylistSource::AudioPlaylistSource (Session& s, const ID& orig, const std::string& name, std::shared_ptr<AudioPlaylist> p,
                                           uint32_t chn, timepos_t const & begin, timepos_t const & len, Source::Flag flags)
 	: Source (s, DataType::AUDIO, name)
 	, PlaylistSource (s, orig, name, p, DataType::AUDIO, begin, len, flags)
@@ -138,10 +138,10 @@ AudioPlaylistSource::read_unlocked (Sample* dst, samplepos_t start, samplecnt_t 
 		to_zero = 0;
 	}
 
-	boost::scoped_array<float> sbuf(new float[to_read]);
-	boost::scoped_array<gain_t> gbuf(new gain_t[to_read]);
+	std::unique_ptr<float[]> sbuf(new float[to_read]);
+	std::unique_ptr<gain_t[]> gbuf(new gain_t[to_read]);
 
-	boost::dynamic_pointer_cast<AudioPlaylist>(_playlist)->read (dst, sbuf.get(), gbuf.get(), timepos_t (start)+_playlist_offset, timecnt_t (to_read), _playlist_channel);
+	std::dynamic_pointer_cast<AudioPlaylist>(_playlist)->read (dst, sbuf.get(), gbuf.get(), timepos_t (start)+_playlist_offset, timecnt_t (to_read), _playlist_channel);
 
 	if (to_zero) {
 		memset (dst+to_read, 0, sizeof (Sample) * to_zero);
@@ -151,7 +151,7 @@ AudioPlaylistSource::read_unlocked (Sample* dst, samplepos_t start, samplecnt_t 
 }
 
 samplecnt_t
-AudioPlaylistSource::write_unlocked (Sample *, samplecnt_t)
+AudioPlaylistSource::write_unlocked (Sample const *, samplecnt_t)
 {
 	fatal << string_compose (_("programming error: %1"), "AudioPlaylistSource::write() called - should be impossible") << endmsg;
 	abort(); /*NOTREACHED*/
@@ -173,8 +173,8 @@ AudioPlaylistSource::n_channels () const
 		return 1;
 	}
 
-	boost::shared_ptr<Region> r = _playlist->region_list_property().front ();
-	boost::shared_ptr<AudioRegion> ar = boost::dynamic_pointer_cast<AudioRegion> (r);
+	std::shared_ptr<Region> r = _playlist->region_list_property().front ();
+	std::shared_ptr<AudioRegion> ar = std::dynamic_pointer_cast<AudioRegion> (r);
 
 	return ar->audio_source()->n_channels ();
 }
@@ -188,8 +188,8 @@ AudioPlaylistSource::sample_rate () const
 		_session.sample_rate ();
 	}
 
-	boost::shared_ptr<Region> r = _playlist->region_list_property().front ();
-	boost::shared_ptr<AudioRegion> ar = boost::dynamic_pointer_cast<AudioRegion> (r);
+	std::shared_ptr<Region> r = _playlist->region_list_property().front ();
+	std::shared_ptr<AudioRegion> ar = std::dynamic_pointer_cast<AudioRegion> (r);
 
 	return ar->audio_source()->sample_rate ();
 }

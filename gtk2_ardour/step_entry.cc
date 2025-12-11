@@ -90,7 +90,7 @@ StepEntry::StepEntry ()
 	, program_button (_("+"))
 	, se (0)
 {
-	set_data ("ardour-bindings", bindings);
+	set_widget_bindings (*this, *bindings, ARDOUR_BINDING_KEY);
 
 	Pango::FontDescription font (ARDOUR_UI_UTILS::sanitized_font ("ArdourSans 24"));
 	length_1_button.set_layout_font (font);
@@ -191,24 +191,24 @@ StepEntry::StepEntry ()
 	note_velocity_box.pack_start (velocity_fff_button, false, false);
 
 	/* https://www.unicode.org/charts/PDF/U1D100.pdf */
-	velocity_ppp_button.set_text ("\U0001D18F\U0001D18F\U0001D18F"); //MUSICAL SYMBOL PIANO (U+1D18F)
-	velocity_pp_button.set_text ("\U0001D18F\U0001D18F");
-	velocity_p_button.set_text ("\U0001D18F");
-	velocity_mp_button.set_text ("\U0001D190\U0001D18F"); //MUSICAL SYMBOL MEZZO (U+1D190)
-	velocity_mf_button.set_text ("\U0001D190\U0001D191");
-	velocity_f_button.set_text ("\U0001D191"); // MUSICAL SYMBOL FORTE (U+1D191)
-	velocity_ff_button.set_text ("\U0001D191\U0001D191");
-	velocity_fff_button.set_text ("\U0001D191\U0001D191\U0001D191");
+	velocity_ppp_button.set_text (u8"\U0001D18F\U0001D18F\U0001D18F"); //MUSICAL SYMBOL PIANO (U+1D18F)
+	velocity_pp_button.set_text (u8"\U0001D18F\U0001D18F");
+	velocity_p_button.set_text (u8"\U0001D18F");
+	velocity_mp_button.set_text (u8"\U0001D190\U0001D18F"); //MUSICAL SYMBOL MEZZO (U+1D190)
+	velocity_mf_button.set_text (u8"\U0001D190\U0001D191");
+	velocity_f_button.set_text (u8"\U0001D191"); // MUSICAL SYMBOL FORTE (U+1D191)
+	velocity_ff_button.set_text (u8"\U0001D191\U0001D191");
+	velocity_fff_button.set_text (u8"\U0001D191\U0001D191\U0001D191");
 
-	length_1_button.set_text ("\U0001D15D"); // MUSICAL SYMBOL WHOLE NOTE
-	length_2_button.set_text ("\U0001D15E"); // MUSICAL SYMBOL HALF NOTE
-	length_4_button.set_text ("\U0001D15F"); // MUSICAL SYMBOL QUARTER NOTE
-	length_8_button.set_text ("\U0001D160"); // MUSICAL SYMBOL EIGHTH NOTE
-	length_16_button.set_text ("\U0001D161"); // MUSICAL SYMBOL SIXTEENTH NOTE
-	length_32_button.set_text ("\U0001D162"); // MUSICAL SYMBOL THIRTY-SECOND NOTE
-	length_64_button.set_text ("\U0001D163"); // MUSICAL SYMBOL SIXTY-FOURTH NOTE
+	length_1_button.set_text (u8"\U0001D15D"); // MUSICAL SYMBOL WHOLE NOTE
+	length_2_button.set_text (u8"\U0001D15E"); // MUSICAL SYMBOL HALF NOTE
+	length_4_button.set_text (u8"\U0001D15F"); // MUSICAL SYMBOL QUARTER NOTE
+	length_8_button.set_text (u8"\U0001D160"); // MUSICAL SYMBOL EIGHTH NOTE
+	length_16_button.set_text (u8"\U0001D161"); // MUSICAL SYMBOL SIXTEENTH NOTE
+	length_32_button.set_text (u8"\U0001D162"); // MUSICAL SYMBOL THIRTY-SECOND NOTE
+	length_64_button.set_text (u8"\U0001D163"); // MUSICAL SYMBOL SIXTY-FOURTH NOTE
 
-	chord_button.set_text ("\U0001D1D6"); // MUSICAL SYMBOL SCANDICUS (customized in ArdourSans)
+	chord_button.set_text (u8"\U0001D1D6"); // MUSICAL SYMBOL SCANDICUS (customized in ArdourSans)
 
 	Label* l = manage (new Label);
 	l->set_markup ("<b><big>-</big></b>");
@@ -649,10 +649,10 @@ StepEntry::toggle_chord ()
 }
 
 void
-StepEntry::dot_change (GtkAction* act)
+StepEntry::dot_change (GtkRadioAction* act)
 {
 	if (gtk_toggle_action_get_active (GTK_TOGGLE_ACTION(act))) {
-		gint v = gtk_radio_action_get_current_value (GTK_RADIO_ACTION (act));
+		gint v = gtk_radio_action_get_current_value (act);
 		dot_adjustment.set_value (v);
 	}
 }
@@ -804,7 +804,7 @@ StepEntry::insert_b ()
 }
 
 void
-StepEntry::note_length_change (GtkAction* act)
+StepEntry::note_length_change (GtkRadioAction* act)
 {
 	/* it doesn't matter which note length action we look up - we are interested
 	   in the current_value which is global across the whole group of note length
@@ -815,13 +815,13 @@ StepEntry::note_length_change (GtkAction* act)
 	*/
 
 	if (gtk_toggle_action_get_active (GTK_TOGGLE_ACTION(act))) {
-		gint v = gtk_radio_action_get_current_value (GTK_RADIO_ACTION (act));
+		gint v = gtk_radio_action_get_current_value (act);
 		length_divisor_adjustment.set_value (v);
 	}
 }
 
 void
-StepEntry::note_velocity_change (GtkAction* act)
+StepEntry::note_velocity_change (GtkRadioAction* act)
 {
 	/* it doesn't matter which note velocity action we look up - we are interested
 	   in the current_value which is global across the whole group of note velocity
@@ -832,7 +832,7 @@ StepEntry::note_velocity_change (GtkAction* act)
 	*/
 
 	if (gtk_toggle_action_get_active (GTK_TOGGLE_ACTION(act))) {
-		gint v = gtk_radio_action_get_current_value (GTK_RADIO_ACTION (act));
+		gint v = gtk_radio_action_get_current_value (act);
 		velocity_adjustment.set_value (v);
 	}
 }

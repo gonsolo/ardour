@@ -52,6 +52,7 @@
 #include "keyboard.h"
 #include "public_editor.h"
 #include "route_sorter.h"
+#include "rta_manager.h"
 #include "utils.h"
 
 #include "pbd/i18n.h"
@@ -83,6 +84,7 @@ RouteListBase::RouteListBase ()
 	setup_col (append_toggle (_columns.visible, _columns.noop_true, sigc::mem_fun (*this, &RouteListBase::on_tv_visible_changed)), S_("Visible|V"), _("Track/Bus visible ?"));
 	setup_col (append_toggle (_columns.trigger, _columns.is_track, sigc::mem_fun (*this, &RouteListBase::on_tv_trigger_changed)),  S_("Cues|C"), _("Visible on Cues window ?"));
 	setup_col (append_toggle (_columns.active, _columns.activatable, sigc::mem_fun (*this, &RouteListBase::on_tv_active_changed)), S_("Active|A"),  _("Track/Bus active ?"));
+	setup_col (append_toggle (_columns.rta_enabled, _columns.active, sigc::mem_fun (*this, &EditorRoutes::on_tv_rta_enable_toggled)), S_("RTA|RA"),  _("Realtime Analyzer active?"));
 
 	append_col_input_active ();
 	append_col_rec_enable ();
@@ -98,10 +100,6 @@ RouteListBase::RouteListBase ()
 	_display.set_name (X_("EditGroupList"));
 	_display.set_rules_hint (true);
 	_display.set_size_request (100, -1);
-
-	/* Try to prevent single mouse presses from initiating edits.
-	 * This relies on a hack in gtktreeview.c:gtk_treeview_button_press() */
-	_display.set_data ("mouse-edits-require-mod1", (gpointer)0x1);
 
 	_scroller.add (_display);
 	_scroller.set_policy (POLICY_NEVER, POLICY_AUTOMATIC);
@@ -133,12 +131,17 @@ RouteListBase::~RouteListBase ()
 }
 
 void
-RouteListBase::setup_col (Gtk::TreeViewColumn* tvc, const char* label, const char* tooltip)
+RouteListBase::setup_col (Gtk::TreeViewColumn* tvc, const char* label, const char* tooltip, bool require_mod_to_edit)
 {
 	Gtk::Label* l = manage (new Label (label));
 	set_tooltip (*l, tooltip);
 	tvc->set_widget (*l);
 	l->show ();
+	if (require_mod_to_edit) {
+		/* Try to prevent single mouse presses from initiating edits.
+		 * This relies on a hack in gtktreeview.c:gtk_treeview_button_press() */
+		tvc->set_data ("mouse-edits-require-mod1", (gpointer)0x1);
+	}
 }
 
 void
@@ -146,7 +149,7 @@ RouteListBase::add_name_column ()
 {
 	Gtk::TreeViewColumn* tvc = manage (new Gtk::TreeViewColumn ("", _columns.text));
 
-	setup_col (tvc, _("Name"), ("Track/Bus name"));
+	setup_col (tvc, _("Name"), ("Track/Bus name"), true);
 
 	CellRendererText* cell = dynamic_cast<CellRendererText*> (tvc->get_first_cell ());
 	cell->signal_editing_started ().connect (sigc::mem_fun (*this, &RouteListBase::name_edit_started));
@@ -276,11 +279,11 @@ RouteListBase::set_session (Session* s)
 	initial_display ();
 
 	if (_session) {
-		_session->vca_manager ().VCAAdded.connect (_session_connections, invalidator (_scroller), boost::bind (&RouteListBase::add_masters, this, _1), gui_context ());
-		_session->RouteAdded.connect (_session_connections, invalidator (_scroller), boost::bind (&RouteListBase::add_routes, this, _1), gui_context ());
-		_session->SoloChanged.connect (_session_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
-		_session->RecordStateChanged.connect (_session_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
-		PresentationInfo::Change.connect (_session_connections, invalidator (_scroller), boost::bind (&RouteListBase::presentation_info_changed, this, _1), gui_context ());
+		_session->vca_manager ().VCAAdded.connect (_session_connections, invalidator (_scroller), std::bind (&RouteListBase::add_masters, this, _1), gui_context ());
+		_session->RouteAdded.connect (_session_connections, invalidator (_scroller), std::bind (&RouteListBase::add_routes, this, _1), gui_context ());
+		_session->SoloChanged.connect (_session_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+		_session->RecordStateChanged.connect (_session_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+		PresentationInfo::Change.connect (_session_connections, invalidator (_scroller), std::bind (&RouteListBase::presentation_info_changed, this, _1), gui_context ());
 	}
 }
 
@@ -288,8 +291,8 @@ void
 RouteListBase::on_tv_input_active_changed (std::string const& path_string)
 {
 	Gtk::TreeModel::Row          row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable> stripable = row[_columns.stripable];
-	boost::shared_ptr<MidiTrack> mt        = boost::dynamic_pointer_cast<MidiTrack> (stripable);
+	std::shared_ptr<Stripable> stripable = row[_columns.stripable];
+	std::shared_ptr<MidiTrack> mt        = std::dynamic_pointer_cast<MidiTrack> (stripable);
 
 	if (mt) {
 		mt->set_input_active (!mt->input_active ());
@@ -300,8 +303,8 @@ void
 RouteListBase::on_tv_rec_enable_changed (std::string const& path_string)
 {
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac        = stripable->rec_enable_control ();
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac        = stripable->rec_enable_control ();
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
@@ -312,8 +315,8 @@ void
 RouteListBase::on_tv_rec_safe_toggled (std::string const& path_string)
 {
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac (stripable->rec_safe_control ());
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac (stripable->rec_safe_control ());
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
@@ -325,8 +328,8 @@ RouteListBase::on_tv_mute_enable_toggled (std::string const& path_string)
 {
 	// Get the model row that has been toggled.
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac (stripable->mute_control ());
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac (stripable->mute_control ());
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
@@ -338,8 +341,8 @@ RouteListBase::on_tv_solo_enable_toggled (std::string const& path_string)
 {
 	// Get the model row that has been toggled.
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac (stripable->solo_control ());
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac (stripable->solo_control ());
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
@@ -351,8 +354,8 @@ RouteListBase::on_tv_solo_isolate_toggled (std::string const& path_string)
 {
 	// Get the model row that has been toggled.
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac (stripable->solo_isolate_control ());
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac (stripable->solo_isolate_control ());
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
@@ -364,11 +367,29 @@ RouteListBase::on_tv_solo_safe_toggled (std::string const& path_string)
 {
 	// Get the model row that has been toggled.
 	Gtk::TreeModel::Row                  row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
-	boost::shared_ptr<Stripable>         stripable = row[_columns.stripable];
-	boost::shared_ptr<AutomationControl> ac (stripable->solo_safe_control ());
+	std::shared_ptr<Stripable>         stripable = row[_columns.stripable];
+	std::shared_ptr<AutomationControl> ac (stripable->solo_safe_control ());
 
 	if (ac) {
 		ac->set_value (!ac->get_value (), Controllable::UseGroup);
+	}
+}
+
+void
+RouteListBase::on_tv_rta_enable_toggled (std::string const& path_string)
+{
+	Gtk::TreeModel::Row        row       = *_model->get_iter (Gtk::TreeModel::Path (path_string));
+	std::shared_ptr<Stripable> stripable = row[_columns.stripable];
+	std::shared_ptr<Route>     route     = std::dynamic_pointer_cast<Route> (stripable);
+
+	if (route) {
+		bool attached = RTAManager::instance ()->attached (route);
+		if (attached) {
+			RTAManager::instance ()->remove (route);
+		} else {
+			RTAManager::instance ()->attach (route);
+			ARDOUR_UI::instance()->show_realtime_analyzer ();
+		}
 	}
 }
 
@@ -445,15 +466,15 @@ RouteListBase::on_tv_visible_changed (std::string const& path)
 	if ((iter = _model->get_iter (path))) {
 		bool hidden = (*iter)[_columns.visible]; // toggle -> invert flag
 
-		boost::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
+		std::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
 
 		if (hidden != stripable->presentation_info ().hidden ()) {
 			stripable->presentation_info ().set_hidden (hidden);
 
-			boost::shared_ptr<Route> route = boost::dynamic_pointer_cast<Route> (stripable);
+			std::shared_ptr<Route> route = std::dynamic_pointer_cast<Route> (stripable);
 			RouteGroup*              rg    = route ? route->route_group () : 0;
 			if (rg && rg->is_active () && rg->is_hidden ()) {
-				boost::shared_ptr<RouteList> rl (rg->route_list ());
+				std::shared_ptr<RouteList> rl (rg->route_list ());
 				for (RouteList::const_iterator i = rl->begin (); i != rl->end (); ++i) {
 					(*i)->presentation_info ().set_hidden (hidden);
 				}
@@ -471,7 +492,7 @@ RouteListBase::on_tv_trigger_changed (std::string const& path)
 
 	Gtk::TreeModel::Row row = *_model->get_iter (path);
 	assert (row[_columns.is_track]);
-	boost::shared_ptr<Stripable> stripable = row[_columns.stripable];
+	std::shared_ptr<Stripable> stripable = row[_columns.stripable];
 	bool const                   tt        = row[_columns.trigger];
 	stripable->presentation_info ().set_trigger_track (!tt);
 }
@@ -484,8 +505,8 @@ RouteListBase::on_tv_active_changed (std::string const& path)
 	}
 
 	Gtk::TreeModel::Row          row       = *_model->get_iter (path);
-	boost::shared_ptr<Stripable> stripable = row[_columns.stripable];
-	boost::shared_ptr<Route>     route     = boost::dynamic_pointer_cast<Route> (stripable);
+	std::shared_ptr<Stripable> stripable = row[_columns.stripable];
+	std::shared_ptr<Route>     route     = std::dynamic_pointer_cast<Route> (stripable);
 	if (route) {
 		bool const active = row[_columns.active];
 		route->set_active (!active, this);
@@ -515,7 +536,7 @@ RouteListBase::add_masters (VCAList& vlist)
 	StripableList sl;
 
 	for (VCAList::iterator v = vlist.begin (); v != vlist.end (); ++v) {
-		sl.push_back (boost::dynamic_pointer_cast<Stripable> (*v));
+		sl.push_back (std::dynamic_pointer_cast<Stripable> (*v));
 	}
 
 	add_stripables (sl);
@@ -543,7 +564,7 @@ RouteListBase::add_stripables (StripableList& slist)
 	slist.sort (Stripable::Sorter ());
 
 	for (Gtk::TreeModel::Children::iterator it = _model->children ().begin (); it != _model->children ().end (); ++it) {
-		boost::shared_ptr<Stripable> r = (*it)[_columns.stripable];
+		std::shared_ptr<Stripable> r = (*it)[_columns.stripable];
 
 		if (r->presentation_info ().order () == (slist.front ()->presentation_info ().order () + slist.size ())) {
 			insert_iter = it;
@@ -557,13 +578,13 @@ RouteListBase::add_stripables (StripableList& slist)
 	}
 
 	for (StripableList::iterator s = slist.begin (); s != slist.end (); ++s) {
-		boost::shared_ptr<Stripable> stripable = *s;
-		boost::shared_ptr<MidiTrack> midi_trk;
-		boost::shared_ptr<Route>     route;
+		std::shared_ptr<Stripable> stripable = *s;
+		std::shared_ptr<MidiTrack> midi_trk;
+		std::shared_ptr<Route>     route;
 
 		TreeModel::Row row;
 
-		if (boost::dynamic_pointer_cast<VCA> (stripable)) {
+		if (std::dynamic_pointer_cast<VCA> (stripable)) {
 			row = *(_model->insert (insert_iter));
 
 			row[_columns.is_track]        = false;
@@ -571,20 +592,26 @@ RouteListBase::add_stripables (StripableList& slist)
 			row[_columns.is_midi]         = false;
 			row[_columns.activatable]     = true;
 
-		} else if ((route = boost::dynamic_pointer_cast<Route> (*s))) {
+		} else if ((route = std::dynamic_pointer_cast<Route> (*s))) {
 			if (route->is_auditioner ()) {
 				continue;
 			}
 			if (route->is_monitor ()) {
 				continue;
 			}
+			if (route->is_surround_master ()) {
+				continue;
+			}
+			if (route->is_foldbackbus ()) {
+				continue;
+			}
 
 			row = *(_model->insert (insert_iter));
 
-			midi_trk = boost::dynamic_pointer_cast<MidiTrack> (stripable);
+			midi_trk = std::dynamic_pointer_cast<MidiTrack> (stripable);
 
-			row[_columns.is_track]    = (boost::dynamic_pointer_cast<Track> (stripable) != 0);
-			row[_columns.activatable] = !stripable->is_master ();
+			row[_columns.is_track]    = (std::dynamic_pointer_cast<Track> (stripable) != 0);
+			row[_columns.activatable] = !stripable->is_singleton ();
 
 			if (midi_trk) {
 				row[_columns.is_input_active] = midi_trk->input_active ();
@@ -609,7 +636,7 @@ RouteListBase::add_stripables (StripableList& slist)
 		row[_columns.solo_safe_state]       = RouteUI::solo_safe_active_state (stripable);
 		row[_columns.name_editable]         = true;
 
-		boost::weak_ptr<Stripable> ws (stripable);
+		std::weak_ptr<Stripable> ws (stripable);
 
 		/* for now, we need both of these. PropertyChanged covers on
 		 * pre-defined, "global" things of interest to a
@@ -618,39 +645,40 @@ RouteListBase::add_stripables (StripableList& slist)
 		 * UI (e.g. track-height is not of any relevant to OSC)
 		 */
 
-		stripable->PropertyChanged.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::route_property_changed, this, _1, ws), gui_context ());
-		stripable->presentation_info ().PropertyChanged.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::route_property_changed, this, _1, ws), gui_context ());
+		stripable->PropertyChanged.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::route_property_changed, this, _1, ws), gui_context ());
+		stripable->presentation_info ().PropertyChanged.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::route_property_changed, this, _1, ws), gui_context ());
 
-		if (boost::dynamic_pointer_cast<Track> (stripable)) {
-			boost::shared_ptr<Track> t = boost::dynamic_pointer_cast<Track> (stripable);
-			t->rec_enable_control ()->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
-			t->rec_safe_control ()->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+		if (std::dynamic_pointer_cast<Track> (stripable)) {
+			std::shared_ptr<Track> t = std::dynamic_pointer_cast<Track> (stripable);
+			t->rec_enable_control ()->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			t->rec_safe_control ()->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
 		}
 
 		if (midi_trk) {
-			midi_trk->StepEditStatusChange.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
-			midi_trk->InputActiveChanged.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::update_input_active_display, this), gui_context ());
+			midi_trk->StepEditStatusChange.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			midi_trk->InputActiveChanged.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::update_input_active_display, this), gui_context ());
 		}
 
-		boost::shared_ptr<AutomationControl> ac;
+		std::shared_ptr<AutomationControl> ac;
 
 		if ((ac = stripable->mute_control ()) != 0) {
-			ac->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			ac->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
 		}
 		if ((ac = stripable->solo_control ()) != 0) {
-			ac->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			ac->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
 		}
 		if ((ac = stripable->solo_isolate_control ()) != 0) {
-			ac->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			ac->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
 		}
 		if ((ac = stripable->solo_safe_control ()) != 0) {
-			ac->Changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			ac->Changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
 		}
 
 		if (route) {
-			route->active_changed.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			route->active_changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::queue_idle_update, this), gui_context ());
+			route->gui_changed.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::handle_gui_changes, this, _1), gui_context());
 		}
-		stripable->DropReferences.connect (_stripable_connections, invalidator (_scroller), boost::bind (&RouteListBase::remove_strip, this, ws), gui_context ());
+		stripable->DropReferences.connect (_stripable_connections, invalidator (_scroller), std::bind (&RouteListBase::remove_strip, this, ws), gui_context ());
 	}
 
 	queue_idle_update ();
@@ -663,7 +691,7 @@ RouteListBase::add_stripables (StripableList& slist)
 		/* set the treeview model selection state */
 		TreeModel::Children rows = _model->children ();
 		for (TreeModel::Children::iterator ri = rows.begin (); ri != rows.end (); ++ri) {
-			boost::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
+			std::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
 			if (stripable && stripable->is_selected ()) {
 				_display.get_selection ()->select (*ri);
 			} else {
@@ -674,9 +702,9 @@ RouteListBase::add_stripables (StripableList& slist)
 }
 
 void
-RouteListBase::remove_strip (boost::weak_ptr<ARDOUR::Stripable> ws)
+RouteListBase::remove_strip (std::weak_ptr<ARDOUR::Stripable> ws)
 {
-	boost::shared_ptr<Stripable> stripable (ws.lock ());
+	std::shared_ptr<Stripable> stripable (ws.lock ());
 
 	if (!stripable) {
 		return;
@@ -688,7 +716,7 @@ RouteListBase::remove_strip (boost::weak_ptr<ARDOUR::Stripable> ws)
 	PBD::Unwinder<bool> uw (_ignore_selection_change, true);
 
 	for (ri = rows.begin (); ri != rows.end (); ++ri) {
-		boost::shared_ptr<Stripable> s = (*ri)[_columns.stripable];
+		std::shared_ptr<Stripable> s = (*ri)[_columns.stripable];
 		if (s == stripable) {
 			PBD::Unwinder<bool> uw (_route_deletion_in_progress, true);
 			_model->erase (ri);
@@ -698,7 +726,7 @@ RouteListBase::remove_strip (boost::weak_ptr<ARDOUR::Stripable> ws)
 }
 
 void
-RouteListBase::route_property_changed (const PropertyChange& what_changed, boost::weak_ptr<Stripable> s)
+RouteListBase::route_property_changed (const PropertyChange& what_changed, std::weak_ptr<Stripable> s)
 {
 	if (_adding_routes) {
 		return;
@@ -713,7 +741,7 @@ RouteListBase::route_property_changed (const PropertyChange& what_changed, boost
 		return;
 	}
 
-	boost::shared_ptr<Stripable> stripable = s.lock ();
+	std::shared_ptr<Stripable> stripable = s.lock ();
 
 	if (!stripable) {
 		return;
@@ -721,7 +749,7 @@ RouteListBase::route_property_changed (const PropertyChange& what_changed, boost
 
 	TreeModel::Children rows = _model->children ();
 	for (TreeModel::Children::iterator i = rows.begin (); i != rows.end (); ++i) {
-		boost::shared_ptr<Stripable> ss = (*i)[_columns.stripable];
+		std::shared_ptr<Stripable> ss = (*i)[_columns.stripable];
 
 		if (ss != stripable) {
 			continue;
@@ -775,7 +803,7 @@ RouteListBase::sync_presentation_info_from_treeview ()
 	PresentationInfo::ChangeSuspender cs;
 
 	for (TreeModel::Children::iterator ri = rows.begin (); ri != rows.end (); ++ri) {
-		boost::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
+		std::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
 		bool                         visible   = (*ri)[_columns.visible];
 
 		stripable->presentation_info ().set_hidden (!visible);
@@ -810,7 +838,7 @@ RouteListBase::sync_treeview_from_presentation_info (PropertyChange const& what_
 
 		TreeOrderKeys sorted;
 		for (TreeModel::Children::iterator ri = rows.begin (); ri != rows.end (); ++ri, ++old_order) {
-			boost::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
+			std::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
 			/* use global order */
 			sorted.push_back (TreeOrderKey (old_order, stripable));
 		}
@@ -856,7 +884,7 @@ RouteListBase::sync_treeview_from_presentation_info (PropertyChange const& what_
 
 		/* set the treeview model selection state */
 		for (TreeModel::Children::iterator ri = rows.begin (); ri != rows.end (); ++ri) {
-			boost::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
+			std::shared_ptr<Stripable> stripable = (*ri)[_columns.stripable];
 			if (stripable && stripable->is_selected ()) {
 				_display.get_selection ()->select (*ri);
 			} else {
@@ -876,7 +904,7 @@ RouteListBase::set_all_audio_midi_visibility (int which, bool yn)
 	PBD::Unwinder<bool> uw (_ignore_visibility_change, true);
 
 	for (i = rows.begin (); i != rows.end (); ++i) {
-		boost::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
+		std::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
 
 		/*
 		 * which = 0: any (incl. VCA)
@@ -884,9 +912,9 @@ RouteListBase::set_all_audio_midi_visibility (int which, bool yn)
 		 * which = 2: busses
 		 * which = 3: midi-tracks
 		 */
-		bool is_audio = boost::dynamic_pointer_cast<AudioTrack> (stripable) != 0;
-		bool is_midi  = boost::dynamic_pointer_cast<MidiTrack> (stripable) != 0;
-		bool is_bus   = !is_audio && !is_midi && boost::dynamic_pointer_cast<Route> (stripable) != 0;
+		bool is_audio = std::dynamic_pointer_cast<AudioTrack> (stripable) != 0;
+		bool is_midi  = std::dynamic_pointer_cast<MidiTrack> (stripable) != 0;
+		bool is_bus   = !is_audio && !is_midi && std::dynamic_pointer_cast<Route> (stripable) != 0;
 
 		switch (which) {
 			case 0:
@@ -921,7 +949,7 @@ RouteListBase::key_press (GdkEventKey* ev)
 	TreeViewColumn* col;
 	TreePath        path;
 
-	boost::shared_ptr<RouteList> rl (new RouteList);
+	std::shared_ptr<RouteList> rl (new RouteList);
 
 	switch (ev->keyval) {
 		case GDK_Tab:
@@ -961,7 +989,7 @@ RouteListBase::key_press (GdkEventKey* ev)
 		case 'r':
 			if (get_relevant_routes (rl)) {
 				for (RouteList::const_iterator r = rl->begin (); r != rl->end (); ++r) {
-					boost::shared_ptr<Track> t = boost::dynamic_pointer_cast<Track> (*r);
+					std::shared_ptr<Track> t = std::dynamic_pointer_cast<Track> (*r);
 					if (t) {
 						_session->set_controls (route_list_to_control_list (rl, &Stripable::rec_enable_control), !t->rec_enable_control ()->get_value (), Controllable::NoGroup);
 						break;
@@ -978,7 +1006,7 @@ RouteListBase::key_press (GdkEventKey* ev)
 }
 
 bool
-RouteListBase::get_relevant_routes (boost::shared_ptr<RouteList> rl)
+RouteListBase::get_relevant_routes (std::shared_ptr<RouteList> rl)
 {
 	RefPtr<TreeSelection> selection = _display.get_selection ();
 	TreePath              path;
@@ -1005,8 +1033,8 @@ RouteListBase::get_relevant_routes (boost::shared_ptr<RouteList> rl)
 	}
 
 	if (iter) {
-		boost::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
-		boost::shared_ptr<Route>     route     = boost::dynamic_pointer_cast<Route> (stripable);
+		std::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
+		std::shared_ptr<Route>     route     = std::dynamic_pointer_cast<Route> (stripable);
 		if (route) {
 			rl->push_back (route);
 		}
@@ -1113,10 +1141,10 @@ RouteListBase::update_input_active_display ()
 	TreeModel::Children::iterator i;
 
 	for (i = rows.begin (); i != rows.end (); ++i) {
-		boost::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
+		std::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
 
-		if (boost::dynamic_pointer_cast<Track> (stripable)) {
-			boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (stripable);
+		if (std::dynamic_pointer_cast<Track> (stripable)) {
+			std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (stripable);
 
 			if (mt) {
 				(*i)[_columns.is_input_active] = mt->input_active ();
@@ -1140,25 +1168,27 @@ RouteListBase::idle_update_mute_rec_solo_etc ()
 	TreeModel::Children::iterator i;
 
 	for (i = rows.begin (); i != rows.end (); ++i) {
-		boost::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
-		boost::shared_ptr<Route>     route     = boost::dynamic_pointer_cast<Route> (stripable);
+		std::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
+		std::shared_ptr<Route>     route     = std::dynamic_pointer_cast<Route> (stripable);
 		(*i)[_columns.mute_state]              = RouteUI::mute_active_state (_session, stripable);
 		(*i)[_columns.solo_state]              = RouteUI::solo_active_state (stripable);
 		(*i)[_columns.solo_isolate_state]      = RouteUI::solo_isolate_active_state (stripable) ? 1 : 0;
 		(*i)[_columns.solo_safe_state]         = RouteUI::solo_safe_active_state (stripable) ? 1 : 0;
 		if (route) {
-			(*i)[_columns.active] = route->active ();
+			(*i)[_columns.active]      = route->active ();
+			(*i)[_columns.rta_enabled] = RTAManager::instance ()->attached (route);
 		} else {
-			(*i)[_columns.active] = true;
+			(*i)[_columns.active]      = true;
+			(*i)[_columns.rta_enabled] = false;
 		}
 
-		boost::shared_ptr<Track> trk (boost::dynamic_pointer_cast<Track> (route));
+		std::shared_ptr<Track> trk (std::dynamic_pointer_cast<Track> (route));
 
 		if (trk) {
-			boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (route);
+			std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (route);
 
 			if (trk->rec_enable_control ()->get_value ()) {
-				if (_session->record_status () == Session::Recording) {
+				if (_session->record_status () == Recording) {
 					(*i)[_columns.rec_state] = 1;
 				} else {
 					(*i)[_columns.rec_state] = 2;
@@ -1175,6 +1205,14 @@ RouteListBase::idle_update_mute_rec_solo_etc ()
 	}
 
 	return false; // do not call again (until needed)
+}
+
+void
+RouteListBase::handle_gui_changes (std::string const& what)
+{
+	if (what == "rta") {
+		queue_idle_update ();
+	}
 }
 
 void
@@ -1212,7 +1250,7 @@ RouteListBase::name_edit (std::string const& path, std::string const& new_text)
 		return;
 	}
 
-	boost::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
+	std::shared_ptr<Stripable> stripable = (*iter)[_columns.stripable];
 
 	if (stripable && stripable->name () != new_text) {
 		stripable->set_name (new_text);
@@ -1222,14 +1260,14 @@ RouteListBase::name_edit (std::string const& path, std::string const& new_text)
 void
 RouteListBase::show_tracks_with_regions_at_playhead ()
 {
-	boost::shared_ptr<RouteList> const r = _session->get_routes_with_regions_at (timepos_t (_session->transport_sample ()));
+	std::shared_ptr<RouteList> const r = _session->get_routes_with_regions_at (timepos_t (_session->transport_sample ()));
 
 	DisplaySuspender ds;
 
 	TreeModel::Children rows = _model->children ();
 	for (TreeModel::Children::iterator i = rows.begin (); i != rows.end (); ++i) {
-		boost::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
-		boost::shared_ptr<Route>     route     = boost::dynamic_pointer_cast<Route> (stripable);
+		std::shared_ptr<Stripable> stripable = (*i)[_columns.stripable];
+		std::shared_ptr<Route>     route     = std::dynamic_pointer_cast<Route> (stripable);
 
 		bool to_show = std::find (r->begin (), r->end (), route) != r->end ();
 		stripable->presentation_info ().set_hidden (!to_show);

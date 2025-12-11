@@ -28,17 +28,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_types_h__
-#define __ardour_types_h__
+#pragma once
 
 #include <bitset>
+#include <cstdint>
 #include <istream>
-#include <vector>
 #include <map>
+#include <memory>
 #include <set>
-#include <boost/shared_ptr.hpp>
+#include <vector>
+
 #include <sys/types.h>
-#include <stdint.h>
 #include <pthread.h>
 
 #include <inttypes.h>
@@ -72,7 +72,9 @@ class AudioSource;
 class GraphNode;
 class Route;
 class Region;
+class Playlist;
 class Stripable;
+class Trigger;
 class VCA;
 class AutomationControl;
 class SlavableAutomationControl;
@@ -97,9 +99,10 @@ static const layer_t    max_layer    = UINT32_MAX;
 // a set of (time) intervals: first of pair is the offset of the start within the region, second is the offset of the end
 typedef std::list<std::pair<sampleoffset_t, sampleoffset_t> > AudioIntervalResult;
 // associate a set of intervals with regions (e.g. for silence detection)
-typedef std::map<boost::shared_ptr<ARDOUR::Region>,AudioIntervalResult> AudioIntervalMap;
+typedef std::map<std::shared_ptr<ARDOUR::Region>,AudioIntervalResult> AudioIntervalMap;
 
-typedef std::list<boost::shared_ptr<Region> > RegionList;
+typedef std::list<std::shared_ptr<Region> > RegionList;
+typedef std::set<std::shared_ptr<Playlist> > PlaylistSet;
 
 struct IOChange {
 
@@ -170,8 +173,19 @@ enum AutomationType {
 	MonitoringAutomation,
 	BusSendLevel,
 	BusSendEnable,
+	SurroundSendLevel,
 	InsertReturnLevel,
 	MainOutVolume,
+	MidiVelocityAutomation,
+	PanSurroundX,
+	PanSurroundY,
+	PanSurroundZ,
+	PanSurroundSize,
+	PanSurroundSnap,
+	BinauralRenderMode,
+	PanSurroundElevationEnable,
+	PanSurroundZones,
+	PanSurroundRamp,
 
 	/* used only by Controllable Descriptor to access send parameters */
 
@@ -246,6 +260,13 @@ enum RecordMode {
 	RecSoundOnSound
 };
 
+enum SectionOperation {
+	CopyPasteSection,
+	CutPasteSection,
+	InsertSection,
+	DeleteSection,
+};
+
 enum NoteMode {
 	Sustained,
 	Percussive
@@ -283,6 +304,7 @@ class AnyTime {
 	enum Type {
 		Timecode,
 		BBT,
+		BBT_Offset,
 		Samples,
 		Seconds
 	};
@@ -290,14 +312,21 @@ class AnyTime {
 	Type type;
 
 	Timecode::Time     timecode;
-	Temporal::BBT_Time bbt;
+	union {
+		Temporal::BBT_Time bbt;
+		Temporal::BBT_Offset bbt_offset;
+	};
 
 	union {
 		samplecnt_t     samples;
 		double         seconds;
 	};
 
-	AnyTime() { type = Samples; samples = 0; }
+	AnyTime () : type (Samples), samples (0) {}
+	AnyTime (Temporal::BBT_Offset bt) : type (BBT_Offset), bbt_offset (bt) {}
+	AnyTime (std::string const &);
+
+	std::string str() const;
 
 	bool operator== (AnyTime const & other) const {
 		if (type != other.type) { return false; }
@@ -307,6 +336,8 @@ class AnyTime {
 			return timecode == other.timecode;
 		case BBT:
 			return bbt == other.bbt;
+		case BBT_Offset:
+			return bbt_offset == other.bbt_offset;
 		case Samples:
 			return samples == other.samples;
 		case Seconds:
@@ -323,6 +354,8 @@ class AnyTime {
 				timecode.seconds != 0 || timecode.frames != 0;
 		case BBT:
 			return bbt.bars != 0 || bbt.beats != 0 || bbt.ticks != 0;
+		case BBT_Offset:
+			return bbt_offset.bars != 0 || bbt_offset.beats != 0 || bbt_offset.ticks != 0;
 		case Samples:
 			return samples != 0;
 		case Seconds:
@@ -424,6 +457,12 @@ enum EditMode {
 	Lock
 };
 
+enum SnapTarget {
+	SnapTargetGrid,
+	SnapTargetOther,
+	SnapTargetBoth
+};
+
 enum RippleMode {
 	RippleSelected,
 	RippleAll,
@@ -445,6 +484,13 @@ enum RangeSelectionAfterSplit {
 	ClearSel = 0,
 	PreserveSel = 1,  // bit 0
 	ForceSel = 2      // bit 1
+};
+
+enum TimeSelectionAfterSectionPaste {
+	SectionSelectNoop = 0,
+	SectionSelectClear = 1,
+	SectionSelectRetain = 2,
+	SectionSelectRetainAndMovePlayhead = 3,
 };
 
 enum RegionPoint {
@@ -469,6 +515,12 @@ enum MonitorChoice {
 	MonitorInput = 0x1,
 	MonitorDisk = 0x2,
 	MonitorCue = 0x3,
+};
+
+enum FastWindOp {
+	FastWindOff = 0,
+	FastWindVarispeed = 0x1,  //rewind/ffwd commands will varispeed the transport (incl reverse playback)
+	FastWindLocate = 0x2,     //rewind/ffwd commands will jump to next/prior marker
 };
 
 enum MonitorState {
@@ -619,7 +671,7 @@ enum ShuttleUnits {
 	Semitones
 };
 
-typedef std::vector<boost::shared_ptr<Source> > SourceList;
+typedef std::vector<std::shared_ptr<Source> > SourceList;
 
 enum SrcQuality {
 	SrcBest,
@@ -632,22 +684,23 @@ enum SrcQuality {
 typedef std::list<samplepos_t> AnalysisFeatureList;
 typedef std::vector<samplepos_t> XrunPositions;
 
-typedef std::list<boost::shared_ptr<Route> > RouteList;
-typedef std::list<boost::shared_ptr<GraphNode> > GraphNodeList;
-typedef std::list<boost::shared_ptr<Stripable> > StripableList;
-typedef std::list<boost::weak_ptr  <Route> > WeakRouteList;
-typedef std::list<boost::weak_ptr  <Stripable> > WeakStripableList;
-typedef std::list<boost::shared_ptr<AutomationControl> > ControlList;
-typedef std::list<boost::shared_ptr<SlavableAutomationControl> > SlavableControlList;
+typedef std::list<std::shared_ptr<Route> > RouteList;
+typedef std::list<std::shared_ptr<GraphNode> > GraphNodeList;
+typedef std::list<std::shared_ptr<Stripable> > StripableList;
+typedef std::list<std::weak_ptr  <Route> > WeakRouteList;
+typedef std::list<std::weak_ptr  <Stripable> > WeakStripableList;
+typedef std::list<std::shared_ptr<AutomationControl> > AutomationControlList;
+typedef std::list<std::weak_ptr  <AutomationControl> > WeakAutomationControlList;
+typedef std::list<std::shared_ptr<SlavableAutomationControl> > SlavableAutomationControlList;
 typedef std::set <AutomationType> AutomationTypeSet;
 
-typedef std::list<boost::shared_ptr<VCA> > VCAList;
+typedef std::list<std::shared_ptr<VCA> > VCAList;
 
 class Bundle;
-typedef std::vector<boost::shared_ptr<Bundle> > BundleList;
+typedef std::vector<std::shared_ptr<Bundle> > BundleList;
 
 class IOPlug;
-typedef std::vector<boost::shared_ptr<IOPlug> > IOPlugList;
+typedef std::vector<std::shared_ptr<IOPlug> > IOPlugList;
 
 enum RegionEquivalence {
 	Exact,
@@ -684,6 +737,12 @@ enum PluginGUIBehavior {
 	PluginGUIDestroyVST,
 };
 
+enum AppleNSGLViewMode {
+	NSGLHiRes,
+	NSGLLoRes,
+	NSGLDisable,
+};
+
 /** A struct used to describe changes to processors in a route.
  *  This is useful because objects that respond to a change in processors
  *  can optimise what work they do based on details of what has changed.
@@ -694,9 +753,14 @@ enum PluginGUIBehavior {
  */
 struct RouteProcessorChange {
 	enum Type {
-		MeterPointChange = 0x1,
-		RealTimeChange   = 0x2,
-		GeneralChange    = 0x4
+		NoProcessorChange   = 0x00,
+		MeterPointChange    = 0x01,
+		RealTimeChange      = 0x02,
+		GeneralChange       = 0x04,
+		SendReturnChange    = 0x08,
+		CustomPinChange     = 0x10,
+		ParameterNameChange = 0x20,
+		PortNameChange      = 0x40
 	};
 
 	RouteProcessorChange () : type (GeneralChange), meter_visibly_changed (true)
@@ -804,6 +868,7 @@ enum PlaylistDisposition {
 enum MidiTrackNameSource {
 	SMFTrackNumber,
 	SMFTrackName,
+	SMFFileAndTrackName,
 	SMFInstrumentName
 };
 
@@ -908,10 +973,49 @@ struct CueEvent {
 
 typedef std::vector<CueEvent> CueEvents;
 
+/* Describes the one or two contiguous time ranges processsed by a process
+ * callback. The @param cnt member indicates if there are 1 or 2 valid
+ * elements; It will only be 2 if a locate-for-loop-end occured during the
+ * process cycle.
+ *
+ * Owned by Session. Readable ONLY within process context AFTER
+ * Session::process() has returned.
+ */
+
+struct ProcessedRanges {
+	samplepos_t start[2];
+	samplepos_t end[2];
+	uint32_t    cnt;
+
+	ProcessedRanges() : start { 0, 0 }, end { 0, 0 }, cnt (0) {}
+};
+
+enum SelectionOperation {
+	SelectionSet,
+	SelectionAdd,
+	SelectionToggle,
+	SelectionRemove,
+	SelectionExtend /* UI only operation, not core */
+};
+
+enum RecordState {
+	Disabled = 0,
+	Enabled = 1,
+	Recording = 2
+};
+
+
+/* compare to IEditController */
+enum VST3KnobMode {
+	VST3KnobPluginDefault = -1,
+	VST3KnobCircularMode = 0,
+	VST3KnobRelativCircularMode,
+	VST3KnobLinearMode
+};
+
 } // namespace ARDOUR
 
 /* for now, break the rules and use "using" to make this "global" */
 
 using ARDOUR::samplepos_t;
 
-#endif /* __ardour_types_h__ */

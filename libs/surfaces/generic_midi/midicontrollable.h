@@ -43,12 +43,13 @@ class GenericMidiControlProtocol;
 
 namespace ARDOUR {
 	class AsyncMIDIPort;
+	class Stripable;
 }
 
 class MIDIControllable : public PBD::Stateful
 {
 public:
-	MIDIControllable (GenericMidiControlProtocol*, MIDI::Parser&, boost::shared_ptr<PBD::Controllable>, bool momentary);
+	MIDIControllable (GenericMidiControlProtocol*, MIDI::Parser&, std::shared_ptr<PBD::Controllable>, bool momentary);
 	MIDIControllable (GenericMidiControlProtocol*, MIDI::Parser&, bool momentary = false);
 	virtual ~MIDIControllable ();
 
@@ -93,8 +94,8 @@ public:
 	void set_encoder (Encoder val) { _encoder = val; }
 
 	MIDI::Parser& get_parser() { return _parser; }
-	void set_controllable (boost::shared_ptr<PBD::Controllable>);
-	boost::shared_ptr<PBD::Controllable> get_controllable () const;
+	void set_controllable (std::shared_ptr<PBD::Controllable>);
+	std::shared_ptr<PBD::Controllable> get_controllable () const;
 	const std::string& current_uri() const { return _current_uri; }
 
 	std::string control_description() const { return _control_description; }
@@ -114,12 +115,14 @@ public:
 
 	int lookup_controllable();
 
+	void bind_remap (std::shared_ptr<ARDOUR::Stripable>);
+
 private:
 
 	int max_value_for_type () const;
 
 	GenericMidiControlProtocol* _surface;
-	boost::shared_ptr<PBD::Controllable> _controllable;
+	std::shared_ptr<PBD::Controllable> _controllable;
 	std::string     _current_uri;
 	MIDI::Parser&   _parser;
 	bool             setting;
@@ -135,6 +138,7 @@ private:
 	PBD::ScopedConnection midi_sense_connection[2];
 	PBD::ScopedConnection midi_learn_connection;
 	PBD::ScopedConnection controllable_death_connection;
+	PBD::ScopedConnection controllable_remapped_connection;
 	/** the type of MIDI message that is used for this control */
 	MIDI::eventType  control_type;
 	MIDI::byte       control_additional;

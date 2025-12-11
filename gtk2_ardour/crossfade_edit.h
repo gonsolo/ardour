@@ -21,19 +21,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_xfade_edit_h__
-#define __gtk_ardour_xfade_edit_h__
+#pragma once
 
 #include <list>
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/radiobutton.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/radiobutton.h>
+#include <ytkmm/table.h>
 
 #include "canvas/canvas.h"
+#include "canvas/poly_line.h"
 
 #include "evoral/Curve.h"
+#include "ardour/automation_list.h"
 #include "ardour/session_handle.h"
+
+#include "waveview/wave_view.h"
 
 #include "ardour_dialog.h"
 
@@ -57,7 +61,7 @@ namespace ArdourWaveview {
 class CrossfadeEditor : public ArdourDialog
 {
 public:
-	CrossfadeEditor (ARDOUR::Session*, boost::shared_ptr<ARDOUR::Crossfade>, double miny, double maxy);
+	CrossfadeEditor (ARDOUR::Session*, std::shared_ptr<ARDOUR::Crossfade>, double miny, double maxy);
 	~CrossfadeEditor ();
 
 	void apply ();
@@ -94,7 +98,7 @@ protected:
 	bool on_key_release_event (GdkEventKey*);
 
 private:
-	boost::shared_ptr<ARDOUR::Crossfade> xfade;
+	std::shared_ptr<ARDOUR::Crossfade> xfade;
 
 	Gtk::VBox vpacker;
 
@@ -200,11 +204,11 @@ private:
 	PBD::ScopedConnection* _peaks_ready_connection;
 	PBD::ScopedConnection state_connection;
 
-	void make_waves (boost::shared_ptr<ARDOUR::AudioRegion>, WhichFade);
-	void peaks_ready (boost::weak_ptr<ARDOUR::AudioRegion> r, WhichFade);
+	void make_waves (std::shared_ptr<ARDOUR::AudioRegion>, WhichFade);
+	void peaks_ready (std::weak_ptr<ARDOUR::AudioRegion> r, WhichFade);
 
-	void _apply_to (boost::shared_ptr<ARDOUR::Crossfade> xf);
-	void setup (boost::shared_ptr<ARDOUR::Crossfade>);
+	void _apply_to (std::shared_ptr<ARDOUR::Crossfade> xf);
+	void setup (std::shared_ptr<ARDOUR::Crossfade>);
 	void cancel_audition ();
 	void audition_state_changed (bool);
 
@@ -232,4 +236,3 @@ private:
 	void dump ();
 };
 
-#endif /* __gtk_ardour_xfade_edit_h__ */

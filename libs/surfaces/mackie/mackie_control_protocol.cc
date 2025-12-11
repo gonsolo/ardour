@@ -35,7 +35,6 @@
 #include <sys/time.h>
 #include <errno.h>
 
-#include <boost/shared_array.hpp>
 #include <glibmm/miscutils.h>
 
 #include "midi++/types.h"
@@ -65,6 +64,7 @@
 #include "ardour/track.h"
 #include "ardour/types.h"
 #include "ardour/audioengine.h"
+#include "ardour/vca.h"
 #include "ardour/vca_manager.h"
 
 #include "temporal/tempo.h"
@@ -93,34 +93,29 @@ using namespace std;
 using namespace PBD;
 using namespace Glib;
 using namespace ArdourSurface;
-using namespace Mackie;
+using namespace ArdourSurface::MACKIE_NAMESPACE;
 
 #include "pbd/i18n.h"
 
-#include "pbd/abstract_ui.cc" // instantiate template
+#include "pbd/abstract_ui.inc.cc" // instantiate template
 
-const int MackieControlProtocol::MODIFIER_OPTION = 0x1;
-const int MackieControlProtocol::MODIFIER_CONTROL = 0x2;
-const int MackieControlProtocol::MODIFIER_SHIFT = 0x4;
-const int MackieControlProtocol::MODIFIER_CMDALT = 0x8;
-const int MackieControlProtocol::MODIFIER_ZOOM = 0x10;
-const int MackieControlProtocol::MODIFIER_SCRUB = 0x20;
-const int MackieControlProtocol::MODIFIER_MARKER = 0x40;
-const int MackieControlProtocol::MODIFIER_NUDGE = 0x80;
-const int MackieControlProtocol::MAIN_MODIFIER_MASK = (MackieControlProtocol::MODIFIER_OPTION|
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_OPTION = 0x1;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_CONTROL = 0x2;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_SHIFT = 0x4;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_CMDALT = 0x8;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_ZOOM = 0x10;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_SCRUB = 0x20;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_MARKER = 0x40;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MODIFIER_NUDGE = 0x80;
+const int MACKIE_NAMESPACE::MackieControlProtocol::MAIN_MODIFIER_MASK = (MackieControlProtocol::MODIFIER_OPTION|
 						       MackieControlProtocol::MODIFIER_CONTROL|
 						       MackieControlProtocol::MODIFIER_SHIFT|
 						       MackieControlProtocol::MODIFIER_CMDALT);
 
-MackieControlProtocol* MackieControlProtocol::_instance = 0;
+MACKIE_NAMESPACE::MackieControlProtocol* MACKIE_NAMESPACE::MackieControlProtocol::_instance = 0;
 
-bool MackieControlProtocol::probe()
-{
-	return true;
-}
-
-MackieControlProtocol::MackieControlProtocol (Session& session)
-	: ControlProtocol (session, X_("Mackie"))
+MackieControlProtocol::MackieControlProtocol (Session& session, const char* pname)
+	: ControlProtocol (session, pname)
 	, AbstractUI<MackieControlUIRequest> (name())
 	, _current_initial_bank (0)
 	, _timecode_last (10, '\0')
@@ -143,7 +138,7 @@ MackieControlProtocol::MackieControlProtocol (Session& session)
 {
 	DEBUG_TRACE (DEBUG::MackieControl, "MackieControlProtocol::MackieControlProtocol\n");
 
-	_subview = Mackie::SubviewFactory::instance()->create_subview(Subview::None, *this, boost::shared_ptr<Stripable>());
+	_subview = MACKIE_NAMESPACE::SubviewFactory::instance()->create_subview(Subview::None, *this, std::shared_ptr<Stripable>());
 
 	DeviceInfo::reload_device_info ();
 	DeviceProfile::reload_device_profiles ();
@@ -152,7 +147,7 @@ MackieControlProtocol::MackieControlProtocol (Session& session)
 		_last_bank[i] = 0;
 	}
 
-	PresentationInfo::Change.connect (gui_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_presentation_info_changed, this, _1), this);
+	PresentationInfo::Change.connect (gui_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_presentation_info_changed, this, _1), this);
 
 	_instance = this;
 
@@ -198,27 +193,10 @@ MackieControlProtocol::~MackieControlProtocol()
 void
 MackieControlProtocol::thread_init ()
 {
-	pthread_set_name (event_loop_name().c_str());
-
 	PBD::notify_event_loops_about_thread_creation (pthread_self(), event_loop_name(), 2048);
 	ARDOUR::SessionEvent::create_per_thread_pool (event_loop_name(), 128);
 
 	set_thread_priority ();
-}
-
-void
-MackieControlProtocol::ping_devices ()
-{
-	/* should not be called if surfaces are not connected, but will not
-	 * malfunction if it is.
-	 */
-
-	{
-		Glib::Threads::Mutex::Lock lm (surfaces_lock);
-		for (Surfaces::const_iterator si = surfaces.begin(); si != surfaces.end(); ++si) {
-			(*si)->connected ();
-		}
-	}
 }
 
 // go to the previous track.
@@ -241,7 +219,7 @@ MackieControlProtocol::next_track()
 }
 
 bool
-MackieControlProtocol::stripable_is_locked_to_strip (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::stripable_is_locked_to_strip (std::shared_ptr<Stripable> r) const
 {
 	{
 		Glib::Threads::Mutex::Lock lm (surfaces_lock);
@@ -257,7 +235,7 @@ MackieControlProtocol::stripable_is_locked_to_strip (boost::shared_ptr<Stripable
 // predicate for sort call in get_sorted_stripables
 struct StripableByPresentationOrder
 {
-	bool operator () (const boost::shared_ptr<Stripable> & a, const boost::shared_ptr<Stripable> & b) const
+	bool operator () (const std::shared_ptr<Stripable> & a, const std::shared_ptr<Stripable> & b) const
 	{
 		return a->presentation_info().order() < b->presentation_info().order();
 	}
@@ -273,6 +251,35 @@ struct StripableByPresentationOrder
 	}
 };
 
+struct mcpStripableSorter
+{
+	bool operator () (const std::shared_ptr<Stripable> & a, const std::shared_ptr<Stripable> & b) const
+	{
+		if (!(a->presentation_info().special() || b->presentation_info().special() ||
+		      a->is_foldbackbus() || b->is_foldbackbus())) {
+			return a->presentation_info().order() < b->presentation_info().order();
+		}
+
+		int cmp_a = 0;
+		int cmp_b = 0;
+
+		if (a->is_foldbackbus ())     { cmp_a = 1; }
+		if (b->is_foldbackbus ())     { cmp_b = 1; }
+		if (a->is_master ())          { cmp_a = 2; }
+		if (b->is_master ())          { cmp_b = 2; }
+		if (a->is_monitor ())         { cmp_a = 3; }
+		if (b->is_monitor ())         { cmp_b = 3; }
+		if (a->is_surround_master ()) { cmp_a = 4; }
+		if (b->is_surround_master ()) { cmp_b = 4; }
+
+		if (cmp_a == cmp_b) {
+			return a->presentation_info().order() < b->presentation_info().order();
+		} else {
+			return cmp_a < cmp_b;
+		}
+	}
+};
+
 MackieControlProtocol::Sorted
 MackieControlProtocol::get_sorted_stripables()
 {
@@ -281,16 +288,18 @@ MackieControlProtocol::get_sorted_stripables()
 	// fetch all stripables
 	StripableList stripables;
 
-	session->get_stripables (stripables);
+	session->get_stripables (stripables, PresentationInfo::AllStripables);
 
 	// sort in presentation order, and exclude master, control and hidden stripables
 	// and any stripables that are already set.
 
 	for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
 
-		boost::shared_ptr<Stripable> s = *it;
+		std::shared_ptr<Stripable> s = *it;
 
-		if (s->presentation_info().special()) {
+		if (s->is_auditioner()) { continue; }
+		if (s->is_hidden()) { continue; }
+		if (this->device_info().has_master_fader() && s->presentation_info().special()) {
 			continue;
 		}
 
@@ -302,66 +311,63 @@ MackieControlProtocol::get_sorted_stripables()
 
 		switch (_view_mode) {
 		case Mixer:
-			if (!s->presentation_info().hidden()) {
-				sorted.push_back (s);
-			}
+			sorted.push_back (s);
 			break;
 		case AudioTracks:
-			if (is_audio_track(s) && !s->presentation_info().hidden()) {
+			if (is_audio_track(s)) {
 				sorted.push_back (s);
 			}
 			break;
 		case Busses:
-			if (Profile->get_mixbus()) {
 #ifdef MIXBUS
-				if (s->mixbus()) {
-					sorted.push_back (s);
-				}
-#endif
-			} else {
-				if (!is_track(s) && !s->presentation_info().hidden()) {
-					sorted.push_back (s);
-				}
+			if (s->mixbus()) {
+				sorted.push_back (s);
 			}
+#else
+			if (is_bus(s)) {
+				sorted.push_back (s);
+			}
+#endif
 			break;
 		case MidiTracks:
-			if (is_midi_track(s) && !s->presentation_info().hidden()) {
+			if (is_midi_track(s)) {
 				sorted.push_back (s);
 			}
 			break;
 		case Auxes: // in ardour, for now aux and buss are same. for mixbus, "Busses" are mixbuses, "Auxes" are ardour buses
 #ifdef MIXBUS
-			if (!s->mixbus() && !is_track(s) && !s->presentation_info().hidden())
+			if (is_bus(s) && !s->mixbus())
 #else
-			if (!is_track(s) && !s->presentation_info().hidden())
+			if (is_bus(s))
 #endif
 			{
 				sorted.push_back (s);
 			}
 			break;
-		case Outputs: // Show all the tracks we have hidden
-			if (s->presentation_info().hidden()) {
-				// maybe separate groups
+		case Outputs:
+			if (is_foldback_bus (s)) {
 				sorted.push_back (s);
 			}
 			break;
 		case Selected: // For example: a group (this is USER)
-			if (s->is_selected() && !s->presentation_info().hidden()) {
+			if (s->is_selected()) {
 				sorted.push_back (s);
 			}
 			break;
 		case AudioInstr:
-			if (has_instrument (s)){
+			if (is_vca (s)){
 				sorted.push_back (s);
 			}
 			break;
 		case Inputs:
-			// nothing to do right now
+			if (is_trigger_track (s)){
+				sorted.push_back (s);
+			}
 			break;
 		}
 	}
 
-	sort (sorted.begin(), sorted.end(), StripableByPresentationOrder());
+	sort (sorted.begin(), sorted.end(), mcpStripableSorter());
 	return sorted;
 }
 
@@ -434,7 +440,7 @@ MackieControlProtocol::switch_banks (uint32_t initial, bool force)
 		{
 			Glib::Threads::Mutex::Lock lm (surfaces_lock);
 			for (Surfaces::iterator si = surfaces.begin(); si != surfaces.end(); ++si) {
-				vector<boost::shared_ptr<Stripable> > stripables;
+				vector<std::shared_ptr<Stripable> > stripables;
 				uint32_t added = 0;
 
 				DEBUG_TRACE (DEBUG::MackieControl, string_compose ("surface has %1 unlocked strips\n", (*si)->n_strips (false)));
@@ -446,6 +452,11 @@ MackieControlProtocol::switch_banks (uint32_t initial, bool force)
 				DEBUG_TRACE (DEBUG::MackieControl, string_compose ("give surface %1 stripables\n", stripables.size()));
 
 				(*si)->map_stripables (stripables);
+
+				// Force RGB update on next redisplay
+				if (_device_info.is_v1m() || _device_info.is_p1m() || _device_info.is_p1nano()) {
+					(*si)->force_icon_rgb_update();
+				}
 			}
 		}
 
@@ -456,7 +467,7 @@ MackieControlProtocol::switch_banks (uint32_t initial, bool force)
 		{
 			Glib::Threads::Mutex::Lock lm (surfaces_lock);
 			for (Surfaces::iterator si = surfaces.begin(); si != surfaces.end(); ++si) {
-				vector<boost::shared_ptr<Stripable> > stripables;
+				vector<std::shared_ptr<Stripable> > stripables;
 				/* pass in an empty stripables list, so that all strips will be reset */
 				(*si)->map_stripables (stripables);
 			}
@@ -627,9 +638,9 @@ MackieControlProtocol::update_timecode_beats_led()
 }
 
 void
-MackieControlProtocol::update_global_button (int id, LedState ls)
+MackieControlProtocol::update_global_button (int id, MACKIE_NAMESPACE::LedState ls)
 {
-	boost::shared_ptr<Surface> surface;
+	std::shared_ptr<MACKIE_NAMESPACE::Surface> surface;
 
 	{
 		Glib::Threads::Mutex::Lock lm (surfaces_lock);
@@ -655,7 +666,7 @@ MackieControlProtocol::update_global_button (int id, LedState ls)
 }
 
 void
-MackieControlProtocol::update_global_led (int id, LedState ls)
+MackieControlProtocol::update_global_led (int id, MACKIE_NAMESPACE::LedState ls)
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
@@ -666,7 +677,7 @@ MackieControlProtocol::update_global_led (int id, LedState ls)
 	if (!_device_info.has_global_controls()) {
 		return;
 	}
-	boost::shared_ptr<Surface> surface = _master_surface;
+	std::shared_ptr<MACKIE_NAMESPACE::Surface> surface = _master_surface;
 
 	map<int,Control*>::iterator x = surface->controls_by_device_independent_id.find (id);
 
@@ -691,7 +702,7 @@ MackieControlProtocol::device_ready ()
 		}
 	}
 	update_surfaces ();
-	set_subview_mode (Mackie::Subview::None, boost::shared_ptr<Stripable>());
+	set_subview_mode (MACKIE_NAMESPACE::Subview::None, std::shared_ptr<Stripable>());
 	set_flip_mode (Normal);
 }
 
@@ -748,22 +759,22 @@ void
 MackieControlProtocol::connect_session_signals()
 {
 	// receive routes added
-	session->RouteAdded.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_routes_added, this, _1), this);
+	session->RouteAdded.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_routes_added, this, _1), this);
 	// receive VCAs added
-	session->vca_manager().VCAAdded.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_vca_added, this, _1), this);
+	session->vca_manager().VCAAdded.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_vca_added, this, _1), this);
 
 	// receive record state toggled
-	session->RecordStateChanged.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_record_state_changed, this), this);
+	session->RecordStateChanged.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_record_state_changed, this), this);
 	// receive transport state changed
-	session->TransportStateChange.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_transport_state_changed, this), this);
-	session->TransportLooped.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_loop_state_changed, this), this);
+	session->TransportStateChange.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_transport_state_changed, this), this);
+	session->TransportLooped.connect (session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_loop_state_changed, this), this);
 	// receive punch-in and punch-out
-	Config->ParameterChanged.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_parameter_changed, this, _1), this);
-	session->config.ParameterChanged.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_parameter_changed, this, _1), this);
+	Config->ParameterChanged.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_parameter_changed, this, _1), this);
+	session->config.ParameterChanged.connect (session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_parameter_changed, this, _1), this);
 	// receive rude solo changed
-	session->SoloActive.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_solo_active_changed, this, _1), this);
+	session->SoloActive.connect(session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_solo_active_changed, this, _1), this);
 
-	session->MonitorBusAddedOrRemoved.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::notify_monitor_added_or_removed, this), this);
+	session->MonitorBusAddedOrRemoved.connect (session_connections, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::notify_monitor_added_or_removed, this), this);
 
 	// make sure remote id changed signals reach here
 	// see also notify_stripable_added
@@ -837,7 +848,7 @@ MackieControlProtocol::set_device (const string& device_name, bool force)
 		   loop, not in the thread where the
 		   PortConnectedOrDisconnected signal is emitted.
 		*/
-		ARDOUR::AudioEngine::instance()->PortConnectedOrDisconnected.connect (port_connection, MISSING_INVALIDATOR, boost::bind (&MackieControlProtocol::connection_handler, this, _1, _2, _3, _4, _5), this);
+		ARDOUR::AudioEngine::instance()->PortConnectedOrDisconnected.connect (port_connection, MISSING_INVALIDATOR, std::bind (&MackieControlProtocol::connection_handler, this, _1, _2, _3, _4, _5), this);
 	}
 
 	build_button_map();
@@ -852,9 +863,9 @@ MackieControlProtocol::set_device (const string& device_name, bool force)
 }
 
 gboolean
-ArdourSurface::ipmidi_input_handler (GIOChannel*, GIOCondition condition, void *data)
+ArdourSurface::MACKIE_NAMESPACE::ipmidi_input_handler (GIOChannel*, GIOCondition condition, void *data)
 {
-	ArdourSurface::MackieControlProtocol::ipMIDIHandler* ipm = static_cast<ArdourSurface::MackieControlProtocol::ipMIDIHandler*>(data);
+	MackieControlProtocol::ipMIDIHandler* ipm = static_cast<MackieControlProtocol::ipMIDIHandler*>(data);
 	return ipm->mcp->midi_input_handler (Glib::IOCondition (condition), ipm->port);
 }
 
@@ -882,7 +893,11 @@ MackieControlProtocol::create_surfaces ()
 			if (_device_info.extenders() == 0) {
 				device_name = _device_info.name();
 			} else {
+#ifdef UF8
+				device_name = X_("SSL-UFx");
+#else
 				device_name = X_("mackie control");
+#endif
 			}
 
 		}
@@ -893,7 +908,7 @@ MackieControlProtocol::create_surfaces ()
 
 		DEBUG_TRACE (DEBUG::MackieControl, string_compose ("Port Name for surface %1 is %2\n", n, device_name));
 
-		boost::shared_ptr<Surface> surface;
+		std::shared_ptr<MACKIE_NAMESPACE::Surface> surface;
 
 		if (is_master) {
 			stype = mcu;
@@ -901,7 +916,7 @@ MackieControlProtocol::create_surfaces ()
 			stype = ext;
 		}
 		try {
-			surface.reset (new Surface (*this, device_name, n, stype));
+			surface.reset (new MACKIE_NAMESPACE::Surface (*this, device_name, n, stype));
 		} catch (...) {
 			return -1;
 		}
@@ -1216,7 +1231,7 @@ MackieControlProtocol::update_timecode_display()
 		return;
 	}
 
-	boost::shared_ptr<Surface> surface = _master_surface;
+	std::shared_ptr<MACKIE_NAMESPACE::Surface> surface = _master_surface;
 
 	if (surface->type() != mcu || !_device_info.has_timecode_display() || !surface->active ()) {
 		return;
@@ -1318,7 +1333,7 @@ MackieControlProtocol::notify_monitor_added_or_removed ()
 void
 MackieControlProtocol::notify_solo_active_changed (bool active)
 {
-	boost::shared_ptr<Surface> surface;
+	std::shared_ptr<MACKIE_NAMESPACE::Surface> surface;
 
 	{
 		Glib::Threads::Mutex::Lock lm (surfaces_lock);
@@ -1334,6 +1349,7 @@ MackieControlProtocol::notify_solo_active_changed (bool active)
 	if (x != surface->controls_by_device_independent_id.end()) {
 		Led* rude_solo = dynamic_cast<Led*> (x->second);
 		if (rude_solo) {
+			update_global_button (Button::ClearSolo, active);
 			surface->write (rude_solo->set_state (active ? flashing : off));
 		}
 	}
@@ -1409,7 +1425,7 @@ MackieControlProtocol::notify_record_state_changed ()
 		return;
 	}
 
-	boost::shared_ptr<Surface> surface;
+	std::shared_ptr<MACKIE_NAMESPACE::Surface> surface;
 
 	{
 		Glib::Threads::Mutex::Lock lm (surfaces_lock);
@@ -1428,15 +1444,15 @@ MackieControlProtocol::notify_record_state_changed ()
 			LedState ls;
 
 			switch (session->record_status()) {
-			case Session::Disabled:
+			case Disabled:
 				DEBUG_TRACE (DEBUG::MackieControl, "record state changed to disabled, LED off\n");
 				ls = off;
 				break;
-			case Session::Recording:
+			case Recording:
 				DEBUG_TRACE (DEBUG::MackieControl, "record state changed to recording, LED on\n");
 				ls = on;
 				break;
-			case Session::Enabled:
+			case Enabled:
 
 				if(_device_info.is_qcon()){
 					// For qcon the rec button is two state only (on/off)
@@ -1460,10 +1476,10 @@ MackieControlProtocol::notify_record_state_changed ()
 	}
 }
 
-list<boost::shared_ptr<ARDOUR::Bundle> >
+list<std::shared_ptr<ARDOUR::Bundle> >
 MackieControlProtocol::bundles ()
 {
-	list<boost::shared_ptr<ARDOUR::Bundle> > b;
+	list<std::shared_ptr<ARDOUR::Bundle> > b;
 
 	if (_input_bundle) {
 		b.push_back (_input_bundle);
@@ -1496,7 +1512,7 @@ MackieControlProtocol::stop ()
 }
 
 void
-MackieControlProtocol::update_led (Surface& surface, Button& button, Mackie::LedState ls)
+MackieControlProtocol::update_led (MACKIE_NAMESPACE::Surface& surface, MACKIE_NAMESPACE::Button& button, MACKIE_NAMESPACE::LedState ls)
 {
 	if (ls != none) {
 		surface.port().write (button.set_state (ls));
@@ -1617,7 +1633,7 @@ MackieControlProtocol::build_device_specific_button_map()
 }
 
 void
-MackieControlProtocol::handle_button_event (Surface& surface, Button& button, ButtonState bs)
+MackieControlProtocol::handle_button_event (MACKIE_NAMESPACE::Surface& surface, MACKIE_NAMESPACE::Button& button, MACKIE_NAMESPACE::ButtonState bs)
 {
 	Button::ID button_id = button.bid();
 
@@ -1790,7 +1806,7 @@ MackieControlProtocol::redisplay_subview_mode ()
 }
 
 bool
-MackieControlProtocol::set_subview_mode (Subview::Mode sm, boost::shared_ptr<Stripable> r)
+MackieControlProtocol::set_subview_mode (MACKIE_NAMESPACE::Subview::Mode sm, std::shared_ptr<Stripable> r)
 {
 	DEBUG_TRACE (DEBUG::MackieControl, string_compose ("set subview mode %1 with stripable %2, current flip mode %3\n", sm, (r ? r->name() : string ("null")), _flip_mode));
 
@@ -1803,21 +1819,20 @@ MackieControlProtocol::set_subview_mode (Subview::Mode sm, boost::shared_ptr<Str
 
 		DEBUG_TRACE (DEBUG::MackieControl, "subview mode not OK\n");
 
-		if (r) {
+		Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
-			Glib::Threads::Mutex::Lock lm (surfaces_lock);
-
-			if (!surfaces.empty()) {
-				if (!reason_why_subview_not_possible.empty()) {
-					surfaces.front()->display_message_for (reason_why_subview_not_possible, 1000);
-					if (_subview->subview_mode() != Mackie::Subview::None) {
-						/* redisplay current subview mode after
-						   that message goes away.
-						*/
-						Glib::RefPtr<Glib::TimeoutSource> redisplay_timeout = Glib::TimeoutSource::create (1000); // milliseconds
-						redisplay_timeout->connect (sigc::mem_fun (*this, &MackieControlProtocol::redisplay_subview_mode));
-						redisplay_timeout->attach (main_loop()->get_context());
-					}
+		if (!surfaces.empty()) {
+			if (!reason_why_subview_not_possible.empty()) {
+				r ?
+					surfaces.front()->display_message_for (reason_why_subview_not_possible, 1000) :
+					surfaces.front()->display_message_for ("no track/bus selected", 1000);
+				if (_subview->subview_mode() != MACKIE_NAMESPACE::Subview::None) {
+					/* redisplay current subview mode after
+						that message goes away.
+					*/
+					Glib::RefPtr<Glib::TimeoutSource> redisplay_timeout = Glib::TimeoutSource::create (1000); // milliseconds
+					redisplay_timeout->connect (sigc::mem_fun (*this, &MackieControlProtocol::redisplay_subview_mode));
+					redisplay_timeout->attach (main_loop()->get_context());
 				}
 			}
 		}
@@ -1825,11 +1840,11 @@ MackieControlProtocol::set_subview_mode (Subview::Mode sm, boost::shared_ptr<Str
 		return false;
 	}
 
-	_subview = Mackie::SubviewFactory::instance()->create_subview(sm, *this, r);
+	_subview = MACKIE_NAMESPACE::SubviewFactory::instance()->create_subview(sm, *this, r);
 	/* Catch the current subview stripable going away */
 	if (_subview->subview_stripable()) {
 		_subview->subview_stripable()->DropReferences.connect (_subview->subview_stripable_connections(), MISSING_INVALIDATOR,
-													boost::bind (&MackieControlProtocol::notify_subview_stripable_deleted, this),
+													std::bind (&MackieControlProtocol::notify_subview_stripable_deleted, this),
 													this);
 	}
 
@@ -1850,6 +1865,12 @@ MackieControlProtocol::set_view_mode (ViewMode m)
 	_view_mode = m;
 	_last_bank[old_view_mode] = _current_initial_bank;
 
+	if (Sorted sorted = get_sorted_stripables(); sorted.empty()) {
+		surfaces.front()->display_message_for ("This view is empty", 1000);
+		_view_mode = old_view_mode;
+		return;
+	}
+
 	if (switch_banks(_last_bank[m], true)) {
 		_view_mode = old_view_mode;
 		return;
@@ -1857,7 +1878,7 @@ MackieControlProtocol::set_view_mode (ViewMode m)
 
 	/* leave subview mode, whatever it was */
 	DEBUG_TRACE (DEBUG::MackieControl, "\t\t\tsubview mode reset in MackieControlProtocol::set_view_mode \n");
-	set_subview_mode (Mackie::Subview::None, boost::shared_ptr<Stripable>());
+	set_subview_mode (MACKIE_NAMESPACE::Subview::None, std::shared_ptr<Stripable>());
 	display_view_mode ();
 }
 
@@ -1906,7 +1927,7 @@ MackieControlProtocol::set_monitor_on_surface_strip (uint32_t surface, uint32_t 
 }
 
 void
-MackieControlProtocol::force_special_stripable_to_strip (boost::shared_ptr<Stripable> r, uint32_t surface, uint32_t strip_number)
+MackieControlProtocol::force_special_stripable_to_strip (std::shared_ptr<Stripable> r, uint32_t surface, uint32_t strip_number)
 {
 	if (!r) {
 		return;
@@ -1930,7 +1951,7 @@ MackieControlProtocol::check_fader_automation_state ()
 {
 	fader_automation_connections.drop_connections ();
 
-	boost::shared_ptr<Stripable> r = first_selected_stripable ();
+	std::shared_ptr<Stripable> r = first_selected_stripable ();
 
 	if (!r) {
 		update_global_button (Button::Read, off);
@@ -1944,7 +1965,7 @@ MackieControlProtocol::check_fader_automation_state ()
 
 	r->gain_control()->alist()->automation_state_changed.connect (fader_automation_connections,
 	                                                              MISSING_INVALIDATOR,
-	                                                              boost::bind (&MackieControlProtocol::update_fader_automation_state, this),
+	                                                              std::bind (&MackieControlProtocol::update_fader_automation_state, this),
 	                                                              this);
 
 	update_fader_automation_state ();
@@ -1953,7 +1974,7 @@ MackieControlProtocol::check_fader_automation_state ()
 void
 MackieControlProtocol::update_fader_automation_state ()
 {
-	boost::shared_ptr<Stripable> r = first_selected_stripable ();
+	std::shared_ptr<Stripable> r = first_selected_stripable ();
 
 	if (!r) {
 		update_global_button (Button::Read, off);
@@ -2136,7 +2157,7 @@ MackieControlProtocol::down_controls (AutomationType p, uint32_t pressed)
 		break;
 	case RecEnableAutomation:
 		for (StripableList::iterator s = stripables.begin(); s != stripables.end(); ++s) {
-			boost::shared_ptr<AutomationControl> ac = (*s)->rec_enable_control();
+			std::shared_ptr<AutomationControl> ac = (*s)->rec_enable_control();
 			if (ac) {
 				controls.push_back (ac);
 			}
@@ -2210,7 +2231,7 @@ MackieControlProtocol::pull_stripable_range (DownButtonList& down, StripableList
 
 			for (uint32_t n = fs; n < ls; ++n) {
 				Strip* strip = (*s)->nth_strip (n);
-				boost::shared_ptr<Stripable> r = strip->stripable();
+				std::shared_ptr<Stripable> r = strip->stripable();
 				if (r) {
 					if (global_index_locked (*strip) == pressed) {
 						selected.push_front (r);
@@ -2284,8 +2305,8 @@ MackieControlProtocol::recalibrate_faders ()
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
-	for (Surfaces::const_iterator s = surfaces.begin(); s != surfaces.end(); ++s) {
-		(*s)->recalibrate_faders ();
+	for (auto const& s : surfaces) {
+		s->recalibrate_faders ();
 	}
 }
 
@@ -2294,26 +2315,26 @@ MackieControlProtocol::toggle_backlight ()
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
-	for (Surfaces::const_iterator s = surfaces.begin(); s != surfaces.end(); ++s) {
-		(*s)->toggle_backlight ();
+	for (auto const& s : surfaces) {
+		s->toggle_backlight ();
 	}
 }
 
-boost::shared_ptr<Surface>
+std::shared_ptr<MACKIE_NAMESPACE::Surface>
 MackieControlProtocol::get_surface_by_raw_pointer (void* ptr) const
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
-	for (Surfaces::const_iterator s = surfaces.begin(); s != surfaces.end(); ++s) {
-		if ((*s).get() == (Surface*) ptr) {
-			return *s;
+	for (auto const& s : surfaces) {
+		if (s.get() == (MACKIE_NAMESPACE::Surface*) ptr) {
+			return s;
 		}
 	}
 
-	return boost::shared_ptr<Surface> ();
+	return std::shared_ptr<MACKIE_NAMESPACE::Surface> ();
 }
 
-boost::shared_ptr<Surface>
+std::shared_ptr<MACKIE_NAMESPACE::Surface>
 MackieControlProtocol::nth_surface (uint32_t n) const
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
@@ -2324,11 +2345,11 @@ MackieControlProtocol::nth_surface (uint32_t n) const
 		}
 	}
 
-	return boost::shared_ptr<Surface> ();
+	return std::shared_ptr<MACKIE_NAMESPACE::Surface> ();
 }
 
 void
-MackieControlProtocol::connection_handler (boost::weak_ptr<ARDOUR::Port> wp1, std::string name1, boost::weak_ptr<ARDOUR::Port> wp2, std::string name2, bool yn)
+MackieControlProtocol::connection_handler (std::weak_ptr<ARDOUR::Port> wp1, std::string name1, std::weak_ptr<ARDOUR::Port> wp2, std::string name2, bool yn)
 {
 	Surfaces scopy;
 	{
@@ -2345,32 +2366,57 @@ MackieControlProtocol::connection_handler (boost::weak_ptr<ARDOUR::Port> wp1, st
 }
 
 bool
-MackieControlProtocol::is_track (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::is_track (std::shared_ptr<Stripable> r) const
 {
-	return boost::dynamic_pointer_cast<Track>(r) != 0;
+	return std::dynamic_pointer_cast<Track>(r) != 0;
 }
 
 bool
-MackieControlProtocol::is_audio_track (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::is_audio_track (std::shared_ptr<Stripable> r) const
 {
-	return boost::dynamic_pointer_cast<AudioTrack>(r) != 0;
+	return std::dynamic_pointer_cast<AudioTrack>(r) != 0;
 }
 
 bool
-MackieControlProtocol::is_midi_track (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::is_midi_track (std::shared_ptr<Stripable> r) const
 {
-	return boost::dynamic_pointer_cast<MidiTrack>(r) != 0;
+	return std::dynamic_pointer_cast<MidiTrack>(r) != 0;
 }
 
 bool
-MackieControlProtocol::has_instrument (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::is_trigger_track (std::shared_ptr<Stripable> r) const
 {
-	boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack>(r);
+	std::shared_ptr<Track> trk = std::dynamic_pointer_cast<Track>(r);
+	return (trk && (r)->presentation_info ().trigger_track ());
+}
+
+bool
+MackieControlProtocol::is_bus (std::shared_ptr<Stripable> r) const
+{
+	return ((r)->presentation_info ().flags () & PresentationInfo::Bus);
+}
+
+bool
+MackieControlProtocol::is_foldback_bus (std::shared_ptr<Stripable> r) const
+{
+	return ((r)->presentation_info ().flags () & PresentationInfo::FoldbackBus);
+}
+
+bool
+MackieControlProtocol::is_vca (std::shared_ptr<Stripable> r) const
+{
+	return std::dynamic_pointer_cast<VCA>(r) != 0;
+}
+
+bool
+MackieControlProtocol::has_instrument (std::shared_ptr<Stripable> r) const
+{
+	std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack>(r);
 	return mt && mt->the_instrument();
 }
 
 bool
-MackieControlProtocol::is_mapped (boost::shared_ptr<Stripable> r) const
+MackieControlProtocol::is_mapped (std::shared_ptr<Stripable> r) const
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 
@@ -2403,7 +2449,7 @@ MackieControlProtocol::stripable_selection_changed ()
 			Glib::Threads::Mutex::Lock lm (surfaces_lock);
 			Sorted::iterator r = sorted.begin();
 			for (Surfaces::iterator si = surfaces.begin(); si != surfaces.end(); ++si) {
-				vector<boost::shared_ptr<Stripable> > stripables;
+				vector<std::shared_ptr<Stripable> > stripables;
 				uint32_t added = 0;
 
 				for (; r != sorted.end() && added < (*si)->n_strips (false); ++r, ++added) {
@@ -2418,7 +2464,7 @@ MackieControlProtocol::stripable_selection_changed ()
 		return;
 	}
 
-	boost::shared_ptr<Stripable> s = first_selected_stripable ();
+	std::shared_ptr<Stripable> s = first_selected_stripable ();
 	if (s) {
 		check_fader_automation_state ();
 
@@ -2430,19 +2476,19 @@ MackieControlProtocol::stripable_selection_changed ()
 		 */
 
 		if (!set_subview_mode (_subview->subview_mode(), s)) {
-			set_subview_mode (Mackie::Subview::None, boost::shared_ptr<Stripable>());
+			set_subview_mode (MACKIE_NAMESPACE::Subview::None, std::shared_ptr<Stripable>());
 		}
 	}
 	else {
 		// none selected or not on surface
-		set_subview_mode(Mackie::Subview::None, boost::shared_ptr<Stripable>());
+		set_subview_mode(MACKIE_NAMESPACE::Subview::None, std::shared_ptr<Stripable>());
 	}
 }
 
-boost::shared_ptr<Stripable>
+std::shared_ptr<Stripable>
 MackieControlProtocol::first_selected_stripable () const
 {
-	boost::shared_ptr<Stripable> s = ControlProtocol::first_selected_stripable();
+	std::shared_ptr<Stripable> s = ControlProtocol::first_selected_stripable();
 
 	if (s) {
 		/* check it is on one of our surfaces */
@@ -2463,14 +2509,14 @@ MackieControlProtocol::first_selected_stripable () const
 }
 
 uint32_t
-MackieControlProtocol::global_index (Strip& strip)
+MackieControlProtocol::global_index (MACKIE_NAMESPACE::Strip& strip)
 {
 	Glib::Threads::Mutex::Lock lm (surfaces_lock);
 	return global_index_locked (strip);
 }
 
 uint32_t
-MackieControlProtocol::global_index_locked (Strip& strip)
+MackieControlProtocol::global_index_locked (MACKIE_NAMESPACE::Strip& strip)
 {
 	uint32_t global = 0;
 
@@ -2484,27 +2530,16 @@ MackieControlProtocol::global_index_locked (Strip& strip)
 	return global;
 }
 
-void*
-MackieControlProtocol::request_factory (uint32_t num_requests)
-{
-	/* AbstractUI<T>::request_buffer_factory() is a template method only
-	   instantiated in this source module. To provide something visible for
-	   use in the interface/descriptor, we have this static method that is
-	   template-free.
-	*/
-	return request_buffer_factory (num_requests);
-}
-
 void
 MackieControlProtocol::set_automation_state (AutoState as)
 {
-	boost::shared_ptr<Stripable> r = first_selected_stripable ();
+	std::shared_ptr<Stripable> r = first_selected_stripable ();
 
 	if (!r) {
 		return;
 	}
 
-	boost::shared_ptr<AutomationControl> ac = r->gain_control();
+	std::shared_ptr<AutomationControl> ac = r->gain_control();
 
 	if (!ac) {
 		return;

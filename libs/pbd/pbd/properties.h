@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_properties_h__
-#define __pbd_properties_h__
+#pragma once
 
 #include <string>
 #include <list>
@@ -108,6 +107,10 @@ public:
 	}
 
 	T const& val () const {
+		return _current;
+	}
+
+	T& non_const_val () {
 		return _current;
 	}
 
@@ -368,7 +371,7 @@ template <class T>
 class /*LIBPBD_API*/ SharedStatefulProperty : public PropertyBase
 {
 public:
-	typedef boost::shared_ptr<T> Ptr;
+	typedef std::shared_ptr<T> Ptr;
 
 	SharedStatefulProperty (PropertyID d, Ptr p)
 		: PropertyBase (d)
@@ -477,4 +480,3 @@ private:
 #include "pbd/property_list_impl.h"
 #include "pbd/property_basics_impl.h"
 
-#endif /* __pbd_properties_h__ */

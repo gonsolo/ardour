@@ -19,13 +19,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_format_base_h__
-#define __ardour_export_format_base_h__
+#pragma once
 
+#include <memory>
 #include <set>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include <sndfile.h>
 #include <samplerate.h>
@@ -128,8 +126,8 @@ class LIBARDOUR_API ExportFormatBase {
 			: _selected (false), _compatible (true) { }
 		~SelectableCompatible () {}
 
-		PBD::Signal1<void,bool> SelectChanged;
-		PBD::Signal1<void,bool> CompatibleChanged;
+		PBD::Signal<void(bool)> SelectChanged;
+		PBD::Signal<void(bool)> CompatibleChanged;
 
 		bool selected () const { return _selected; }
 		bool compatible () const { return _compatible; }
@@ -155,8 +153,8 @@ class LIBARDOUR_API ExportFormatBase {
 
 	virtual ~ExportFormatBase ();
 
-	boost::shared_ptr<ExportFormatBase> get_intersection (ExportFormatBase const & other) const;
-	boost::shared_ptr<ExportFormatBase> get_union (ExportFormatBase const & other) const;
+	std::shared_ptr<ExportFormatBase> get_intersection (ExportFormatBase const & other) const;
+	std::shared_ptr<ExportFormatBase> get_union (ExportFormatBase const & other) const;
 
 	bool endiannesses_empty () const { return endiannesses.empty (); }
 	bool sample_formats_empty () const { return sample_formats.empty (); }
@@ -201,9 +199,8 @@ class LIBARDOUR_API ExportFormatBase {
 		SetIntersection
 	};
 
-	boost::shared_ptr<ExportFormatBase> do_set_operation (ExportFormatBase const & other, SetOperation operation) const;
+	std::shared_ptr<ExportFormatBase> do_set_operation (ExportFormatBase const & other, SetOperation operation) const;
 };
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_format_base_h__ */

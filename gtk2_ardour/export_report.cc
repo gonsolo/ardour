@@ -20,9 +20,9 @@
 #include <algorithm>
 
 #include <pangomm/layout.h>
-#include <gtkmm/label.h>
-#include <gtkmm/table.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/label.h>
+#include <ytkmm/table.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/openuri.h"
 #include "pbd/basename.h"
@@ -597,7 +597,7 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 
 		if (channels > 0 && file_length > 0 && sample_rate > 0)
 		{
-			/* Time Axis  -- re-use waveform width */
+			/* Time Axis  -- reuse waveform width */
 			const size_t width = p->width;
 			Cairo::RefPtr<Cairo::ImageSurface> ytme = ArdourGraphs::time_axis (get_pango_context (), width, m_l, start_off, file_length, sample_rate);
 
@@ -685,13 +685,13 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 			int max_wx = 10;
 			layout->set_font_description (UIConfiguration::instance ().get_ArdourLargeFont ());
 
-			layout->set_text ("\u274C"); // cross mark
+			layout->set_text (u8"\u274C"); // cross mark
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
-			layout->set_text ("\U0001F509"); // speaker icon w/1 bar
+			layout->set_text (u8"\U0001F509"); // speaker icon w/1 bar
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
-			layout->set_text ("\u2714"); // heavy check mark
+			layout->set_text (u8"\u2714"); // heavy check mark
 			layout->get_pixel_size (w, h);
 			max_wx = std::max (max_wx, w);
 
@@ -768,13 +768,13 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 						|| (pi->enable[1] && dbtp > pi->level[1])
 					 ) {
 					cr->set_source_rgba (1, 0, .0, 1.0);
-					layout->set_text ("\u274C"); // cross mark
+					layout->set_text (u8"\u274C"); // cross mark
 				} else if (lufs < pi->LUFS_range[1]) {
 					cr->set_source_rgba (.6, .7, 0, 1.0);
-					layout->set_text ("\U0001F509"); // speaker icon w/1 bar
+					layout->set_text (u8"\U0001F509"); // speaker icon w/1 bar
 				} else {
 					cr->set_source_rgba (.1, 1, .1, 1.0);
-					layout->set_text ("\u2714"); // heavy check mark
+					layout->set_text (u8"\u2714"); // heavy check mark
 				}
 				int ww, hh;
 				layout->get_pixel_size (ww, hh);
@@ -831,19 +831,19 @@ ExportReport::init (const AnalysisResults & ar, bool with_file)
 	get_vbox ()->set_spacing (4);
 	get_vbox ()->pack_start (pages, false, false);
 
-	if (_session) {
-		_session->AuditionActive.connect(auditioner_connections, invalidator (*this), boost::bind (&ExportReport::audition_active, this, _1), gui_context());
-		_session->the_auditioner()->AuditionProgress.connect(auditioner_connections, invalidator (*this), boost::bind (&ExportReport::audition_progress, this, _1, _2), gui_context());
+	if (_session && _session->the_auditioner()) {
+		_session->AuditionActive.connect(auditioner_connections, invalidator (*this), std::bind (&ExportReport::audition_active, this, _1), gui_context());
+		_session->the_auditioner()->AuditionProgress.connect(auditioner_connections, invalidator (*this), std::bind (&ExportReport::audition_progress, this, _1, _2), gui_context());
 	}
 
-	if (_session && with_file) {
+	if (_session && with_file && _session->the_auditioner()) {
 		play_btn = add_button (Stock::MEDIA_PLAY, RESPONSE_ACCEPT);
 		stop_btn = add_button (Stock::MEDIA_STOP, RESPONSE_ACCEPT);
 	}
 	add_button (Stock::CLOSE, RESPONSE_CLOSE);
 
 	set_default_response (RESPONSE_CLOSE);
-	if (_session && with_file) {
+	if (_session && with_file && _session->the_auditioner()) {
 		stop_btn->signal_clicked().connect (sigc::mem_fun (*this, &ExportReport::stop_audition));
 		play_btn->signal_clicked().connect (sigc::mem_fun (*this, &ExportReport::play_audition));
 		stop_btn->set_sensitive (false);
@@ -856,7 +856,7 @@ ExportReport::run ()
 {
 	do {
 		int i = ArdourDialog::run ();
-		if (i == Gtk::RESPONSE_DELETE_EVENT || i == RESPONSE_CLOSE) {
+		if (i == Gtk::RESPONSE_DELETE_EVENT || i == RESPONSE_CLOSE || i == RESPONSE_CANCEL) {
 			break;
 		}
 	} while (1);
@@ -908,7 +908,7 @@ ExportReport::audition_active (bool active)
 void
 ExportReport::audition (std::string path, unsigned n_chn, int page)
 {
-	assert (_session);
+	assert (_session && _session->the_auditioner());
 	_session->cancel_audition();
 
 	if (n_chn ==0) { return; }
@@ -920,9 +920,9 @@ ExportReport::audition (std::string path, unsigned n_chn, int page)
 	}
 	if (SMFSource::valid_midi_file (path)) { return; }
 
-	boost::shared_ptr<Region> r;
+	std::shared_ptr<Region> r;
 	SourceList srclist;
-	boost::shared_ptr<AudioFileSource> afs;
+	std::shared_ptr<AudioFileSource> afs;
 	bool old_sbp = AudioSource::get_build_peakfiles ();
 
 	/* don't even think of building peakfiles for these files */
@@ -930,12 +930,12 @@ ExportReport::audition (std::string path, unsigned n_chn, int page)
 
 	for (unsigned int n = 0; n < n_chn; ++n) {
 		try {
-			afs = boost::dynamic_pointer_cast<AudioFileSource> (
+			afs = std::dynamic_pointer_cast<AudioFileSource> (
 				SourceFactory::createExternal (DataType::AUDIO, *_session,
 										 path, n,
 										 Source::Flag (ARDOUR::AudioFileSource::NoPeakFile), false));
 			if (afs->sample_rate() != _session->nominal_sample_rate()) {
-				boost::shared_ptr<SrcFileSource> sfs (new SrcFileSource(*_session, afs, ARDOUR::SrcGood));
+				std::shared_ptr<SrcFileSource> sfs (new SrcFileSource(*_session, afs, ARDOUR::SrcGood));
 				srclist.push_back(sfs);
 			} else {
 				srclist.push_back(afs);
@@ -953,7 +953,7 @@ ExportReport::audition (std::string path, unsigned n_chn, int page)
 		return;
 	}
 
-	afs = boost::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
+	afs = std::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
 	std::string rname = region_name_from_path (afs->path(), false);
 
 	PBD::PropertyList plist;
@@ -963,7 +963,7 @@ ExportReport::audition (std::string path, unsigned n_chn, int page)
 	plist.add (ARDOUR::Properties::name, rname);
 	plist.add (ARDOUR::Properties::layer, 0);
 
-	r = boost::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
+	r = std::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
 
 	r->set_position (timepos_t ());
 	_session->audition_region(r);

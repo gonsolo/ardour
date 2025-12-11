@@ -17,14 +17,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_event_loop_h__
-#define __pbd_event_loop_h__
+#pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
 #include <map>
-#include <boost/function.hpp>
-#include <boost/bind.hpp> /* we don't need this here, but anything calling call_slot() probably will, so this is convenient */
 #include <stdint.h>
 #include <pthread.h>
 #include <glibmm/threads.h>
@@ -58,19 +56,19 @@ public:
 	struct InvalidationRecord {
 		std::list<BaseRequestObject*> requests;
 		PBD::EventLoop* event_loop;
-		gint _valid;
-		gint _ref;
+		std::atomic<int> _valid;
+		std::atomic<int> _ref;
 		const char* file;
 		int line;
 
 		InvalidationRecord() : event_loop (0), _valid (1), _ref (0) {}
-		void invalidate () { g_atomic_int_set (&_valid, 0); }
-		bool valid () { return g_atomic_int_get (&_valid) == 1; }
+		void invalidate () { _valid.store (0); }
+		bool valid () { return _valid.load () == 1; }
 
-		void ref ()    { g_atomic_int_inc (&_ref); }
-		void unref ()  { (void) g_atomic_int_dec_and_test (&_ref); }
-		bool in_use () { return g_atomic_int_get (&_ref) > 0; }
-		int  use_count () { return g_atomic_int_get (&_ref); }
+		void ref ()    { _ref.fetch_add (1); }
+		void unref ()  { (void) _ref.fetch_sub (1); }
+		bool in_use () { return _ref.load () > 0; }
+		int  use_count () { return _ref.load (); }
 	};
 
 	static void* invalidate_request (void* data);
@@ -78,7 +76,7 @@ public:
 	struct BaseRequestObject {
 		RequestType             type;
 		InvalidationRecord*     invalidation;
-		boost::function<void()> the_slot;
+		std::function<void()> the_slot;
 
 		BaseRequestObject() : invalidation (0) {}
 		~BaseRequestObject() {
@@ -88,8 +86,8 @@ public:
 		}
 	};
 
-	virtual bool call_slot (InvalidationRecord*, const boost::function<void()>&) = 0;
-	virtual Glib::Threads::Mutex& slot_invalidation_mutex() = 0;
+	virtual bool call_slot (InvalidationRecord*, const std::function<void()>&) = 0;
+	virtual Glib::Threads::RWLock& slot_invalidation_rwlock() = 0;
 
 	std::string event_loop_name() const { return _name; }
 
@@ -98,25 +96,25 @@ public:
 
 	struct ThreadBufferMapping {
 		pthread_t emitting_thread;
-		std::string target_thread_name;
-		void* request_buffer;
+		size_t num_requests;
 	};
 
 	static std::vector<ThreadBufferMapping> get_request_buffers_for_target_thread (const std::string&);
 
-	static void register_request_buffer_factory (const std::string& target_thread_name, void* (*factory) (uint32_t));
 	static void pre_register (const std::string& emitting_thread_name, uint32_t num_requests);
-	static void remove_request_buffer_from_map (void* ptr);
+	static void remove_request_buffer_from_map (pthread_t);
 
 	std::list<InvalidationRecord*> trash;
+
+	static InvalidationRecord* __invalidator (sigc::trackable& trackable, const char*, int);
 
 private:
 	static Glib::Threads::Private<EventLoop> thread_event_loop;
 	std::string _name;
 
-	typedef std::map<std::string,ThreadBufferMapping> ThreadRequestBufferList;
+	typedef std::vector<ThreadBufferMapping> ThreadRequestBufferList;
 	static ThreadRequestBufferList thread_buffer_requests;
-	static Glib::Threads::RWLock   thread_buffer_requests_lock;
+	static Glib::Threads::Mutex   thread_buffer_requests_lock;
 
 	struct RequestBufferSupplier {
 
@@ -137,6 +135,5 @@ private:
 
 }
 
-#define MISSING_INVALIDATOR 0 // used to mark places where we fail to provide an invalidator
+#define MISSING_INVALIDATOR nullptr // used to mark places where we fail to provide an invalidator
 
-#endif /* __pbd_event_loop_h__ */

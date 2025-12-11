@@ -18,16 +18,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_playlist_selector_h__
-#define __ardour_playlist_selector_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
+
+#include "widgets/ardour_button.h"
 
 #include "ardour/playlist.h"
 #include "ardour/session_handle.h"
@@ -43,7 +44,7 @@ class RouteUI;
 class RouteTimeAxisView;
 
 struct PlaylistSorterByID {
-	bool operator() (boost::shared_ptr<ARDOUR::Playlist> a, boost::shared_ptr<ARDOUR::Playlist> b) const {
+	bool operator() (std::shared_ptr<ARDOUR::Playlist> a, std::shared_ptr<ARDOUR::Playlist> b) const {
 		if (a->pgroup_id().length() && b->pgroup_id().length()) {
 			return (a->id() < b->id()); /*both plists have pgroup-id: use IDs which are sequentially generated */
 		} else if (!a->pgroup_id().length() && !b->pgroup_id().length()) {
@@ -74,14 +75,14 @@ protected:
 	bool on_key_press_event (GdkEventKey*);
 
 private:
-	typedef std::map<PBD::ID, std::vector<boost::shared_ptr<ARDOUR::Playlist> >*> TrackPlaylistMap;
+	typedef std::map<PBD::ID, std::vector<std::shared_ptr<ARDOUR::Playlist> >*> TrackPlaylistMap;
 
 	void new_plist_button_clicked ();
 	void copy_plist_button_clicked ();
 
 	void pl_property_changed (PBD::PropertyChange const& what_changed);
 
-	void add_playlist_to_map (boost::shared_ptr<ARDOUR::Playlist>);
+	void add_playlist_to_map (std::shared_ptr<ARDOUR::Playlist>);
 	void playlist_added ();
 	void clear_map ();
 	void ok_button_click ();
@@ -110,7 +111,7 @@ private:
 		}
 		Gtk::TreeModelColumn<std::string>                          text;
 		Gtk::TreeModelColumn<std::string>                          pgrp;
-		Gtk::TreeModelColumn<boost::shared_ptr<ARDOUR::Playlist> > playlist;
+		Gtk::TreeModelColumn<std::shared_ptr<ARDOUR::Playlist> > playlist;
 	};
 
 	ModelColumns                 columns;
@@ -123,4 +124,3 @@ private:
 	bool _ignore_selection;
 };
 
-#endif // __ardour_playlist_selector_h__

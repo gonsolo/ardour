@@ -20,13 +20,13 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_audioengine_h__
-#define __ardour_audioengine_h__
+#pragma once
 
 #ifdef WAF_BUILD
 #include "libardour-config.h"
 #endif
 
+#include <atomic>
 #include <iostream>
 #include <list>
 #include <set>
@@ -38,7 +38,6 @@
 
 #include "pbd/signals.h"
 #include "pbd/pthread_utils.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "ardour/ardour.h"
 #include "ardour/data_type.h"
@@ -72,9 +71,10 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	int discover_backends();
 	std::vector<const AudioBackendInfo*> available_backends() const;
 	std::string current_backend_name () const;
-	boost::shared_ptr<AudioBackend> set_backend (const std::string&, const std::string& arg1, const std::string& arg2);
-	boost::shared_ptr<AudioBackend> current_backend() const { return _backend; }
+	std::shared_ptr<AudioBackend> set_backend (const std::string&, const std::string& arg1, const std::string& arg2);
+	std::shared_ptr<AudioBackend> current_backend() const { return _backend; }
 	bool setup_required () const;
+	bool is_jack () const;
 
 	ProcessThread* main_thread() const { return _main_thread; }
 
@@ -104,7 +104,7 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 
 	std::string    get_last_backend_error () const { return _last_backend_error_string; }
 
-	int            create_process_thread (boost::function<void()> func);
+	int            create_process_thread (std::function<void()> func);
 	int            join_process_threads ();
 	bool           in_process_thread ();
 	uint32_t       process_thread_count ();
@@ -114,18 +114,13 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	void           request_device_list_update();
 	void           launch_device_control_app();
 
-	int            client_real_time_priority ();
-	bool           is_realtime() const;
-
 	// for the user which hold state_lock to check if reset operation is pending
-	bool           is_reset_requested() const { return g_atomic_int_get (const_cast<GATOMIC_QUAL gint*> (&_hw_reset_request_count)); }
+	bool           is_reset_requested() const { return _hw_reset_request_count.load(); }
 
 	int set_device_name (const std::string&);
 	int set_sample_rate (float);
 	int set_buffer_size (uint32_t);
 	int set_interleaved (bool yn);
-	int set_input_channels (uint32_t);
-	int set_output_channels (uint32_t);
 	int set_systemic_input_latency (uint32_t);
 	int set_systemic_output_latency (uint32_t);
 
@@ -133,6 +128,8 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 
 	bool freewheeling() const { return _freewheeling; }
 	bool running() const { return _running; }
+
+	std::string backend_id (bool for_input);
 
 	Glib::Threads::Mutex& process_lock() { return _process_lock; }
 	Glib::Threads::Mutex& latency_lock() { return _latency_lock; }
@@ -162,39 +159,39 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	   (the regular process() call to session->process() is not made)
 	*/
 
-	PBD::Signal1<void, pframes_t> Freewheel;
+	PBD::Signal<void(pframes_t)> Freewheel;
 
-	PBD::Signal0<void> Xrun;
+	PBD::Signal<void()> Xrun;
 
 	/** this signal is emitted if the sample rate changes */
-	PBD::Signal1<void, samplecnt_t> SampleRateChanged;
+	PBD::Signal<void(samplecnt_t)> SampleRateChanged;
 
 	/** this signal is emitted if the buffer size changes */
-	PBD::Signal1<void, pframes_t> BufferSizeChanged;
+	PBD::Signal<void(pframes_t)> BufferSizeChanged;
 
 	/** this signal is emitted if the device cannot operate properly */
-	PBD::Signal0<void> DeviceError;
+	PBD::Signal<void()> DeviceError;
 
 	/* this signal is emitted if the device list changed */
 
-	PBD::Signal0<void> DeviceListChanged;
+	PBD::Signal<void()> DeviceListChanged;
 
 	/* this signal is sent if the backend ever disconnects us */
 
-	PBD::Signal1<void,const char*> Halted;
+	PBD::Signal<void(const char*)> Halted;
 
 	/* these two are emitted when the engine itself is
 	   started and stopped
 	*/
 
-	PBD::Signal1<void,uint32_t> Running;
-	PBD::Signal0<void> Stopped;
+	PBD::Signal<void(uint32_t)> Running;
+	PBD::Signal<void()> Stopped;
 
 	/* these two are emitted when a device reset is initiated/finished
 	 */
 
-	PBD::Signal0<void> DeviceResetStarted;
-	PBD::Signal0<void> DeviceResetFinished;
+	PBD::Signal<void()> DeviceResetStarted;
+	PBD::Signal<void()> DeviceResetFinished;
 
 	static AudioEngine* instance() { return _instance; }
 	static void destroy();
@@ -245,7 +242,7 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	 * value.
 	 */
 
-	PBD::Signal0<void> BecameSilent;
+	PBD::Signal<void()> BecameSilent;
 	void reset_silence_countdown ();
 
 	void add_pending_port_deletion (Port*);
@@ -270,6 +267,7 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	Glib::Threads::Cond        session_removed;
 	bool                       session_remove_pending;
 	sampleoffset_t             session_removal_countdown;
+	bool                       session_deleted;
 	gain_t                     session_removal_gain;
 	gain_t                     session_removal_gain_step;
 	bool                      _running;
@@ -297,19 +295,19 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 	std::string               _last_backend_error_string;
 
 	PBD::Thread*              _hw_reset_event_thread;
-	GATOMIC_QUAL gint         _hw_reset_request_count;
+	std::atomic<int>         _hw_reset_request_count;
 	Glib::Threads::Cond       _hw_reset_condition;
 	Glib::Threads::Mutex      _reset_request_lock;
-	GATOMIC_QUAL gint         _stop_hw_reset_processing;
+	std::atomic<int>         _stop_hw_reset_processing;
 	PBD::Thread*              _hw_devicelist_update_thread;
-	GATOMIC_QUAL gint         _hw_devicelist_update_count;
+	std::atomic<int>         _hw_devicelist_update_count;
 	Glib::Threads::Cond       _hw_devicelist_update_condition;
 	Glib::Threads::Mutex      _devicelist_update_lock;
-	GATOMIC_QUAL gint         _stop_hw_devicelist_processing;
+	std::atomic<int>         _stop_hw_devicelist_processing;
 	uint32_t                  _start_cnt;
 	uint32_t                  _init_countdown;
-	GATOMIC_QUAL gint         _pending_playback_latency_callback;
-	GATOMIC_QUAL gint         _pending_capture_latency_callback;
+	std::atomic<int>         _pending_playback_latency_callback;
+	std::atomic<int>         _pending_capture_latency_callback;
 
 	void start_hw_event_processing();
 	void stop_hw_event_processing();
@@ -330,4 +328,3 @@ class LIBARDOUR_API AudioEngine : public PortManager, public SessionHandlePtr
 
 } // namespace ARDOUR
 
-#endif /* __ardour_audioengine_h__ */

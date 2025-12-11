@@ -22,13 +22,13 @@
 
 #include "pbd/types_convert.h"
 
-#include "ardour/export_channel.h"
 #include "ardour/audio_buffer.h"
 #include "ardour/audio_port.h"
 #include "ardour/audio_track.h"
 #include "ardour/audioengine.h"
 #include "ardour/audioregion.h"
 #include "ardour/capturing_processor.h"
+#include "ardour/export_channel.h"
 #include "ardour/export_failed.h"
 #include "ardour/midi_port.h"
 #include "ardour/session.h"
@@ -56,7 +56,7 @@ PortExportChannel::common_port_playback_latency () const
 	samplecnt_t l     = 0;
 	bool        first = true;
 	for (PortSet::const_iterator it = ports.begin (); it != ports.end (); ++it) {
-		boost::shared_ptr<AudioPort> p = it->lock ();
+		std::shared_ptr<AudioPort> p = it->lock ();
 		if (!p) {
 			continue;
 		}
@@ -80,7 +80,7 @@ PortExportChannel::prepare_export (samplecnt_t max_samples, sampleoffset_t commo
 	_delaylines.clear ();
 
 	for (PortSet::const_iterator it = ports.begin (); it != ports.end (); ++it) {
-		boost::shared_ptr<AudioPort> p = it->lock ();
+		std::shared_ptr<AudioPort> p = it->lock ();
 		if (!p) {
 			continue;
 		}
@@ -90,7 +90,7 @@ PortExportChannel::prepare_export (samplecnt_t max_samples, sampleoffset_t commo
 			Sample zero = 0;
 			rb->write (&zero, 1);
 		}
-		_delaylines.push_back (boost::shared_ptr<PBD::RingBuffer<Sample>> (rb));
+		_delaylines.push_back (std::shared_ptr<PBD::RingBuffer<Sample>> (rb));
 	}
 }
 
@@ -101,7 +101,9 @@ PortExportChannel::operator< (ExportChannel const& other) const
 	if (!(pec = dynamic_cast<PortExportChannel const*> (&other))) {
 		return this < &other;
 	}
-	return ports < pec->ports;
+
+	std::owner_less<std::weak_ptr<AudioPort>> cmp;
+	return std::lexicographical_compare (ports.begin (), ports.end (), pec->ports.begin (), pec->ports.end (), cmp);
 }
 
 void
@@ -110,9 +112,9 @@ PortExportChannel::read (Buffer const*& buf, samplecnt_t samples) const
 	assert (_buffer);
 	assert (samples <= _buffer_size);
 
-	if (ports.size () == 1 && _delaylines.size () == 1 && !ports.begin ()->expired () && _delaylines.front ()->bufsize () == _buffer_size + 1) {
-		boost::shared_ptr<AudioPort> p = ports.begin ()->lock ();
-		AudioBuffer&                 ab (p->get_audio_buffer (samples)); // unsets AudioBuffer::_written
+	if (ports.size () == 1 && _delaylines.size () == 1 && !ports.begin ()->expired () && (samplecnt_t) _delaylines.front ()->bufsize () == _buffer_size + 1) {
+		std::shared_ptr<AudioPort> p = ports.begin ()->lock ();
+		AudioBuffer&               ab (p->get_audio_buffer (samples)); // unsets AudioBuffer::_written
 		ab.set_written (true);
 		buf = &ab;
 		return;
@@ -120,9 +122,9 @@ PortExportChannel::read (Buffer const*& buf, samplecnt_t samples) const
 
 	memset (_buffer.get (), 0, samples * sizeof (Sample));
 
-	std::list<boost::shared_ptr<PBD::RingBuffer<Sample>>>::const_iterator di = _delaylines.begin ();
+	std::list<std::shared_ptr<PBD::RingBuffer<Sample>>>::const_iterator di = _delaylines.begin ();
 	for (PortSet::const_iterator it = ports.begin (); it != ports.end (); ++it) {
-		boost::shared_ptr<AudioPort> p = it->lock ();
+		std::shared_ptr<AudioPort> p = it->lock ();
 		if (!p) {
 			continue;
 		}
@@ -133,7 +135,7 @@ PortExportChannel::read (Buffer const*& buf, samplecnt_t samples) const
 
 		PBD::RingBuffer<Sample>::rw_vector vec;
 		(*di)->get_read_vector (&vec);
-		assert (vec.len[0] + vec.len[1] >= samples);
+		assert ((samplecnt_t) (vec.len[0] + vec.len[1]) >= samples);
 
 		samplecnt_t to_write = std::min (samples, (samplecnt_t)vec.len[0]);
 		mix_buffers_no_gain (&_buffer[0], vec.buf[0], to_write);
@@ -156,7 +158,7 @@ PortExportChannel::get_state (XMLNode* node) const
 {
 	XMLNode* port_node;
 	for (PortSet::const_iterator it = ports.begin (); it != ports.end (); ++it) {
-		boost::shared_ptr<Port> p = it->lock ();
+		std::shared_ptr<Port> p = it->lock ();
 		if (p && (port_node = node->add_child ("Port"))) {
 			port_node->set_property ("name", p->name ());
 		}
@@ -170,7 +172,7 @@ PortExportChannel::set_state (XMLNode* node, Session& session)
 	for (XMLNodeList::iterator it = xml_ports.begin (); it != xml_ports.end (); ++it) {
 		std::string name;
 		if ((*it)->get_property ("name", name)) {
-			boost::shared_ptr<AudioPort> port = boost::dynamic_pointer_cast<AudioPort> (session.engine ().get_port_by_name (name));
+			std::shared_ptr<AudioPort> port = std::dynamic_pointer_cast<AudioPort> (session.engine ().get_port_by_name (name));
 			if (port) {
 				ports.insert (port);
 			} else {
@@ -192,7 +194,7 @@ PortExportMIDI::~PortExportMIDI ()
 samplecnt_t
 PortExportMIDI::common_port_playback_latency () const
 {
-	boost::shared_ptr<MidiPort> p = _port.lock ();
+	std::shared_ptr<MidiPort> p = _port.lock ();
 	if (!p) {
 		return 0;
 	}
@@ -202,7 +204,7 @@ PortExportMIDI::common_port_playback_latency () const
 void
 PortExportMIDI::prepare_export (samplecnt_t max_samples, sampleoffset_t common_latency)
 {
-	boost::shared_ptr<MidiPort> p = _port.lock ();
+	std::shared_ptr<MidiPort> p = _port.lock ();
 	if (!p) {
 		return;
 	}
@@ -217,13 +219,13 @@ PortExportMIDI::operator< (ExportChannel const& other) const
 	if (!(pem = dynamic_cast<PortExportMIDI const*> (&other))) {
 		return this < &other;
 	}
-	return _port < pem->_port;
+	return _port.owner_before (pem->_port);
 }
 
 void
 PortExportMIDI::read (Buffer const*& buf, samplecnt_t samples) const
 {
-	boost::shared_ptr<MidiPort> p = _port.lock ();
+	std::shared_ptr<MidiPort> p = _port.lock ();
 	if (!p) {
 		_buf.clear ();
 		buf = &_buf;
@@ -240,8 +242,8 @@ PortExportMIDI::read (Buffer const*& buf, samplecnt_t samples) const
 void
 PortExportMIDI::get_state (XMLNode* node) const
 {
-	XMLNode*                    port_node;
-	boost::shared_ptr<MidiPort> p = _port.lock ();
+	XMLNode*                  port_node;
+	std::shared_ptr<MidiPort> p = _port.lock ();
 	if (p && (port_node = node->add_child ("MIDIPort"))) {
 		port_node->set_property ("name", p->name ());
 	}
@@ -256,7 +258,7 @@ PortExportMIDI::set_state (XMLNode* node, Session& session)
 	}
 	std::string name;
 	if (xml_port->get_property ("name", name)) {
-		boost::shared_ptr<MidiPort> port = boost::dynamic_pointer_cast<MidiPort> (session.engine ().get_port_by_name (name));
+		std::shared_ptr<MidiPort> port = std::dynamic_pointer_cast<MidiPort> (session.engine ().get_port_by_name (name));
 		if (port) {
 			_port = port;
 		} else {
@@ -289,7 +291,7 @@ RegionExportChannelFactory::RegionExportChannelFactory (Session* session, AudioR
 			throw ExportFailed ("Unhandled type in ExportChannelFactory constructor");
 	}
 
-	session->ProcessExport.connect_same_thread (export_connection, boost::bind (&RegionExportChannelFactory::new_cycle_started, this, _1));
+	session->ProcessExport.connect_same_thread (export_connection, std::bind (&RegionExportChannelFactory::new_cycle_started, this, _1));
 
 	buffers.ensure_buffers (DataType::AUDIO, n_channels, samples_per_cycle);
 	buffers.set_count (ChanCount (DataType::AUDIO, n_channels));
@@ -346,10 +348,10 @@ RegionExportChannelFactory::update_buffers (samplecnt_t samples)
 	position += samples;
 }
 
-RouteExportChannel::RouteExportChannel (boost::shared_ptr<CapturingProcessor> processor,
-                                        DataType                              type,
-                                        size_t                                channel,
-                                        boost::shared_ptr<ProcessorRemover>   remover)
+RouteExportChannel::RouteExportChannel (std::shared_ptr<CapturingProcessor> processor,
+                                        DataType                            type,
+                                        size_t                              channel,
+                                        std::shared_ptr<ProcessorRemover>   remover)
 	: _processor (processor)
 	, _type (type)
 	, _channel (channel)
@@ -362,13 +364,15 @@ RouteExportChannel::~RouteExportChannel ()
 }
 
 void
-RouteExportChannel::create_from_route (std::list<ExportChannelPtr>& result, boost::shared_ptr<Route> route)
+RouteExportChannel::create_from_route (std::list<ExportChannelPtr>& result, std::shared_ptr<Route> route)
 {
-	boost::shared_ptr<CapturingProcessor> processor = route->add_export_point ();
-	uint32_t                              n_audio   = processor->input_streams ().n_audio ();
-	uint32_t                              n_midi    = processor->input_streams ().n_midi ();
+	std::shared_ptr<CapturingProcessor> processor = route->add_export_point ();
+	uint32_t                            n_audio   = processor->input_streams ().n_audio ();
+	uint32_t                            n_midi    = processor->input_streams ().n_midi ();
 
-	boost::shared_ptr<ProcessorRemover> remover (new ProcessorRemover (route, processor));
+	assert (n_audio + n_midi > 0);
+
+	std::shared_ptr<ProcessorRemover> remover (new ProcessorRemover (route, processor));
 	result.clear ();
 	for (uint32_t i = 0; i < n_audio; ++i) {
 		result.push_back (ExportChannelPtr (new RouteExportChannel (processor, DataType::AUDIO, i, remover)));
@@ -381,6 +385,11 @@ RouteExportChannel::create_from_route (std::list<ExportChannelPtr>& result, boos
 void
 RouteExportChannel::create_from_state (std::list<ExportChannelPtr>& result, Session& s, XMLNode* node)
 {
+	uint32_t chn;
+	if (node->get_property ("number", chn) && chn > 1) {
+		/* create_from_route adds ExportChannel for all channels of a given Route */
+		return;
+	}
 	XMLNode* xml_route = node->child ("Route");
 	if (!xml_route) {
 		return;
@@ -389,7 +398,7 @@ RouteExportChannel::create_from_state (std::list<ExportChannelPtr>& result, Sess
 	if (!xml_route->get_property ("id", rid)) {
 		return;
 	}
-	boost::shared_ptr<Route> rt = s.route_by_id (rid);
+	std::shared_ptr<Route> rt = s.route_by_id (rid);
 	if (rt) {
 		create_from_route (result, rt);
 	}

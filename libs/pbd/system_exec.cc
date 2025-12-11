@@ -18,14 +18,17 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <unistd.h>
 #include <algorithm>
 
-#include <assert.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
 #ifndef COMPILER_MSVC
 #include <dirent.h>
@@ -278,9 +281,7 @@ SystemExec::~SystemExec ()
 static void*
 interposer_thread (void *arg) {
 	SystemExec *sex = static_cast<SystemExec *>(arg);
-	pthread_set_name ("ExecStdOut");
 	sex->output_interposer();
-	pthread_exit(0);
 	return 0;
 }
 
@@ -407,21 +408,30 @@ SystemExec::terminate ()
 	close_stdin();
 
 	if (pid) {
-		/* terminate */
-		EnumWindows(my_terminateApp, (LPARAM)pid->dwProcessId);
-		PostThreadMessage(pid->dwThreadId, WM_CLOSE, 0, 0);
+		/* close windows (if any) */
+		EnumWindows (my_terminateApp, (LPARAM)pid->dwProcessId);
+
+		if (PostThreadMessage (pid->dwThreadId, WM_CLOSE, 0, 0)) {
+			/* OK, wait for child to terminate cleanly */
+			WaitForSingleObject(pid->hProcess, 150 /*ms*/);
+		}
 
 		/* kill ! */
-		TerminateProcess(pid->hProcess, 0xf291);
+		TerminateProcess(pid->hProcess, 0);
+		wait ();
 
-		CloseHandle(pid->hThread);
 		CloseHandle(pid->hProcess);
+		CloseHandle(pid->hThread);
+		pid->hThread = pid->hProcess = 0;
 		destroy_pipe(stdinP);
 		destroy_pipe(stdoutP);
 		destroy_pipe(stderrP);
 		delete pid;
 		pid=0;
 	}
+
+	if (thread_active) pthread_join(thread_id_tt, NULL);
+	thread_active = false;
 	::pthread_mutex_unlock(&write_lock);
 }
 
@@ -513,7 +523,7 @@ SystemExec::start (StdErrMode stderr_mode, const char * /*vfork_exec_wrapper*/)
 		return -1;
 	}
 
-	int rv = pthread_create (&thread_id_tt, NULL, interposer_thread, this);
+	int rv = pthread_create_and_store ("ExecStdOut", &thread_id_tt, interposer_thread, this, 0);
 	thread_active=true;
 	if (rv) {
 		thread_active=false;
@@ -528,7 +538,7 @@ void
 SystemExec::output_interposer()
 {
 	DWORD bytesRead = 0;
-	char data[BUFSIZ];
+	char data[8192];
 #if 0 // untested code to set up nonblocking
 	unsigned long l = 1;
 	ioctlsocket(stdoutP[0], FIONBIO, &l);
@@ -540,17 +550,17 @@ SystemExec::output_interposer()
 		if (bytesAvail < 1) {Sleep(500); printf("N/A\n"); continue;}
 #endif
 		if (stdoutP[0] == INVALID_HANDLE_VALUE) break;
-		if (!ReadFile(stdoutP[0], data, BUFSIZ - 1, &bytesRead, 0)) {
+		if (!ReadFile(stdoutP[0], data, 8191, &bytesRead, 0)) {
 			DWORD err =  GetLastError();
 			if (err == ERROR_IO_PENDING) continue;
 			break;
 		}
 		if (bytesRead < 1) continue; /* actually not needed; but this is safe. */
 		data[bytesRead] = 0;
-		ReadStdout(data, bytesRead); /* EMIT SIGNAL */
+		std::string rv = std::string (data, bytesRead);
+		ReadStdout(rv, bytesRead); /* EMIT SIGNAL */
 	}
 	Terminated(); /* EMIT SIGNAL */
-	pthread_exit(0);
 }
 
 void
@@ -560,6 +570,8 @@ SystemExec::close_stdin()
 	if (stdinP[1] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdinP[1]);
 	Sleep(200);
 	destroy_pipe (stdinP);
+	if (stdoutP[0] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdoutP[0]);
+	if (stdoutP[1] != INVALID_HANDLE_VALUE) FlushFileBuffers (stdoutP[1]);
 }
 
 size_t
@@ -796,7 +808,7 @@ SystemExec::start (StdErrMode stderr_mode, const char *vfork_exec_wrapper)
 		close_fd (pout[1]);
 		close_fd (pin[0]);
 
-		int rv = pthread_create (&thread_id_tt, NULL, interposer_thread, this);
+		int rv = pthread_create_and_store ("ExecStdOut", &thread_id_tt, interposer_thread, this, 0);
 		thread_active=true;
 
 		if (rv) {
@@ -905,7 +917,6 @@ again:
 		ReadStdout (rv, r); /* EMIT SIGNAL */
 	}
 	Terminated (); /* EMIT SIGNAL */
-	pthread_exit (0);
 }
 
 void
@@ -914,10 +925,10 @@ SystemExec::close_stdin()
 	if (pin[1] < 0) {
 		return;
 	}
+	fsync (pin[1]);
 	close_fd (pin[0]);
 	close_fd (pin[1]);
-	close_fd (pout[0]);
-	close_fd (pout[1]);
+	fsync (pout[0]);
 }
 
 size_t
@@ -931,15 +942,15 @@ SystemExec::write_to_stdin (const void* data, size_t bytes)
 	while (c < bytes) {
 		for (;;) {
 			r = ::write (pin[1], &((const char*)data)[c], bytes - c);
-			if (r < 0 && (errno == EINTR || errno == EAGAIN)) {
-				sleep(1);
+			if (r >= 0) {
+				break;
+			}
+			if (errno == EINTR || errno == EAGAIN) {
+				g_usleep(100000);
 				continue;
 			}
-			if ((size_t) r != (bytes-c)) {
-				::pthread_mutex_unlock(&write_lock);
-				return c;
-			}
-			break;
+			::pthread_mutex_unlock(&write_lock);
+			return c;
 		}
 		c += r;
 	}

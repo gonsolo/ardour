@@ -24,8 +24,6 @@
 #include <string>
 #include <stdint.h>
 
-#include <boost/smart_ptr.hpp>
-
 #include "pbd/controllable.h"
 #include "pbd/signals.h"
 
@@ -70,8 +68,8 @@ public:
 	 */
 	Control* in_use_touch_control;
 
-	boost::shared_ptr<ARDOUR::AutomationControl> control () const { return normal_ac; }
-	virtual void set_control (boost::shared_ptr<ARDOUR::AutomationControl>);
+	std::shared_ptr<ARDOUR::AutomationControl> control () const { return normal_ac; }
+	virtual void set_control (std::shared_ptr<ARDOUR::AutomationControl>);
 	virtual void reset_control () { normal_ac.reset(); } 
 
 	virtual void mark_dirty() = 0;
@@ -83,7 +81,7 @@ public:
 	virtual void stop_touch (Temporal::timepos_t const & when);
 
   protected:
-	boost::shared_ptr<ARDOUR::AutomationControl> normal_ac;
+	std::shared_ptr<ARDOUR::AutomationControl> normal_ac;
 
   private:
 	int _id; /* possibly device-dependent ID */

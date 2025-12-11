@@ -17,21 +17,20 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __libardour_region_sorters_h__
-#define __libardour_region_sorters_h__
+#pragma once
 
 #include "ardour/region.h"
 
 namespace ARDOUR {
 
 struct LIBARDOUR_API RegionSortByPosition {
-	bool operator() (boost::shared_ptr<Region> a, boost::shared_ptr<Region> b) {
+	bool operator() (std::shared_ptr<Region> a, std::shared_ptr<Region> b) {
 		return a->position() < b->position();
 	}
 };
 
 struct LIBARDOUR_API RegionSortByLayer {
-	bool operator() (boost::shared_ptr<Region> a, boost::shared_ptr<Region> b) {
+	bool operator() (std::shared_ptr<Region> a, std::shared_ptr<Region> b) {
 		return a->layer() < b->layer();
 	}
 };
@@ -42,7 +41,7 @@ struct LIBARDOUR_API RegionSortByLayer {
  * stable_sort by RegionSortByLayer();
  */
 struct LIBARDOUR_API RegionSortByLayerAndPosition {
-	bool operator() (boost::shared_ptr<Region> a, boost::shared_ptr<Region> b) {
+	bool operator() (std::shared_ptr<Region> a, std::shared_ptr<Region> b) {
 		return
 			   (a->layer() < b->layer()  && a->position() < b->position())
 			|| (a->layer() == b->layer() && a->position() < b->position());
@@ -51,4 +50,3 @@ struct LIBARDOUR_API RegionSortByLayerAndPosition {
 
 } // namespace
 
-#endif /* __libardour_region_sorters_h__ */

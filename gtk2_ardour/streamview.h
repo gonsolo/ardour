@@ -22,8 +22,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_streamview_h__
-#define __ardour_streamview_h__
+#pragma once
 
 #include <list>
 #include <cmath>
@@ -31,7 +30,11 @@
 #include "pbd/signals.h"
 
 #include "ardour/location.h"
+
 #include "enums.h"
+#include "selectable.h"
+#include "time_axis_view_item.h"
+#include "view_background.h"
 
 namespace Gdk {
 	class Color;
@@ -57,14 +60,13 @@ struct RecBoxInfo {
 	ARDOUR::samplecnt_t      length;
 };
 
-class Selectable;
 class RouteTimeAxisView;
 class RegionView;
 class RegionSelection;
 class CrossfadeView;
 class Selection;
 
-class StreamView : public sigc::trackable, public PBD::ScopedConnectionList
+class StreamView : public PBD::ScopedConnectionList, public virtual ViewBackground, public SelectableOwner
 {
 public:
 	virtual ~StreamView ();
@@ -75,6 +77,13 @@ public:
 	void attach ();
 
 	void set_zoom_all();
+
+	int height() const;
+	int width() const;
+	int contents_height() const {
+		return child_height() - TimeAxisViewItem::NAME_HIGHLIGHT_SIZE - 2;
+	}
+	int y_position () const;
 
 	int set_position (gdouble x, gdouble y);
 	virtual int set_height (double);
@@ -99,18 +108,18 @@ public:
 
 	uint32_t     num_selected_regionviews () const;
 
-	RegionView*  find_view (boost::shared_ptr<const ARDOUR::Region>);
+	RegionView*  find_view (std::shared_ptr<const ARDOUR::Region>);
 	void         foreach_regionview (sigc::slot<void,RegionView*> slot);
 	void         foreach_selected_regionview (sigc::slot<void,RegionView*> slot);
 
 	void set_selected_regionviews (RegionSelection&);
-	void get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable* >&, bool within = false);
+	void _get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable* >&, bool within);
 	void get_inverted_selectables (Selection&, std::list<Selectable* >& results);
 	void get_regionviews_at_or_after (Temporal::timepos_t const &, RegionSelection&);
 
-	virtual void update_contents_metrics(boost::shared_ptr<ARDOUR::Region>) {}
+	virtual void update_contents_metrics(std::shared_ptr<ARDOUR::Region>) {}
 
-	void add_region_view (boost::weak_ptr<ARDOUR::Region>);
+	void add_region_view (std::weak_ptr<ARDOUR::Region>);
 
 	void region_layered (RegionView*);
 	virtual void update_contents_height ();
@@ -119,13 +128,14 @@ public:
 	double child_height () const;
 	ARDOUR::layer_t layers () const { return _layers; }
 
-	virtual RegionView* create_region_view (boost::shared_ptr<ARDOUR::Region>, bool, bool) {
+	virtual RegionView* create_region_view (std::shared_ptr<ARDOUR::Region>, bool, bool) {
 		return 0;
 	}
 
-	void check_record_layers (boost::shared_ptr<ARDOUR::Region>, ARDOUR::samplepos_t);
+	void check_record_layers (std::shared_ptr<ARDOUR::Region>, ARDOUR::samplepos_t);
 
-	virtual void playlist_layered (boost::weak_ptr<ARDOUR::Track>);
+	virtual void playlist_layered (std::weak_ptr<ARDOUR::Track>);
+	void update_coverage_frame ();
 
 	sigc::signal<void, RegionView*> RegionViewAdded;
 	sigc::signal<void> RegionViewRemoved;
@@ -137,23 +147,25 @@ public:
 protected:
 	StreamView (RouteTimeAxisView&, ArdourCanvas::Container* canvas_group = 0);
 
-	void         transport_changed();
-	void         transport_looped();
-	void         rec_enable_changed();
-	void         sess_rec_enable_changed();
-	void         create_rec_box(samplepos_t sample_pos, double width);
+	void transport_changed();
+	void transport_looped();
+	void rec_enable_changed();
+	void sess_rec_enable_changed();
+	void create_rec_box(samplepos_t sample_pos, double width);
+	void cleanup_rec_box ();
+
 	virtual void setup_rec_box () = 0;
 	virtual void update_rec_box ();
 
-	virtual RegionView* add_region_view_internal (boost::shared_ptr<ARDOUR::Region>,
+	virtual RegionView* add_region_view_internal (std::shared_ptr<ARDOUR::Region>,
 		      bool wait_for_waves, bool recording = false) = 0;
-	virtual void remove_region_view (boost::weak_ptr<ARDOUR::Region> );
+	virtual void remove_region_view (std::weak_ptr<ARDOUR::Region> );
 
-	void         display_track (boost::shared_ptr<ARDOUR::Track>);
+	void         display_track (std::shared_ptr<ARDOUR::Track>);
 	virtual void undisplay_track ();
-	void         layer_regions ();
+	void layer_regions ();
 
-	void playlist_switched (boost::weak_ptr<ARDOUR::Track>);
+	void playlist_switched (std::weak_ptr<ARDOUR::Track>);
 
 	virtual void color_handler () = 0;
 
@@ -168,7 +180,7 @@ protected:
 
 	sigc::connection        screen_update_connection;
 	std::vector<RecBoxInfo> rec_rects;
-	std::list< std::pair<boost::shared_ptr<ARDOUR::Region>,RegionView* > > rec_regions;
+	std::list< std::pair<std::shared_ptr<ARDOUR::Region>,RegionView* > > rec_regions;
 	bool                    rec_updating;
 	bool                    rec_active;
 
@@ -181,7 +193,7 @@ protected:
 	ARDOUR::layer_t _layers;
 	LayerDisplay    _layer_display;
 
-	double height;
+	double _height;
 
 	PBD::ScopedConnectionList rec_data_ready_connections;
 	samplepos_t               last_rec_data_sample;
@@ -190,11 +202,7 @@ protected:
 	   being recorded, or max_samplepos if not applicable.
 	*/
 	samplepos_t _new_rec_layer_time;
-	void setup_new_rec_layer_time (boost::shared_ptr<ARDOUR::Region>);
-
-private:
-	void update_coverage_frame ();
+	void setup_new_rec_layer_time (std::shared_ptr<ARDOUR::Region>);
 };
 
-#endif /* __ardour_streamview_h__ */
 

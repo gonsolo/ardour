@@ -22,22 +22,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_option_editor_h__
-#define __gtk_ardour_option_editor_h__
+#pragma once
 
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/filechooserbutton.h>
-#include <gtkmm/label.h>
-#include <gtkmm/notebook.h>
-#include <gtkmm/scale.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
-#include <gtkmm/window.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/filechooserbutton.h>
+#include <ytkmm/label.h>
+#include <ytkmm/notebook.h>
+#include <ytkmm/scale.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
+#include <ytkmm/window.h>
 
-#include "widgets/slider_controller.h"
+#include "pbd/configuration.h"
 
 #include "actions.h"
 #include "ardour_window.h"
@@ -60,8 +59,9 @@
  *  options dialog.
  */
 
-namespace PBD {
-	class Configuration;
+namespace ArdourWidgets {
+	class Frame;
+	class HSliderController;
 }
 
 class OptionEditorPage;
@@ -70,6 +70,7 @@ class OptionEditorPage;
 class OptionEditorComponent
 {
 public:
+	OptionEditorComponent() : _frame (0), _metadata (0) {}
 	virtual ~OptionEditorComponent() {}
 
 	/** Called when a configuration parameter's value has changed.
@@ -90,10 +91,18 @@ public:
 
 	virtual Gtk::Widget& tip_widget() = 0;
 
+	virtual PBD::Configuration::Metadata const * get_metadata() const;
+	void set_metadata (PBD::Configuration::Metadata const &);
+
+	void highlight ();
+	void end_highlight ();
+
 protected:
 	void maybe_add_note (OptionEditorPage *, int);
 
 	std::string _note;
+	ArdourWidgets::Frame* _frame;
+	PBD::Configuration::Metadata const * _metadata;
 };
 
 /** A component which provides a subheading within the dialog */
@@ -425,7 +434,7 @@ protected:
 	sigc::slot<bool, float> _set;
 	Gtk::Adjustment _adj;
 	Gtk::HScale _hscale;
-	Gtk::Label _label;
+	Gtk::Label* _label;
 	double _mult;
 	bool _log;
 };
@@ -590,7 +599,7 @@ public:
 	void set_state_from_config ();
 	void add_to_page (OptionEditorPage *);
 
-	Gtk::Widget& tip_widget() { return *_db_slider; }
+	Gtk::Widget& tip_widget();
 
 private:
 	void db_changed ();
@@ -600,7 +609,7 @@ private:
 	Gtk::Adjustment _db_adjustment;
 	ArdourWidgets::HSliderController* _db_slider;
 	Gtk::Entry _db_display;
-	Gtk::Label _label;
+	Gtk::Label* _label;
 	Gtk::HBox _box;
 	Gtk::VBox _fader_centering_box;
 	sigc::slot<ARDOUR::gain_t> _get;
@@ -635,7 +644,7 @@ public:
 
 private:
 	void save_clock_time ();
-	Gtk::Label _label;
+	Gtk::Label* _label;
 	AudioClock _clock;
 	sigc::slot<std::string> _get;
 	sigc::slot<bool, std::string> _set;
@@ -705,7 +714,9 @@ public:
 	void add_option (std::string const &, OptionEditorComponent *);
 	void add_page (std::string const &, Gtk::Widget& page_widget);
 
+	std::string current_page (); /* ought to be const but .. hard */
 	void set_current_page (std::string const &);
+	std::map<std::string, OptionEditorPage*>& pages() { return _pages; }
 
 protected:
 	virtual void parameter_changed (std::string const &);
@@ -729,6 +740,35 @@ protected:
 	OptionColumns option_columns;
 	Glib::RefPtr<Gtk::TreeStore> option_tree;
 
+	/* searching */
+
+	Gtk::Entry  search_entry;
+	Gtk::Label  search_label;
+	Gtk::Button search_button;
+	Gtk::HBox   search_packer;
+	struct SearchResult {
+		SearchResult (std::string const & p, OptionEditorComponent& c) : page_title (p), component (c) {}
+
+		std::string page_title;
+		OptionEditorComponent& component;
+	};
+	typedef std::vector<SearchResult> SearchResults;
+	SearchResults* search_results;
+	typedef std::vector<std::string> SearchTargets;
+	SearchTargets search_targets;
+	SearchResults::iterator search_iterator;
+	OptionEditorComponent* search_current_highlight;
+	std::string last_search_string;
+	int search_not_found_count;
+	sigc::connection not_found_timeout;
+
+	void search ();
+	void search_highlight (std::string const & page_title, OptionEditorComponent&);
+	bool not_found_callback ();
+	bool search_key_press (GdkEventKey*);
+	bool search_key_focus (GdkEventFocus*);
+	void not_found ();
+
 private:
 	PBD::ScopedConnection config_connection;
 	Gtk::Notebook _notebook;
@@ -747,7 +787,8 @@ class OptionEditorContainer : public OptionEditor, public Gtk::VBox
 public:
 	OptionEditorContainer (PBD::Configuration *);
 	~OptionEditorContainer() {}
-private:
+
+	Gtk::VBox treeview_packer;
 	Gtk::HBox hpacker;
 };
 
@@ -757,9 +798,8 @@ class OptionEditorWindow : public OptionEditor, public ArdourWindow
 public:
 	OptionEditorWindow (PBD::Configuration *, std::string const &);
 	~OptionEditorWindow() {}
-private:
-	Gtk::VBox container;
+protected:
+	Gtk::VBox vpacker;
 	Gtk::HBox hpacker;
 };
 
-#endif /* __gtk_ardour_option_editor_h__ */

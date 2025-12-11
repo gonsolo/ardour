@@ -19,7 +19,8 @@
 #ifndef _ardour_vst3_module_h_
 #define _ardour_vst3_module_h_
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
+#include <string>
 
 #include "ardour/libardour_visibility.h"
 
@@ -32,12 +33,16 @@ namespace ARDOUR {
 class LIBARDOUR_API VST3PluginModule
 {
 public:
-	static boost::shared_ptr<VST3PluginModule> load (std::string const& path);
+	static std::shared_ptr<VST3PluginModule> load (std::string const& path);
 
 	VST3PluginModule () : _factory (0) {}
 	virtual ~VST3PluginModule () {}
 
 	Steinberg::IPluginFactory* factory ();
+
+	bool has_symbol (const char* name) const {
+		return NULL != fn_ptr (name);
+	}
 
 protected:
 	void release_factory ();
@@ -45,6 +50,10 @@ protected:
 	virtual bool init () = 0;
 	virtual bool exit () = 0;
 	virtual void* fn_ptr (const char* name) const = 0;
+
+#ifndef NDEBUG
+	std::string _path;
+#endif
 
 private:
 	/* prevent copy construction */

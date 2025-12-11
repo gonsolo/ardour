@@ -20,15 +20,23 @@
 #include <algorithm>
 #include <ctype.h>
 
-#if (__cplusplus >= 201103L)
-#include <boost/make_unique.hpp>
+#ifndef VST3_SCANNER_APP
+#include "ardour/session.h"
+#include "ardour/session_directory.h"
 #endif
 
 #include "ardour/vst3_host.h"
 
+#include "pbd/atomic.h"
+
 #ifndef VST3_SCANNER_APP
 #include "ardour/debug.h"
 #include "pbd/compose.h"
+#endif
+
+#if SMTG_OS_LINUX
+#include <unordered_map>
+#include <glibmm.h>
 #endif
 
 using namespace Steinberg;
@@ -38,6 +46,7 @@ DEF_CLASS_IID (IBStream)
 DEF_CLASS_IID (IPluginBase)
 DEF_CLASS_IID (IPluginFactory)
 DEF_CLASS_IID (IPluginFactory2)
+DEF_CLASS_IID (IPluginFactory3)
 DEF_CLASS_IID (IPlugFrame)
 DEF_CLASS_IID (IPlugView)
 DEF_CLASS_IID (ISizeableStream)
@@ -78,6 +87,152 @@ DEF_CLASS_IID (Presonus::IPlugInViewScaling)
 
 #if SMTG_OS_LINUX
 DEF_CLASS_IID (Linux::IRunLoop);
+DEF_CLASS_IID (Linux::ITimerHandler);
+DEF_CLASS_IID (Linux::IEventHandler);
+
+class AVST3Runloop : public Linux::IRunLoop
+{
+private:
+	struct EventHandler
+	{
+		EventHandler (Linux::IEventHandler* handler = 0, GIOChannel* gio_channel = 0, guint source_id = 0)
+			: _handler (handler)
+			, _gio_channel (gio_channel)
+			, _source_id (source_id)
+		{}
+
+		bool operator== (EventHandler const& other) {
+			return other._handler == _handler && other._gio_channel == _gio_channel && other._source_id == _source_id;
+		}
+		Linux::IEventHandler* _handler;
+		GIOChannel*           _gio_channel;
+		guint                 _source_id;
+	};
+
+	std::unordered_map<Linux::FileDescriptor, EventHandler> _event_handlers;
+	std::unordered_map<guint, Linux::ITimerHandler*> _timer_handlers;
+
+	static gboolean event (GIOChannel* source, GIOCondition condition, gpointer data)
+	{
+		Linux::IEventHandler* handler = reinterpret_cast<Linux::IEventHandler*> (data);
+		handler->onFDIsSet (g_io_channel_unix_get_fd (source));
+		if (condition & ~G_IO_IN) {
+			/* remove on error */
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+	static gboolean timeout (gpointer data)
+	{
+		Linux::ITimerHandler* handler = reinterpret_cast<Linux::ITimerHandler*> (data);
+		handler->onTimer ();
+		return true;
+	}
+
+public:
+	~AVST3Runloop ()
+	{
+		clear ();
+	}
+
+	void clear () {
+		Glib::Threads::Mutex::Lock lm (_lock);
+		for (auto it = _event_handlers.begin (); it != _event_handlers.end (); ++it) {
+			g_source_remove (it->second._source_id);
+			g_io_channel_unref (it->second._gio_channel);
+		}
+		for (std::unordered_map<guint, Linux::ITimerHandler*>::const_iterator it = _timer_handlers.begin (); it != _timer_handlers.end (); ++it) {
+			g_source_remove (it->first);
+		}
+		_event_handlers.clear ();
+		_timer_handlers.clear ();
+	}
+
+	/* VST3 IRunLoop interface */
+	tresult registerEventHandler (Linux::IEventHandler* handler, Linux::FileDescriptor fd) SMTG_OVERRIDE
+	{
+		if (!handler || _event_handlers.find(fd) != _event_handlers.end()) {
+			return kInvalidArgument;
+		}
+
+		Glib::Threads::Mutex::Lock lm (_lock);
+		GIOChannel* gio_channel = g_io_channel_unix_new (fd);
+		guint id = g_io_add_watch (gio_channel, (GIOCondition) (G_IO_IN /*| G_IO_OUT*/ | G_IO_ERR | G_IO_HUP), event, handler);
+		_event_handlers[fd] = EventHandler (handler, gio_channel, id);
+		return kResultTrue;
+	}
+
+	tresult unregisterEventHandler (Linux::IEventHandler* handler) SMTG_OVERRIDE
+	{
+		if (!handler) {
+			return kInvalidArgument;
+		}
+
+		tresult rv = false;
+		Glib::Threads::Mutex::Lock lm (_lock);
+		for (auto it = _event_handlers.begin (); it != _event_handlers.end ();) {
+			if (it->second._handler == handler) {
+				g_source_remove (it->second._source_id);
+				g_io_channel_unref (it->second._gio_channel);
+				it = _event_handlers.erase (it);
+				rv = kResultTrue;
+			} else {
+				++it;
+			}
+		}
+		return rv;
+	}
+
+	tresult registerTimer (Linux::ITimerHandler* handler, Linux::TimerInterval milliseconds) SMTG_OVERRIDE
+	{
+		if (!handler || milliseconds == 0) {
+			return kInvalidArgument;
+		}
+		Glib::Threads::Mutex::Lock lm (_lock);
+		guint id = g_timeout_add_full (G_PRIORITY_HIGH_IDLE, milliseconds, timeout, handler, NULL);
+		_timer_handlers[id] = handler;
+		return kResultTrue;
+
+	}
+
+	tresult unregisterTimer (Linux::ITimerHandler* handler) SMTG_OVERRIDE
+	{
+		if (!handler) {
+			return kInvalidArgument;
+		}
+
+		tresult rv = false;
+		Glib::Threads::Mutex::Lock lm (_lock);
+		for (std::unordered_map<guint, Linux::ITimerHandler*>::const_iterator it = _timer_handlers.begin (); it != _timer_handlers.end ();) {
+			if (it->second == handler) {
+				g_source_remove (it->first);
+				it = _timer_handlers.erase (it);
+				rv = kResultTrue;
+			} else {
+				++it;
+			}
+		}
+		return rv;
+	}
+
+	uint32 PLUGIN_API addRef () SMTG_OVERRIDE { return 1; }
+	uint32 PLUGIN_API release () SMTG_OVERRIDE { return 1; }
+
+	tresult queryInterface (const TUID iid, void** obj) SMTG_OVERRIDE {
+		if (FUnknownPrivate::iidEqual (iid, Linux::IRunLoop::iid)) {
+			*obj = this;
+			return kResultOk;
+		}
+		return kNoInterface;
+	}
+
+private:
+	Glib::Threads::Mutex _lock;
+};
+
+AVST3Runloop static_runloop;
 #endif
 
 std::string
@@ -121,24 +276,24 @@ Steinberg::utf8_to_tchar (Vst::TChar* rv, std::string const& s, size_t l)
 
 RefObject::RefObject ()
 {
-	g_atomic_int_set (&_cnt, 1);
+	_cnt.store (1);
 }
 
 uint32
 RefObject::addRef ()
 {
-	g_atomic_int_inc (&_cnt);
-	return g_atomic_int_get (&_cnt);
+	_cnt.fetch_add (1);
+	return _cnt.load ();
 }
 
 uint32
 RefObject::release ()
 {
-	if (g_atomic_int_dec_and_test (&_cnt)) {
+	if (PBD::atomic_dec_and_test (_cnt)) {
 		delete this;
 		return 0;
 	}
-	return g_atomic_int_get (&_cnt);
+	return _cnt.load ();
 }
 
 /* ****************************************************************************/
@@ -459,11 +614,13 @@ PlugInterfaceSupport::addPlugInterfaceSupported (const TUID id)
 
 HostApplication::HostApplication ()
 {
-#if (__cplusplus >= 201103L)
-	_plug_interface_support = boost::make_unique<PlugInterfaceSupport> ();
-#else
 	_plug_interface_support.reset (new PlugInterfaceSupport);
-#endif
+	_session = NULL;
+}
+
+void
+HostApplication::set_session (ARDOUR::Session* s) {
+	_session = s;
 }
 
 tresult
@@ -472,11 +629,20 @@ HostApplication::queryInterface (const char* _iid, void** obj)
 	QUERY_INTERFACE (_iid, obj, FUnknown::iid, IHostApplication)
 	QUERY_INTERFACE (_iid, obj, IHostApplication::iid, IHostApplication)
 
+#if SMTG_OS_LINUX
+	if (FUnknownPrivate::iidEqual (_iid, Linux::IRunLoop::iid)) {
+		*obj = &static_runloop;
+		return kResultOk;
+	}
+#endif
+
 	if (_plug_interface_support && _plug_interface_support->queryInterface (_iid, obj) == kResultTrue) {
 		return kResultOk;
 	}
 
 #if 1
+	QUERY_INTERFACE (_iid, obj, Presonus::IContextInfoProvider::iid, Presonus::IContextInfoProvider);
+#else
 	/* Presonus specifies IContextInfoProvider as extension to IComponentHandler.
 	 * However softube's console queries support for this during initialize()
 	 * and tests host-application support.
@@ -522,6 +688,61 @@ HostApplication::createInstance (TUID cid, TUID _iid, void** obj)
 	}
 	*obj = nullptr;
 	return kResultFalse;
+}
+
+/* ****************************************************************************/
+
+tresult
+HostApplication::getContextInfoValue (int32& value, FIDString id)
+{
+#ifdef VST3_SCANNER_APP
+		return kNotImplemented;
+#else
+	if (0 == strcmp (id, Presonus::ContextInfo::kIndexMode)) {
+		value = Presonus::ContextInfo::kFlatIndex;
+	} else {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::getContextInfoValue<int> unsupported ID %1\n", id));
+		return kNotImplemented;
+	}
+	DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::getContextInfoValue<int> %1 = %2\n", id, value));
+	return kResultOk;
+#endif
+}
+
+tresult
+HostApplication::getContextInfoString (Vst::TChar* string, int32 max_len, FIDString id)
+{
+#ifdef VST3_SCANNER_APP
+		return kNotImplemented;
+#else
+	using namespace Presonus;
+	if (!_session) {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::setContextInfoString: NOT INITIALIZED (%1)\n", id));
+		return kNotInitialized;
+	}
+
+	if (0 == strcmp (id, ContextInfo::kDocumentID)) {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::setContextInfoString: NOT IMPLEMENTED (%1)\n", id));
+		return kNotImplemented; // XXX TODO
+	} else if (0 == strcmp (id, ContextInfo::kActiveDocumentID)) {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::setContextInfoString: NOT IMPLEMENTED (%1)\n", id));
+		return kNotImplemented; // XXX TODO
+	} else if (0 == strcmp (id, ContextInfo::kDocumentID)) {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::setContextInfoString: NOT IMPLEMENTED (%1)\n", id));
+		return kNotImplemented; // XXX TODO
+	} else if (0 == strcmp (id, ContextInfo::kDocumentName)) {
+		utf8_to_tchar (string, _session->name(), max_len);
+	} else if (0 == strcmp (id, ContextInfo::kDocumentFolder)) {
+		utf8_to_tchar (string, _session->path(), max_len);
+	} else if (0 == strcmp (id, ContextInfo::kAudioFolder)) {
+		utf8_to_tchar (string, _session->session_directory().sound_path(), max_len);
+	} else {
+		DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::getContextInfoString unsupported ID %1\n", id));
+		return kInvalidArgument;
+	}
+	DEBUG_TRACE (PBD::DEBUG::VST3Callbacks, string_compose ("VST3Host::getContextInfoValue<string> %1 = %2\n", id, tchar_to_utf8 (string)));
+	return kResultOk;
+#endif
 }
 
 /* ****************************************************************************/
@@ -585,13 +806,18 @@ Vst3ParameterChanges::addParameterData (Vst::ParamID const& pid, int32& index)
 		}
 	}
 
-	if (_used_queue_count < (int32)_queue.size ()) {
-		index = _used_queue_count++;
-		_queue[index].setParameterId (pid);
-		return &_queue[index];
+	/* some plugins (e.g. Roland JD-800) have zero controls
+	 * (set_n_params (0)) but MIDI controls (which are not accounted for).
+	 * So we grow the list as needed. NB. It is not rt-safe to do so, but it
+	 * only happens once initially.
+	 */
+	if (_used_queue_count >= (int32)_queue.size ()) {
+		_queue.resize (_used_queue_count + 1);
 	}
-	index = 0;
-	return 0;
+
+	index = _used_queue_count++;
+	_queue[index].setParameterId (pid);
+	return &_queue[index];
 }
 
 /* ****************************************************************************/

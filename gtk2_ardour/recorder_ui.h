@@ -16,18 +16,17 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_recorder_ui_h__
-#define __gtk_ardour_recorder_ui_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
 #include <list>
+#include <memory>
 #include <vector>
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/sizegroup.h>
-#include <gtkmm/table.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/sizegroup.h>
+#include <ytkmm/table.h>
 
 #include "pbd/natsort.h"
 
@@ -44,10 +43,10 @@
 #include "widgets/pane.h"
 #include "widgets/tabbable.h"
 
+#include "application_bar.h"
 #include "input_port_monitor.h"
 #include "rec_info_box.h"
 #include "shuttle_control.h"
-#include "transport_control_ui.h"
 
 namespace ARDOUR {
 	class SoloMuteRelease;
@@ -74,23 +73,26 @@ public:
 	void spill_port (std::string const&);
 	void add_track (std::string const&);
 
+	void focus_on_clock();
+
 private:
 	void load_bindings ();
 	void register_actions ();
 	void update_title ();
 	void session_going_away ();
 	void parameter_changed (std::string const&);
+	void dpi_reset ();
 	void presentation_info_changed (PBD::PropertyChange const&);
 	void gui_extents_changed ();
-	void regions_changed (boost::shared_ptr<ARDOUR::RegionList>, PBD::PropertyChange const&);
+	void regions_changed (std::shared_ptr<ARDOUR::RegionList>, PBD::PropertyChange const&);
 
 	void start_updating ();
 	void stop_updating ();
 	bool update_meters ();
 	void add_or_remove_io (ARDOUR::DataType, std::vector<std::string>, bool);
 	void io_plugins_changed ();
-	void io_plugin_add (boost::shared_ptr<ARDOUR::IOPlug>);
-	void io_plugin_going_away (boost::weak_ptr<ARDOUR::IOPlug>);
+	void io_plugin_add (std::shared_ptr<ARDOUR::IOPlug>);
+	void io_plugin_going_away (std::weak_ptr<ARDOUR::IOPlug>);
 	void post_add_remove (bool);
 	void update_io_widget_labels ();
 
@@ -100,7 +102,6 @@ private:
 	void tra_name_edit (TrackRecordAxis*, bool);
 	void update_rec_table_layout ();
 	void update_spacer_width (Gtk::Allocation&, TrackRecordAxis*);
-	void tabbed_changed (bool);
 
 	void set_connections (std::string const&);
 	void port_connected_or_disconnected (std::string, std::string);
@@ -114,6 +115,10 @@ private:
 
 	void arm_all ();
 	void arm_none ();
+
+	void rec_undo ();
+	void rec_redo ();
+
 	void peak_reset ();
 
 	void update_sensitivity ();
@@ -124,7 +129,6 @@ private:
 	static int calc_columns (int child_width, int parent_width);
 
 	Gtkmm2ext::Bindings*  bindings;
-	Gtk::VBox            _content;
 	Gtk::HBox            _toolbar;
 	Gtk::Table           _button_table;
 	ArdourWidgets::VPane _pane;
@@ -151,7 +155,7 @@ private:
 	DurationInfoBox              _duration_info_box;
 	XrunInfoBox                  _xrun_info_box;
 	RemainInfoBox                _remain_info_box;
-	TransportControlUI           _transport_ctrl;
+	ApplicationBar               _application_bar;
 	Glib::RefPtr<Gtk::SizeGroup> _toolbar_button_height;
 	Glib::RefPtr<Gtk::SizeGroup> _toolbar_recarm_width;
 	Glib::RefPtr<Gtk::SizeGroup> _toolbar_monitoring_width;
@@ -246,14 +250,14 @@ private:
 	};
 
 	struct InputPortPtrSort {
-		bool operator() (boost::shared_ptr<InputPort> const& a, boost::shared_ptr<InputPort> const& b) const {
+		bool operator() (std::shared_ptr<InputPort> const& a, std::shared_ptr<InputPort> const& b) const {
 			return *a < *b;
 		}
 	};
 
-	typedef std::map<std::string, boost::shared_ptr<InputPort> >     InputPortMap;
-	typedef std::set<boost::shared_ptr<InputPort>, InputPortPtrSort> InputPortSet;
-	typedef std::set<boost::shared_ptr<ARDOUR::IOPlug>>              IOPlugSet;
+	typedef std::map<std::string, std::shared_ptr<InputPort> >     InputPortMap;
+	typedef std::set<std::shared_ptr<InputPort>, InputPortPtrSort> InputPortSet;
+	typedef std::set<std::shared_ptr<ARDOUR::IOPlug>>              IOPlugSet;
 
 	RecRuler                     _ruler;
 	Gtk::EventBox                _space;
@@ -277,4 +281,3 @@ public:
 	std::list<TrackRecordAxis*> visible_recorders () const;
 };
 
-#endif /* __gtk_ardour_recorder_ui_h__ */

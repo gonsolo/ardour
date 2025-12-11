@@ -19,14 +19,14 @@
 #ifndef __ardour_plugin_display__
 #define __ardour_plugin_display__
 
-#include <gtkmm/drawingarea.h>
+#include <ytkmm/drawingarea.h>
 
 #include "ardour/plugin.h"
 
 class PluginDisplay : public Gtk::DrawingArea
 {
 public:
-	PluginDisplay(boost::shared_ptr<ARDOUR::Plugin>, uint32_t max_height = 80);
+	PluginDisplay(std::shared_ptr<ARDOUR::Plugin>, uint32_t max_height = 80);
 	virtual ~PluginDisplay();
 
 protected:
@@ -44,7 +44,7 @@ protected:
 
 	virtual void display_frame (cairo_t* cr, double w, double h);
 
-	boost::shared_ptr<ARDOUR::Plugin> _plug;
+	std::shared_ptr<ARDOUR::Plugin> _plug;
 	PBD::ScopedConnection _qdraw_connection;
 	PBD::ScopedConnection _death_connection;
 	cairo_surface_t* _surf;

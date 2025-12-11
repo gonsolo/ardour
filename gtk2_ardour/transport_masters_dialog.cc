@@ -57,8 +57,8 @@ TransportMastersWidget::TransportMastersWidget ()
 	midi_port_store = ListStore::create (port_columns);
 	audio_port_store = ListStore::create (port_columns);
 
-	AudioEngine::instance()->PortRegisteredOrUnregistered.connect (port_reg_connection, invalidator (*this),  boost::bind (&TransportMastersWidget::update_ports, this), gui_context());
-	AudioEngine::instance()->PortPrettyNameChanged.connect (port_reg_connection, invalidator (*this),  boost::bind (&TransportMastersWidget::update_ports, this), gui_context());
+	AudioEngine::instance()->PortRegisteredOrUnregistered.connect (port_reg_connection, invalidator (*this),  std::bind (&TransportMastersWidget::update_ports, this), gui_context());
+	AudioEngine::instance()->PortPrettyNameChanged.connect (port_reg_connection, invalidator (*this),  std::bind (&TransportMastersWidget::update_ports, this), gui_context());
 	update_ports ();
 
 	Gtk::Table *add_table = manage(new Gtk::Table(1,2));
@@ -68,7 +68,7 @@ TransportMastersWidget::TransportMastersWidget ()
 	pack_start (*add_table, FALSE, FALSE);
 	pack_start (lost_sync_button, FALSE, FALSE, 12);
 
-	Config->ParameterChanged.connect (config_connection, invalidator (*this), boost::bind (&TransportMastersWidget::param_changed, this, _1), gui_context());
+	Config->ParameterChanged.connect (config_connection, invalidator (*this), std::bind (&TransportMastersWidget::param_changed, this, _1), gui_context());
 	lost_sync_button.signal_toggled().connect (sigc::mem_fun (*this, &TransportMastersWidget::lost_sync_button_toggled));
 	lost_sync_button.set_active (Config->get_transport_masters_just_roll_when_sync_lost());
 	set_tooltip (lost_sync_button, string_compose (_("<b>When enabled</b>, if the signal from a transport master is lost, %1 will keep rolling at its current speed.\n"
@@ -105,11 +105,11 @@ TransportMastersWidget::TransportMastersWidget ()
 	table.set_col_spacings (12);
 	table.set_row_spacings (6);
 
-	TransportMasterManager::instance().CurrentChanged.connect (current_connection, invalidator (*this), boost::bind (&TransportMastersWidget::current_changed, this, _1, _2), gui_context());
-	TransportMasterManager::instance().Added.connect (add_connection, invalidator (*this), boost::bind (&TransportMastersWidget::rebuild, this), gui_context());
-	TransportMasterManager::instance().Removed.connect (remove_connection, invalidator (*this), boost::bind (&TransportMastersWidget::rebuild, this), gui_context());
+	TransportMasterManager::instance().CurrentChanged.connect (current_connection, invalidator (*this), std::bind (&TransportMastersWidget::current_changed, this, _1, _2), gui_context());
+	TransportMasterManager::instance().Added.connect (add_connection, invalidator (*this), std::bind (&TransportMastersWidget::rebuild, this), gui_context());
+	TransportMasterManager::instance().Removed.connect (remove_connection, invalidator (*this), std::bind (&TransportMastersWidget::rebuild, this), gui_context());
 
-	AudioEngine::instance()->Running.connect (engine_running_connection, invalidator (*this), boost::bind (&TransportMastersWidget::update_usability, this), gui_context());
+	AudioEngine::instance()->Running.connect (engine_running_connection, invalidator (*this), std::bind (&TransportMastersWidget::update_usability, this), gui_context());
 
 	rebuild ();
 }
@@ -122,13 +122,15 @@ TransportMastersWidget::~TransportMastersWidget ()
 }
 
 void
-TransportMastersWidget::set_transport_master (boost::shared_ptr<TransportMaster> tm)
+TransportMastersWidget::set_transport_master (std::shared_ptr<TransportMaster> tm)
 {
-	_session->request_sync_source (tm);
+	if (_session) {
+		_session->request_sync_source (tm);
+	}
 }
 
 void
-TransportMastersWidget::current_changed (boost::shared_ptr<TransportMaster> old_master, boost::shared_ptr<TransportMaster> new_master)
+TransportMastersWidget::current_changed (std::shared_ptr<TransportMaster> old_master, std::shared_ptr<TransportMaster> new_master)
 {
 	for (vector<Row*>::iterator r = rows.begin(); r != rows.end(); ++r) {
 		if ((*r)->tm == new_master) {
@@ -229,7 +231,7 @@ TransportMastersWidget::rebuild ()
 		table.attach (r->current_box,     col, col+1, n, n+1, FILL, SHRINK); ++col;
 		table.attach (r->last_box,        col, col+1, n, n+1, FILL, SHRINK); ++col;
 
-		boost::shared_ptr<TimecodeTransportMaster> ttm (boost::dynamic_pointer_cast<TimecodeTransportMaster> (r->tm));
+		std::shared_ptr<TimecodeTransportMaster> ttm (std::dynamic_pointer_cast<TimecodeTransportMaster> (r->tm));
 
 		if (ttm) {
 			table.attach (r->sclock_synced_button, col, col+1, n, n+1, FILL, SHRINK); ++col;
@@ -254,7 +256,7 @@ TransportMastersWidget::rebuild ()
 			r->sclock_synced_button.signal_toggled().connect (sigc::mem_fun (*r, &TransportMastersWidget::Row::sync_button_toggled));
 		}
 
-		r->tm->PropertyChanged.connect (r->property_change_connection, invalidator (*this), boost::bind (&TransportMastersWidget::Row::prop_change, r, _1), gui_context());
+		r->tm->PropertyChanged.connect (r->property_change_connection, invalidator (*r), std::bind (&TransportMastersWidget::Row::prop_change, r, _1), gui_context());
 
 		PropertyChange all_change;
 		all_change.add (Properties::locked);
@@ -271,6 +273,7 @@ TransportMastersWidget::rebuild ()
 	}
 
 	update_usability ();
+	allow_master_select (_session && !_session->config.get_external_sync());
 }
 
 bool
@@ -431,11 +434,11 @@ TransportMastersWidget::Row::prop_change (PropertyChange what_changed)
 	}
 
 	if (what_changed.contains (Properties::fr2997)) {
-		fr2997_button.set_active (boost::dynamic_pointer_cast<TimecodeTransportMaster> (tm)->fr2997());
+		fr2997_button.set_active (std::dynamic_pointer_cast<TimecodeTransportMaster> (tm)->fr2997());
 	}
 
 	if (what_changed.contains (Properties::sclock_synced)) {
-		sclock_synced_button.set_active (boost::dynamic_pointer_cast<TimecodeTransportMaster> (tm)->sample_clock_synced());
+		sclock_synced_button.set_active (std::dynamic_pointer_cast<TimecodeTransportMaster> (tm)->sample_clock_synced());
 	}
 
 	if (what_changed.contains (Properties::collect)) {
@@ -461,7 +464,7 @@ TransportMastersWidget::Row::use_button_toggled ()
 void
 TransportMastersWidget::Row::fr2997_button_toggled ()
 {
-	boost::dynamic_pointer_cast<TimecodeTransportMaster>(tm)->set_fr2997 (fr2997_button.get_active());
+	std::dynamic_pointer_cast<TimecodeTransportMaster>(tm)->set_fr2997 (fr2997_button.get_active());
 }
 
 void
@@ -558,29 +561,29 @@ TransportMastersWidget::Row::update (Session* s, samplepos_t now)
 	samplepos_t when;
 	stringstream ss;
 	Time t;
-	boost::shared_ptr<TimecodeTransportMaster> ttm;
-	boost::shared_ptr<MIDIClock_TransportMaster> mtm;
+	std::shared_ptr<TimecodeTransportMaster> ttm;
+	std::shared_ptr<MIDIClock_TransportMaster> mtm;
 
 	if (!AudioEngine::instance()->running() || !s) {
 		return;
 	}
 
 	string current_str (" --:--:--:--");
-	string delta_str ("\u0394  ----  ");
+	string delta_str (u8"\u0394  ----  ");
 	string age_str ("         ");
 
 	if (tm->speed_and_position (speed, pos, most_recent, when, now)) {
 
-		if ((ttm = boost::dynamic_pointer_cast<TimecodeTransportMaster> (tm))) {
+		if ((ttm = std::dynamic_pointer_cast<TimecodeTransportMaster> (tm))) {
 			Timecode::TimecodeFormat fmt = ttm->apparent_timecode_format();
 			format.set_text (timecode_format_name (fmt));
 
 			sample_to_timecode (pos, t, false, false,
 					Timecode::timecode_to_frames_per_second (fmt),
 					Timecode::timecode_has_drop_frames (fmt),
-					AudioEngine::instance()->sample_rate(), 0, false, 0);
+					TEMPORAL_SAMPLE_RATE, 0, false, 0);
 
-		} else if ((mtm = boost::dynamic_pointer_cast<MIDIClock_TransportMaster> (tm))) {
+		} else if ((mtm = std::dynamic_pointer_cast<MIDIClock_TransportMaster> (tm))) {
 			char buf[16];
 			snprintf (buf, sizeof (buf), "%.1f BPM", mtm->bpm());
 			buf[15] = '\0';
@@ -602,7 +605,7 @@ TransportMastersWidget::Row::update (Session* s, samplepos_t now)
 
 	if (save_when) {
 		char gap[32];
-		float seconds = (now - save_when) / (float) AudioEngine::instance()->sample_rate();
+		float seconds = (now - save_when) / (float) TEMPORAL_SAMPLE_RATE;
 		if (seconds < 0) {
 			seconds = 0;
 		}
@@ -668,7 +671,9 @@ void
 TransportMastersWindow::set_session (ARDOUR::Session* s)
 {
 	ArdourWindow::set_session (s);
-	w.set_session (s);
+	if (s) {
+		w.set_session (s);
+	}
 }
 
 void
@@ -679,8 +684,10 @@ TransportMastersWidget::set_session (ARDOUR::Session* s)
 	SessionHandlePtr::set_session (s);
 
 	if (_session) {
-		_session->config.ParameterChanged.connect (session_config_connection, invalidator (*this), boost::bind (&TransportMastersWidget::param_changed, this, _1), gui_context());
-		allow_master_select (!_session->config.get_external_sync());
+		_session->config.ParameterChanged.connect (session_config_connection, invalidator (*this), std::bind (&TransportMastersWidget::param_changed, this, _1), gui_context());
+		rebuild ();
+	} else {
+		clear ();
 	}
 }
 

@@ -53,7 +53,7 @@ ExportFileNotebook::ExportFileNotebook () :
 }
 
 void
-ExportFileNotebook::set_session_and_manager (ARDOUR::Session * s, boost::shared_ptr<ARDOUR::ExportProfileManager> manager)
+ExportFileNotebook::set_session_and_manager (ARDOUR::Session * s, std::shared_ptr<ARDOUR::ExportProfileManager> manager)
 {
 	SessionHandlePtr::set_session (s);
 	profile_manager = manager;
@@ -266,7 +266,7 @@ ExportFileNotebook::FilePage::FilePage (Session * s, ManagerPtr profile_manager,
 
 	tab_close_button.signal_clicked().connect (sigc::bind (sigc::mem_fun (*parent, &ExportFileNotebook::remove_file_page), this));
 
-	profile_manager->FormatListChanged.connect (format_connection, invalidator (*this), boost::bind (&ExportFormatSelector::update_format_list, &format_selector), gui_context());
+	profile_manager->FormatListChanged.connect (format_connection, invalidator (*this), std::bind (&ExportFormatSelector::update_format_list, &format_selector), gui_context());
 
 	format_selector.FormatEdited.connect (sigc::mem_fun (*this, &ExportFileNotebook::FilePage::save_format_to_manager));
 	format_selector.FormatRemoved.connect (sigc::mem_fun (*profile_manager, &ExportProfileManager::remove_format_profile));
@@ -291,8 +291,8 @@ ExportFileNotebook::FilePage::FilePage (Session * s, ManagerPtr profile_manager,
 	tab_widget.pack_start (tab_label, false, false, 3);
 	tab_widget.pack_end (tab_close_alignment, false, false, 0);
 	tab_widget.show_all_children ();
+
 	update_tab_label ();
-	update_example_filename();
 
 	/* Done */
 
@@ -380,7 +380,11 @@ void
 ExportFileNotebook::FilePage::critical_selection_changed ()
 {
 	update_tab_label();
-	update_example_filename();
+
+	/* Note: `update_example_filename()` is called from
+	 * `ExportDialog::update_warnings_and_example_filename()`
+	 * in response to CriticalSelectionChanged
+	 */
 
 	soundcloud_button_connection.block ();
 	analysis_button_connection.block ();

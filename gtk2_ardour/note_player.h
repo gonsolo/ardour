@@ -20,11 +20,16 @@
 #ifndef __gtk2_ardour_note_player_h__
 #define __gtk2_ardour_note_player_h__
 
+#include <memory>
 #include <vector>
-#include <boost/shared_ptr.hpp>
+
 #include <sigc++/trackable.h>
 
 #include "evoral/Note.h"
+
+namespace Temporal {
+	class Beats;
+}
 
 namespace ARDOUR {
 	class MidiTrack;
@@ -34,21 +39,19 @@ class NotePlayer : public sigc::trackable {
 public:
 	typedef Evoral::Note<Temporal::Beats> NoteType;
 
-	NotePlayer (boost::shared_ptr<ARDOUR::MidiTrack>);
+	NotePlayer (std::shared_ptr<ARDOUR::MidiTrack>);
 	~NotePlayer ();
 
-	void add (boost::shared_ptr<NoteType>);
+	void add (std::shared_ptr<NoteType>);
 	void play ();
-	void on ();
-	void off ();
-	void clear ();
-
-	static bool _off (NotePlayer*);
 
 private:
-	typedef std::vector< boost::shared_ptr<NoteType> > Notes;
+	void on ();
+	void off ();
+	static bool _off (NotePlayer*);
+	typedef std::vector< std::shared_ptr<NoteType> > Notes;
 
-	boost::shared_ptr<ARDOUR::MidiTrack> track;
+	std::shared_ptr<ARDOUR::MidiTrack> track;
 	Notes notes;
 };
 

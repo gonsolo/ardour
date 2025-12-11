@@ -21,8 +21,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/frame.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/stock.h>
 
 #include "ardour/export_format_specification.h"
 #include "ardour/session.h"
@@ -70,7 +70,7 @@ ExportFormatDialog::ExportFormatDialog (FormatPtr format, bool new_dialog)
 	, silence_end_checkbox (_("Add silence at end:"))
 	, silence_end_clock ("silence_end", true, "", true, false, true)
 
-	, command_label (_("Command to run post-export\n(%f=file path, %d=directory, %b=basename, see tooltip for more):"), Gtk::ALIGN_START)
+	, command_label (_("Command to run post-export\n(%f=file path, %d=directory, %b=basename; see tooltip for more,\ndon't add quotes around arguments):"), Gtk::ALIGN_START)
 
 	, format_table (3, 4)
 	, compatibility_label (_("Compatibility"), Gtk::ALIGN_START)
@@ -111,7 +111,7 @@ ExportFormatDialog::ExportFormatDialog (FormatPtr format, bool new_dialog)
 	update_description ();
 	manager.DescriptionChanged.connect (
 	    *this, invalidator (*this),
-	    boost::bind (&ExportFormatDialog::update_description, this), gui_context ());
+	    std::bind (&ExportFormatDialog::update_description, this), gui_context ());
 
 	/* Normalize */
 
@@ -235,7 +235,7 @@ ExportFormatDialog::ExportFormatDialog (FormatPtr format, bool new_dialog)
 	close_button = add_button (Gtk::Stock::SAVE, Gtk::RESPONSE_APPLY);
 	close_button->set_sensitive (false);
 	close_button->signal_clicked ().connect (sigc::mem_fun (*this, &ExportFormatDialog::end_dialog));
-	manager.CompleteChanged.connect (*this, invalidator (*this), boost::bind (&Gtk::Button::set_sensitive, close_button, _1), gui_context ());
+	manager.CompleteChanged.connect (*this, invalidator (*this), std::bind (&Gtk::Button::set_sensitive, close_button, _1), gui_context ());
 
 	with_cue.signal_toggled ().connect (sigc::mem_fun (*this, &ExportFormatDialog::update_with_cue));
 	with_toc.signal_toggled ().connect (sigc::mem_fun (*this, &ExportFormatDialog::update_with_toc));
@@ -354,12 +354,13 @@ void
 ExportFormatDialog::set_session (ARDOUR::Session* s)
 {
 	SessionHandlePtr::set_session (s);
-	silence_start_clock.set_session (s);
-	silence_end_clock.set_session (s);
 
 	if (!_session) {
 		return;
 	}
+
+	silence_start_clock.set_session (s);
+	silence_end_clock.set_session (s);
 
 	update_clock (silence_start_clock, silence_start);
 	update_clock (silence_end_clock, silence_end);
@@ -428,7 +429,7 @@ ExportFormatDialog::load_state (FormatPtr spec)
 	}
 
 	for (Gtk::ListStore::Children::iterator it = format_list->children ().begin (); it != format_list->children ().end (); ++it) {
-		boost::shared_ptr<ARDOUR::ExportFormat> format_in_list = it->get_value (format_cols.ptr);
+		std::shared_ptr<ARDOUR::ExportFormat> format_in_list = it->get_value (format_cols.ptr);
 		if (spec->is_format (format_in_list)) {
 			format_in_list->set_selected (true);
 			break;
@@ -504,7 +505,7 @@ ExportFormatDialog::init_format_table ()
 		row[compatibility_cols.label]    = (*it)->name ();
 
 		WeakCompatPtr ptr (*it);
-		(*it)->SelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_compatibility_selection, this, _1, ptr), gui_context ());
+		(*it)->SelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_compatibility_selection, this, _1, ptr), gui_context ());
 	}
 
 	compatibility_view.append_column_editable ("", compatibility_cols.selected);
@@ -532,8 +533,8 @@ ExportFormatDialog::init_format_table ()
 		row[quality_cols.label] = (*it)->name ();
 
 		WeakQualityPtr ptr (*it);
-		(*it)->SelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_quality_selection, this, _1, ptr), gui_context ());
-		(*it)->CompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_quality_compatibility, this, _1, ptr), gui_context ());
+		(*it)->SelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_quality_selection, this, _1, ptr), gui_context ());
+		(*it)->CompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_quality_compatibility, this, _1, ptr), gui_context ());
 	}
 
 	quality_view.append_column ("", quality_cols.label);
@@ -554,19 +555,19 @@ ExportFormatDialog::init_format_table ()
 		row[format_cols.label] = (*it)->name ();
 
 		WeakFormatPtr ptr (*it);
-		(*it)->SelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_format_selection, this, _1, ptr), gui_context ());
-		(*it)->CompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_format_compatibility, this, _1, ptr), gui_context ());
+		(*it)->SelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_format_selection, this, _1, ptr), gui_context ());
+		(*it)->CompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_format_compatibility, this, _1, ptr), gui_context ());
 
 		/* Encoding options */
 
-		boost::shared_ptr<HasSampleFormat> hsf;
+		std::shared_ptr<HasSampleFormat> hsf;
 
-		if ((hsf = boost::dynamic_pointer_cast<HasSampleFormat> (*it))) {
-			hsf->SampleFormatSelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_format_selection, this, _1, _2), gui_context ());
-			hsf->SampleFormatCompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_format_compatibility, this, _1, _2), gui_context ());
+		if ((hsf = std::dynamic_pointer_cast<HasSampleFormat> (*it))) {
+			hsf->SampleFormatSelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_format_selection, this, _1, _2), gui_context ());
+			hsf->SampleFormatCompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_format_compatibility, this, _1, _2), gui_context ());
 
-			hsf->DitherTypeSelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_dither_type_selection, this, _1, _2), gui_context ());
-			hsf->DitherTypeCompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_dither_type_compatibility, this, _1, _2), gui_context ());
+			hsf->DitherTypeSelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_dither_type_selection, this, _1, _2), gui_context ());
+			hsf->DitherTypeCompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_dither_type_compatibility, this, _1, _2), gui_context ());
 		}
 	}
 
@@ -588,8 +589,8 @@ ExportFormatDialog::init_format_table ()
 		row[sample_rate_cols.label] = (*it)->name ();
 
 		WeakSampleRatePtr ptr (*it);
-		(*it)->SelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_rate_selection, this, _1, ptr), gui_context ());
-		(*it)->CompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_rate_compatibility, this, _1, ptr), gui_context ());
+		(*it)->SelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_rate_selection, this, _1, ptr), gui_context ());
+		(*it)->CompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_rate_compatibility, this, _1, ptr), gui_context ());
 	}
 
 	sample_rate_view.append_column ("", sample_rate_cols.label);
@@ -825,11 +826,11 @@ ExportFormatDialog::change_dither_type_selection (bool select, WeakDitherTypePtr
 
 template <typename T, typename ColsT>
 void
-ExportFormatDialog::change_selection (bool select, boost::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore>& list, Gtk::TreeView& view, ColsT& cols)
+ExportFormatDialog::change_selection (bool select, std::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore>& list, Gtk::TreeView& view, ColsT& cols)
 {
 	++applying_changes_from_engine;
 
-	boost::shared_ptr<T> ptr = w_ptr.lock ();
+	std::shared_ptr<T> ptr = w_ptr.lock ();
 
 	Gtk::ListStore::Children::iterator it;
 	Glib::RefPtr<Gtk::TreeSelection>   selection;
@@ -886,10 +887,10 @@ ExportFormatDialog::change_dither_type_compatibility (bool compatibility, WeakDi
 
 template <typename T, typename ColsT>
 void
-ExportFormatDialog::change_compatibility (bool compatibility, boost::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore>& list, ColsT& cols,
+ExportFormatDialog::change_compatibility (bool compatibility, std::weak_ptr<T> w_ptr, Glib::RefPtr<Gtk::ListStore>& list, ColsT& cols,
                                           std::string const& c_incompatible, std::string const& c_compatible)
 {
-	boost::shared_ptr<T> ptr = w_ptr.lock ();
+	std::shared_ptr<T> ptr = w_ptr.lock ();
 
 	Gtk::ListStore::Children::iterator it;
 	for (it = list->children ().begin (); it != list->children ().end (); ++it) {
@@ -993,24 +994,25 @@ ExportFormatDialog::update_silence_end_selection ()
 void
 ExportFormatDialog::update_clock (AudioClock& clock, ARDOUR::AnyTime const& time)
 {
-	// TODO position
-	clock.set (timepos_t (_session->convert_to_samples (time)), true);
+	clock.set_duration (timecnt_t (_session->convert_to_samples (time)));
 
 	AudioClock::Mode mode (AudioClock::Timecode);
 
 	switch (time.type) {
-		case AnyTime::Timecode:
-			mode = AudioClock::Timecode;
-			break;
-		case AnyTime::BBT:
-			mode = AudioClock::BBT;
-			break;
-		case AnyTime::Samples:
-			mode = AudioClock::Samples;
-			break;
-		case AnyTime::Seconds:
-			mode = AudioClock::MinSec;
-			break;
+	case AnyTime::Timecode:
+		mode = AudioClock::Timecode;
+		break;
+	case AnyTime::BBT:
+		mode = AudioClock::BBT;
+		break;
+	case AnyTime::Samples:
+		mode = AudioClock::Samples;
+		break;
+	case AnyTime::Seconds:
+		mode = AudioClock::MinSec;
+		break;
+	default:
+		return;
 	}
 
 	clock.set_mode (mode);
@@ -1042,6 +1044,8 @@ ExportFormatDialog::update_time (AnyTime& time, AudioClock const& clock)
 	case AudioClock::Samples:
 		time.type    = AnyTime::Samples;
 		time.samples = samples;
+		break;
+	default:
 		break;
 	}
 }
@@ -1108,27 +1112,27 @@ ExportFormatDialog::change_encoding_options (ExportFormatPtr ptr)
 	fill_sample_rate_lists (ptr);
 	empty_encoding_option_table ();
 
-	boost::shared_ptr<ARDOUR::ExportFormatLinear>    linear_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatOggVorbis> ogg_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatFLAC>      flac_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatOggOpus>   opus_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatBWF>       bwf_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatMPEG>      mpeg_ptr;
-	boost::shared_ptr<ARDOUR::ExportFormatFFMPEG>    ffmpeg_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatLinear>    linear_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatOggVorbis> ogg_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatFLAC>      flac_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatOggOpus>   opus_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatBWF>       bwf_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatMPEG>      mpeg_ptr;
+	std::shared_ptr<ARDOUR::ExportFormatFFMPEG>    ffmpeg_ptr;
 
-	if ((linear_ptr = boost::dynamic_pointer_cast<ExportFormatLinear> (ptr))) {
+	if ((linear_ptr = std::dynamic_pointer_cast<ExportFormatLinear> (ptr))) {
 		show_linear_enconding_options (linear_ptr);
-	} else if ((ogg_ptr = boost::dynamic_pointer_cast<ExportFormatOggVorbis> (ptr))) {
+	} else if ((ogg_ptr = std::dynamic_pointer_cast<ExportFormatOggVorbis> (ptr))) {
 		show_ogg_enconding_options (ogg_ptr);
-	} else if ((opus_ptr = boost::dynamic_pointer_cast<ExportFormatOggOpus> (ptr))) {
+	} else if ((opus_ptr = std::dynamic_pointer_cast<ExportFormatOggOpus> (ptr))) {
 		show_opus_enconding_options (opus_ptr);
-	} else if ((flac_ptr = boost::dynamic_pointer_cast<ExportFormatFLAC> (ptr))) {
+	} else if ((flac_ptr = std::dynamic_pointer_cast<ExportFormatFLAC> (ptr))) {
 		show_flac_enconding_options (flac_ptr);
-	} else if ((bwf_ptr = boost::dynamic_pointer_cast<ExportFormatBWF> (ptr))) {
+	} else if ((bwf_ptr = std::dynamic_pointer_cast<ExportFormatBWF> (ptr))) {
 		show_bwf_enconding_options (bwf_ptr);
-	} else if ((mpeg_ptr = boost::dynamic_pointer_cast<ExportFormatMPEG> (ptr))) {
+	} else if ((mpeg_ptr = std::dynamic_pointer_cast<ExportFormatMPEG> (ptr))) {
 		show_mpeg_enconding_options (mpeg_ptr);
-	} else if ((ffmpeg_ptr = boost::dynamic_pointer_cast<ExportFormatFFMPEG> (ptr))) {
+	} else if ((ffmpeg_ptr = std::dynamic_pointer_cast<ExportFormatFFMPEG> (ptr))) {
 		show_ffmpeg_enconding_options (ffmpeg_ptr);
 	} else {
 		std::cout << "Unrecognized format!" << std::endl;
@@ -1150,7 +1154,7 @@ ExportFormatDialog::remove_widget (Gtk::Widget& to_remove, Gtk::Container* remov
 }
 
 void
-ExportFormatDialog::show_linear_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatLinear> ptr)
+ExportFormatDialog::show_linear_enconding_options (std::shared_ptr<ARDOUR::ExportFormatLinear> ptr)
 {
 	/* Set label and pack table */
 
@@ -1162,13 +1166,13 @@ ExportFormatDialog::show_linear_enconding_options (boost::shared_ptr<ARDOUR::Exp
 	encoding_options_table.attach (sample_format_view, 0, 1, 1, 2);
 	encoding_options_table.attach (dither_type_view, 1, 2, 1, 2);
 
-	fill_sample_format_lists (boost::dynamic_pointer_cast<HasSampleFormat> (ptr));
+	fill_sample_format_lists (std::dynamic_pointer_cast<HasSampleFormat> (ptr));
 
 	show_all_children ();
 }
 
 void
-ExportFormatDialog::show_ogg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatOggVorbis> ptr)
+ExportFormatDialog::show_ogg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatOggVorbis> ptr)
 {
 	encoding_options_label.set_label (_("Ogg Vorbis options"));
 
@@ -1179,7 +1183,7 @@ ExportFormatDialog::show_ogg_enconding_options (boost::shared_ptr<ARDOUR::Export
 }
 
 void
-ExportFormatDialog::show_opus_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatOggOpus> ptr)
+ExportFormatDialog::show_opus_enconding_options (std::shared_ptr<ARDOUR::ExportFormatOggOpus> ptr)
 {
 	encoding_options_label.set_label (_("OPUS options"));
 	encoding_options_table.resize (1, 1);
@@ -1189,7 +1193,7 @@ ExportFormatDialog::show_opus_enconding_options (boost::shared_ptr<ARDOUR::Expor
 }
 
 void
-ExportFormatDialog::show_flac_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatFLAC> ptr)
+ExportFormatDialog::show_flac_enconding_options (std::shared_ptr<ARDOUR::ExportFormatFLAC> ptr)
 {
 	encoding_options_label.set_label (_("FLAC options"));
 
@@ -1199,13 +1203,13 @@ ExportFormatDialog::show_flac_enconding_options (boost::shared_ptr<ARDOUR::Expor
 	encoding_options_table.attach (sample_format_view, 0, 1, 1, 2);
 	encoding_options_table.attach (dither_type_view, 1, 2, 1, 2);
 
-	fill_sample_format_lists (boost::dynamic_pointer_cast<HasSampleFormat> (ptr));
+	fill_sample_format_lists (std::dynamic_pointer_cast<HasSampleFormat> (ptr));
 
 	show_all_children ();
 }
 
 void
-ExportFormatDialog::show_bwf_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatBWF> ptr)
+ExportFormatDialog::show_bwf_enconding_options (std::shared_ptr<ARDOUR::ExportFormatBWF> ptr)
 {
 	encoding_options_label.set_label (_("Broadcast Wave options"));
 
@@ -1215,13 +1219,13 @@ ExportFormatDialog::show_bwf_enconding_options (boost::shared_ptr<ARDOUR::Export
 	encoding_options_table.attach (sample_format_view, 0, 1, 1, 2);
 	encoding_options_table.attach (dither_type_view, 1, 2, 1, 2);
 
-	fill_sample_format_lists (boost::dynamic_pointer_cast<HasSampleFormat> (ptr));
+	fill_sample_format_lists (std::dynamic_pointer_cast<HasSampleFormat> (ptr));
 
 	show_all_children ();
 }
 
 void
-ExportFormatDialog::show_mpeg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatMPEG> ptr)
+ExportFormatDialog::show_mpeg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatMPEG> ptr)
 {
 	encoding_options_label.set_label (_("Variable bit rate quality"));
 	encoding_options_table.resize (1, 1);
@@ -1232,7 +1236,7 @@ ExportFormatDialog::show_mpeg_enconding_options (boost::shared_ptr<ARDOUR::Expor
 }
 
 void
-ExportFormatDialog::show_ffmpeg_enconding_options (boost::shared_ptr<ARDOUR::ExportFormatFFMPEG> ptr)
+ExportFormatDialog::show_ffmpeg_enconding_options (std::shared_ptr<ARDOUR::ExportFormatFFMPEG> ptr)
 {
 	encoding_options_label.set_label (_("FFMPEG/MP3 options"));
 	encoding_options_table.resize (1, 1);
@@ -1242,7 +1246,7 @@ ExportFormatDialog::show_ffmpeg_enconding_options (boost::shared_ptr<ARDOUR::Exp
 }
 
 void
-ExportFormatDialog::fill_sample_rate_lists (boost::shared_ptr<ARDOUR::ExportFormat> ptr)
+ExportFormatDialog::fill_sample_rate_lists (std::shared_ptr<ARDOUR::ExportFormat> ptr)
 {
 	Gtk::TreeModel::iterator iter;
 	Gtk::TreeModel::Row      row;
@@ -1263,13 +1267,13 @@ ExportFormatDialog::fill_sample_rate_lists (boost::shared_ptr<ARDOUR::ExportForm
 		row[sample_rate_cols.label] = (*it)->name ();
 
 		WeakSampleRatePtr ptr (*it);
-		(*it)->SelectChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_rate_selection, this, _1, ptr), gui_context ());
-		(*it)->CompatibleChanged.connect (*this, invalidator (*this), boost::bind (&ExportFormatDialog::change_sample_rate_compatibility, this, _1, ptr), gui_context ());
+		(*it)->SelectChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_rate_selection, this, _1, ptr), gui_context ());
+		(*it)->CompatibleChanged.connect (*this, invalidator (*this), std::bind (&ExportFormatDialog::change_sample_rate_compatibility, this, _1, ptr), gui_context ());
 	}
 
 }
 void
-ExportFormatDialog::fill_sample_format_lists (boost::shared_ptr<ARDOUR::HasSampleFormat> ptr)
+ExportFormatDialog::fill_sample_format_lists (std::shared_ptr<ARDOUR::HasSampleFormat> ptr)
 {
 	/* Fill lists */
 
@@ -1312,7 +1316,7 @@ ExportFormatDialog::fill_sample_format_lists (boost::shared_ptr<ARDOUR::HasSampl
 }
 
 void
-ExportFormatDialog::fill_codec_quality_lists (boost::shared_ptr<ARDOUR::HasCodecQuality> ptr)
+ExportFormatDialog::fill_codec_quality_lists (std::shared_ptr<ARDOUR::HasCodecQuality> ptr)
 {
 	HasCodecQuality::CodecQualityList const& codecs = ptr->get_codec_qualities ();
 

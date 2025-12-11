@@ -19,7 +19,6 @@
 #ifndef _ardour_rt_tasklist_h_
 #define _ardour_rt_tasklist_h_
 
-#include <boost/function.hpp>
 #include <vector>
 
 #include "ardour/libardour_visibility.h"
@@ -32,17 +31,17 @@ class Graph;
 class LIBARDOUR_API RTTaskList
 {
 public:
-	RTTaskList (boost::shared_ptr<Graph>);
+	RTTaskList (std::shared_ptr<Graph>);
 
 	/** process tasks in list in parallel, wait for them to complete */
 	void process ();
-	void push_back (boost::function<void ()> fn);
+	void push_back (std::function<void ()> fn);
 
 	std::vector<RTTask> const& tasks () const { return _tasks; }
 
 private:
 	std::vector<RTTask>      _tasks;
-	boost::shared_ptr<Graph> _graph;
+	std::shared_ptr<Graph> _graph;
 };
 
 } // namespace ARDOUR

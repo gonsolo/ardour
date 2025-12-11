@@ -24,6 +24,7 @@
 #include "ardour/stripable.h"
 #include "ardour/track.h"
 #include "ardour/value_as_string.h"
+#include "ardour/well_known_enum.h"
 
 #include "control_protocol/control_protocol.h"
 
@@ -108,11 +109,11 @@ FP8Strip::FP8Strip (FP8Base& b, uint8_t id)
 	_last_fader = 65535;
 	_last_meter = _last_redux = _last_barpos = 0xff;
 
-	_mute.StateChange.connect_same_thread (_button_connections, boost::bind (&FP8Strip::set_mute, this, _1));
-	_solo.StateChange.connect_same_thread (_button_connections, boost::bind (&FP8Strip::set_solo, this, _1));
-	select_button ().released.connect_same_thread (_button_connections, boost::bind (&FP8Strip::set_select, this));
-	recarm_button ().released.connect_same_thread (_button_connections, boost::bind (&FP8Strip::set_recarm, this));
-	b.Periodic.connect_same_thread (_base_connection, boost::bind (&FP8Strip::periodic, this));
+	_mute.StateChange.connect_same_thread (_button_connections, std::bind (&FP8Strip::set_mute, this, _1));
+	_solo.StateChange.connect_same_thread (_button_connections, std::bind (&FP8Strip::set_solo, this, _1));
+	select_button ().released.connect_same_thread (_button_connections, std::bind (&FP8Strip::set_select, this));
+	recarm_button ().released.connect_same_thread (_button_connections, std::bind (&FP8Strip::set_recarm, this));
+	b.Periodic.connect_same_thread (_base_connection, std::bind (&FP8Strip::periodic, this));
 }
 
 FP8Strip::~FP8Strip ()
@@ -140,7 +141,7 @@ FP8Strip::drop_automation_controls ()
 	_x_select_ctrl.reset ();
 	_peak_meter.reset ();
 	_redux_ctrl.reset ();
-	_select_plugin_functor.clear ();
+	_select_plugin_functor = {};
 }
 
 void
@@ -193,7 +194,7 @@ FP8Strip::initialize ()
 
 #define GENERATE_SET_CTRL_FUNCTION(NAME)                                            \
 void                                                                                \
-FP8Strip::set_ ##NAME##_controllable (boost::shared_ptr<AutomationControl> ac)      \
+FP8Strip::set_ ##NAME##_controllable (std::shared_ptr<AutomationControl> ac)        \
 {                                                                                   \
   if (_##NAME##_ctrl == ac) {                                                       \
     return;                                                                         \
@@ -203,7 +204,7 @@ FP8Strip::set_ ##NAME##_controllable (boost::shared_ptr<AutomationControl> ac)  
                                                                                     \
   if (ac) {                                                                         \
     ac->Changed.connect (_##NAME##_connection, MISSING_INVALIDATOR,                 \
-      boost::bind (&FP8Strip::notify_##NAME##_changed, this), fp8_context());       \
+      std::bind (&FP8Strip::notify_##NAME##_changed, this), fp8_context());         \
   }                                                                                 \
   notify_##NAME##_changed ();                                                       \
 }
@@ -220,43 +221,43 @@ GENERATE_SET_CTRL_FUNCTION (x_select)
 
 // special case -- w/_select_plugin_functor
 void
-FP8Strip::set_select_controllable (boost::shared_ptr<AutomationControl> ac)
+FP8Strip::set_select_controllable (std::shared_ptr<AutomationControl> ac)
 {
-	_select_plugin_functor.clear ();
+	_select_plugin_functor = {};
 	set_x_select_controllable (ac);
 }
 
 void
-FP8Strip::set_select_cb (boost::function<void ()>& functor)
+FP8Strip::set_select_cb (std::function<void ()>& functor)
 {
-	set_select_controllable (boost::shared_ptr<AutomationControl>());
+	set_select_controllable (std::shared_ptr<AutomationControl>());
 	_select_plugin_functor = functor;
 }
 
 void
 FP8Strip::unset_controllables (int which)
 {
-	_peak_meter = boost::shared_ptr<ARDOUR::PeakMeter>();
-	_redux_ctrl = boost::shared_ptr<ARDOUR::ReadOnlyControl>();
+	_peak_meter = std::shared_ptr<ARDOUR::PeakMeter>();
+	_redux_ctrl = std::shared_ptr<ARDOUR::ReadOnlyControl>();
 	_stripable_name.clear ();
 
 	if (which & CTRL_FADER) {
-		set_fader_controllable (boost::shared_ptr<AutomationControl>());
+		set_fader_controllable (std::shared_ptr<AutomationControl>());
 	}
 	if (which & CTRL_MUTE) {
-		set_mute_controllable (boost::shared_ptr<AutomationControl>());
+		set_mute_controllable (std::shared_ptr<AutomationControl>());
 	}
 	if (which & CTRL_SOLO) {
-		set_solo_controllable (boost::shared_ptr<AutomationControl>());
+		set_solo_controllable (std::shared_ptr<AutomationControl>());
 	}
 	if (which & CTRL_REC) {
-		set_rec_controllable (boost::shared_ptr<AutomationControl>());
+		set_rec_controllable (std::shared_ptr<AutomationControl>());
 	}
 	if (which & CTRL_PAN) {
-		set_pan_controllable (boost::shared_ptr<AutomationControl>());
+		set_pan_controllable (std::shared_ptr<AutomationControl>());
 	}
 	if (which & CTRL_SELECT) {
-		set_select_controllable (boost::shared_ptr<AutomationControl>());
+		set_select_controllable (std::shared_ptr<AutomationControl>());
 		select_button ().set_color (0xffffffff);
 		select_button ().set_active (false);
 		select_button ().set_blinking (false);
@@ -285,7 +286,7 @@ FP8Strip::set_strip_name ()
 }
 
 void
-FP8Strip::set_stripable (boost::shared_ptr<Stripable> s, bool panmode)
+FP8Strip::set_stripable (std::shared_ptr<Stripable> s, bool panmode)
 {
 	assert (s);
 
@@ -308,25 +309,25 @@ FP8Strip::set_stripable (boost::shared_ptr<Stripable> s, bool panmode)
 	set_pan_controllable (s->pan_azimuth_control ());
 
 	if (s->is_monitor ()) {
-		set_mute_controllable (boost::shared_ptr<AutomationControl>());
+		set_mute_controllable (std::shared_ptr<AutomationControl>());
 	} else {
 		set_mute_controllable (s->mute_control ());
 	}
 	set_solo_controllable (s->solo_control ());
 
-	if (boost::dynamic_pointer_cast<Track> (s)) {
-		boost::shared_ptr<Track> t = boost::dynamic_pointer_cast<Track>(s);
+	if (std::dynamic_pointer_cast<Track> (s)) {
+		std::shared_ptr<Track> t = std::dynamic_pointer_cast<Track>(s);
 		set_rec_controllable (t->rec_enable_control ());
 		recarm_button ().set_color (0xff0000ff);
 	} else {
-		set_rec_controllable (boost::shared_ptr<AutomationControl>());
+		set_rec_controllable (std::shared_ptr<AutomationControl>());
 		recarm_button ().set_color (0xffffffff);
 		recarm_button ().set_active (false);
 	}
 	_peak_meter = s->peak_meter ();
-	_redux_ctrl = s->comp_redux_controllable ();
+	_redux_ctrl = s->mapped_output (Comp_Redux);
 
-	set_select_controllable (boost::shared_ptr<AutomationControl>());
+	set_select_controllable (std::shared_ptr<AutomationControl>());
 	select_button ().set_active (s->is_selected ());
 
 	set_select_button_color (s->presentation_info ().color());
@@ -352,7 +353,7 @@ bool
 FP8Strip::midi_touch (bool t)
 {
 	_touching = t;
-	boost::shared_ptr<AutomationControl> ac = _fader_ctrl;
+	std::shared_ptr<AutomationControl> ac = _fader_ctrl;
 	if (!ac) {
 		return false;
 	}
@@ -372,7 +373,7 @@ FP8Strip::midi_fader (float val)
 	if (!_touching) {
 		return false;
 	}
-	boost::shared_ptr<AutomationControl> ac = _fader_ctrl;
+	std::shared_ptr<AutomationControl> ac = _fader_ctrl;
 	if (!ac) {
 		return false;
 	}
@@ -430,7 +431,7 @@ FP8Strip::set_recarm ()
 void
 FP8Strip::set_select ()
 {
-	if (!_select_plugin_functor.empty ()) {
+	if (_select_plugin_functor) {
 		assert (!_x_select_ctrl);
 		_select_plugin_functor ();
 	} else if (_x_select_ctrl) {
@@ -447,7 +448,7 @@ FP8Strip::set_select ()
 void
 FP8Strip::notify_fader_changed ()
 {
-	boost::shared_ptr<AutomationControl> ac = _fader_ctrl;
+	std::shared_ptr<AutomationControl> ac = _fader_ctrl;
 	if (_touching) {
 		return;
 	}
@@ -468,7 +469,7 @@ void
 FP8Strip::notify_solo_changed ()
 {
 	if (_solo_ctrl) {
-		boost::shared_ptr<SoloControl> sc = boost::dynamic_pointer_cast<SoloControl> (_solo_ctrl);
+		std::shared_ptr<SoloControl> sc = std::dynamic_pointer_cast<SoloControl> (_solo_ctrl);
 		if (sc) {
 			_solo.set_blinking (sc->soloed_by_others () && !sc->self_soloed ());
 			_solo.set_active (sc->self_soloed ());
@@ -511,13 +512,13 @@ FP8Strip::notify_pan_changed ()
 void
 FP8Strip::notify_x_select_changed ()
 {
-	if (!_select_plugin_functor.empty ()) {
+	if (_select_plugin_functor) {
 		assert (!_x_select_ctrl);
 		return;
 	}
 
 	if (_x_select_ctrl) {
-		assert (_select_plugin_functor.empty ());
+		assert (!_select_plugin_functor);
 		select_button ().set_active (_x_select_ctrl->get_value() > 0.);
 		select_button ().set_color (0xffff00ff);
 		select_button ().set_blinking (false);
@@ -531,7 +532,7 @@ FP8Strip::notify_x_select_changed ()
 void
 FP8Strip::periodic_update_fader ()
 {
-	boost::shared_ptr<AutomationControl> ac = _fader_ctrl;
+	std::shared_ptr<AutomationControl> ac = _fader_ctrl;
 	if (!ac || _touching) {
 		return;
 	}
@@ -594,7 +595,7 @@ FP8Strip::periodic_update_meter ()
 	if (_displaymode == PluginParam) {
 		if (_fader_ctrl) {
 			set_bar_mode (2); // Fill
-			set_text_line (2, value_as_string(_fader_ctrl->desc(), _fader_ctrl->get_value()));
+			set_text_line (2, _fader_ctrl->get_user_string ());
 			float barpos = _fader_ctrl->internal_to_interface (_fader_ctrl->get_value());
 			int val = std::min (127.f, std::max (0.f, barpos * 128.f));
 			if (val != _last_barpos) {

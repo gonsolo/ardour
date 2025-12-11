@@ -21,22 +21,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_plugin_insert_h__
-#define __ardour_plugin_insert_h__
+#pragma once
 
-#include <vector>
+#include <atomic>
+#include <memory>
 #include <string>
-
-#include <boost/weak_ptr.hpp>
-#include <boost/enable_shared_from_this.hpp>
+#include <vector>
 
 #include "pbd/stack_allocator.h"
 #include "pbd/timing.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "ardour/ardour.h"
 #include "ardour/libardour_visibility.h"
-#include "ardour/chan_mapping.h"
 #include "ardour/fixed_delay.h"
 #include "ardour/io.h"
 #include "ardour/types.h"
@@ -46,7 +42,6 @@
 #include "ardour/processor.h"
 #include "ardour/readonly_control.h"
 #include "ardour/sidechain.h"
-#include "ardour/automation_control.h"
 
 class XMLNode;
 
@@ -58,15 +53,15 @@ class Plugin;
 
 /** Plugin inserts: send data through a plugin
  */
-class LIBARDOUR_API PluginInsert : public Processor, public PlugInsertBase, public boost::enable_shared_from_this <PluginInsert>
+class LIBARDOUR_API PluginInsert : public Processor, public PlugInsertBase, public std::enable_shared_from_this <PluginInsert>
 {
 public:
-	PluginInsert (Session&, Temporal::TimeDomain td, boost::shared_ptr<Plugin> = boost::shared_ptr<Plugin>());
+	PluginInsert (Session&, Temporal::TimeDomainProvider const & tdp, std::shared_ptr<Plugin> = std::shared_ptr<Plugin>());
 	~PluginInsert ();
 
 	void drop_references ();
 
-	boost::weak_ptr<PluginInsert> weak_ptr () {
+	std::weak_ptr<PluginInsert> weak_ptr () {
 		return shared_from_this();
 	}
 
@@ -135,6 +130,7 @@ public:
 	void set_output_map (uint32_t, ChanMapping);
 	void set_thru_map (ChanMapping);
 	bool reset_map (bool emit = true);
+	bool reset_sidechain_map ();
 	bool configured () const { return _configured; }
 
 	// these are ports visible on the outside
@@ -179,7 +175,7 @@ public:
 	bool add_sidechain  (uint32_t n_audio = 1, uint32_t n_midi = 0);
 	bool del_sidechain ();
 	void update_sidechain_name ();
-	boost::shared_ptr<SideChain> sidechain () const { return _sidechain; }
+	std::shared_ptr<SideChain> sidechain () const { return _sidechain; }
 	// end C++ class slavery!
 
 	uint32_t get_count  () const { return _plugins.size(); }
@@ -193,6 +189,7 @@ public:
 	bool has_no_audio_inputs() const;
 
 	bool is_instrument () const;
+	bool has_automatables () const;
 
 	bool has_output_presets (
 			ChanCount in = ChanCount (DataType::MIDI, 1),
@@ -209,43 +206,19 @@ public:
 	bool get_stats (PBD::microseconds_t& min, PBD::microseconds_t& max, double& avg, double& dev) const;
 	void clear_stats ();
 
-	/** A control that manipulates a plugin parameter (control port). */
-	struct PluginControl : public AutomationControl
+	struct PIControl : public PluginControl
 	{
-		PluginControl (PluginInsert*                     p,
-		               const Evoral::Parameter&          param,
-		               const ParameterDescriptor&        desc,
-		               boost::shared_ptr<AutomationList> list=boost::shared_ptr<AutomationList>());
-
-		double get_value (void) const;
-		void catch_up_with_external_value (double val);
-		XMLNode& get_state() const;
-		std::string get_user_string() const;
-
+		PIControl (Session&                        s,
+		           PlugInsertBase*                 p,
+		           const Evoral::Parameter&        param,
+		           const ParameterDescriptor&      desc,
+		           std::shared_ptr<AutomationList> list = std::shared_ptr<AutomationList>())
+		: PluginControl (s, p, param, desc, list) {}
 	private:
-		PluginInsert* _plugin;
 		void actually_set_value (double val, PBD::Controllable::GroupControlDisposition group_override);
 	};
 
-	/** A control that manipulates a plugin property (message). */
-	struct PluginPropertyControl : public AutomationControl
-	{
-		PluginPropertyControl (PluginInsert*                     p,
-		                       const Evoral::Parameter&          param,
-		                       const ParameterDescriptor&        desc,
-		                       boost::shared_ptr<AutomationList> list=boost::shared_ptr<AutomationList>());
-
-		double get_value (void) const;
-		XMLNode& get_state() const;
-	protected:
-		void actually_set_value (double value, PBD::Controllable::GroupControlDisposition);
-
-	private:
-		PluginInsert* _plugin;
-		Variant       _value;
-	};
-
-	boost::shared_ptr<Plugin> plugin(uint32_t num=0) const {
+	std::shared_ptr<Plugin> plugin(uint32_t num=0) const {
 		if (num < _plugins.size()) {
 			return _plugins[num];
 		} else {
@@ -259,22 +232,22 @@ public:
 		return _sidechain ? true : false;
 	}
 
-	boost::shared_ptr<IO> sidechain_input () const {
+	std::shared_ptr<IO> sidechain_input () const {
 		if (_sidechain) {
 			return _sidechain->input ();
 		}
-		return boost::shared_ptr<IO> ();
+		return std::shared_ptr<IO> ();
 	}
 
 	PluginType type () const;
 
-	boost::shared_ptr<ReadOnlyControl> control_output (uint32_t) const;
+	std::shared_ptr<ReadOnlyControl> control_output (uint32_t) const;
 
 	std::string describe_parameter (Evoral::Parameter param);
 
 	samplecnt_t signal_latency () const;
 
-	boost::shared_ptr<Plugin> get_impulse_analysis_plugin();
+	std::shared_ptr<Plugin> get_impulse_analysis_plugin();
 
 	void collect_signal_for_analysis (samplecnt_t nframes);
 
@@ -291,38 +264,10 @@ public:
 		out = _configured_out;
 	}
 
-	PBD::Signal2<void,BufferSet*, BufferSet*> AnalysisDataGathered;
-	PBD::Signal0<void> PluginIoReConfigure;
-	PBD::Signal0<void> PluginMapChanged;
-	PBD::Signal0<void> PluginConfigChanged;
-
-	/** Enumeration of the ways in which we can match our insert's
-	 *  IO to that of the plugin(s).
-	 */
-	enum MatchingMethod {
-		Impossible,  ///< we can't
-		Delegate,    ///< we are delegating to the plugin, and it can handle it
-		NoInputs,    ///< plugin has no inputs, so anything goes
-		ExactMatch,  ///< our insert's inputs are the same as the plugin's
-		Replicate,   ///< we have multiple instances of the plugin
-		Split,       ///< we copy one of our insert's inputs to multiple plugin inputs
-		Hide,        ///< we `hide' some of the plugin's inputs by feeding them silence
-	};
-
-	/** Description of how we can match our plugin's IO to our own insert IO */
-	struct Match {
-		Match () : method (Impossible), plugins (0), strict_io (false), custom_cfg (false) {}
-		Match (MatchingMethod m, int32_t p,
-				bool strict = false, bool custom = false, ChanCount h = ChanCount ())
-			: method (m), plugins (p), hide (h), strict_io (strict), custom_cfg (custom) {}
-
-		MatchingMethod method; ///< method to employ
-		int32_t plugins;       ///< number of copies of the plugin that we need
-		ChanCount hide;        ///< number of channels to hide
-		bool strict_io;        ///< force in == out
-		bool custom_cfg;       ///< custom config (if not strict)
-	};
-
+	PBD::Signal<void(BufferSet*, BufferSet*)> AnalysisDataGathered;
+	PBD::Signal<void()> PluginIoReConfigure;
+	PBD::Signal<void()> PluginMapChanged;
+	PBD::Signal<void()> PluginConfigChanged;
 protected:
 	XMLNode& state () const;
 
@@ -331,20 +276,22 @@ private:
 	PluginInsert (const PluginInsert&);
 
 	void parameter_changed_externally (uint32_t, float);
+	void property_changed_externally (uint32_t which, Variant);
+	void cache_sidechain_count ();
 
 	void set_parameter (Evoral::Parameter param, float val, sampleoffset_t);
 
 	float default_parameter_value (const Evoral::Parameter& param);
 
-	typedef std::vector<boost::shared_ptr<Plugin> > Plugins;
+	typedef std::vector<std::shared_ptr<Plugin> > Plugins;
 	Plugins _plugins;
 
-	boost::shared_ptr<SideChain> _sidechain;
+	std::shared_ptr<SideChain> _sidechain;
 	uint32_t _sc_playback_latency;
 	uint32_t _sc_capture_latency;
 	uint32_t _plugin_signal_latency;
 
-	boost::weak_ptr<Plugin> _impulseAnalysisPlugin;
+	std::weak_ptr<Plugin> _impulseAnalysisPlugin;
 
 	samplecnt_t _signal_analysis_collect_nsamples;
 	samplecnt_t _signal_analysis_collect_nsamples_max;
@@ -376,9 +323,7 @@ private:
 	/** details of the match currently being used */
 	Match _match;
 
-	/* ordered map [plugin instance ID] => ARDOUR::ChanMapping
-	 * TODO: consider replacing with boost::flat_map<> or std::vector<>.
-	 */
+	/* ordered map [plugin instance ID] => ARDOUR::ChanMapping */
 #if defined(_MSC_VER) /* && (_MSC_VER < 1900)
 	                   * Regarding the note (below) it was initially
 	                   * thought that this got fixed in VS2015 - but
@@ -420,7 +365,6 @@ private:
 	void create_automatable_parameters ();
 	void control_list_automation_state_changed (Evoral::Parameter, AutoState);
 	void set_parameter_state_2X (const XMLNode& node, int version);
-	void update_control_values (const XMLNode&, int version);
 
 	void enable_changed ();
 	void bypassable_changed ();
@@ -429,9 +373,8 @@ private:
 	bool check_inplace ();
 	void mapping_changed ();
 
-	boost::shared_ptr<Plugin> plugin_factory (boost::shared_ptr<Plugin>);
-	void add_plugin (boost::shared_ptr<Plugin>);
-	void plugin_removed (boost::weak_ptr<Plugin>);
+	void add_plugin (std::shared_ptr<Plugin>);
+	void plugin_removed (std::weak_ptr<Plugin>);
 
 	void add_sidechain_from_xml (const XMLNode& node, int version);
 
@@ -443,16 +386,13 @@ private:
 	uint32_t _bypass_port;
 	bool     _inverted_bypass_enable;
 
-	typedef std::map<uint32_t, boost::shared_ptr<ReadOnlyControl> >CtrlOutMap;
+	typedef std::map<uint32_t, std::shared_ptr<ReadOnlyControl> >CtrlOutMap;
 	CtrlOutMap _control_outputs;
 
 	PBD::TimingStats  _timing_stats;
-	GATOMIC_QUAL gint _stat_reset;
-	GATOMIC_QUAL gint _flush;
+	std::atomic<int> _stat_reset;
+	std::atomic<int> _flush;
 };
 
 } // namespace ARDOUR
 
-std::ostream& operator<<(std::ostream& o, const ARDOUR::PluginInsert::Match& m);
-
-#endif /* __ardour_plugin_insert_h__ */

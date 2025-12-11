@@ -26,10 +26,12 @@
 #include <cmath>
 
 #include <sigc++/bind.h>
-#include <gtkmm/stock.h>
-#include <gtkmm/messagedialog.h>
-#include <gtkmm/separator.h>
-#include <gtkmm/table.h>
+
+#include <ytkmm/alignment.h>
+#include <ytkmm/stock.h>
+#include <ytkmm/messagedialog.h>
+#include <ytkmm/separator.h>
+#include <ytkmm/table.h>
 
 #include "pbd/error.h"
 #include "pbd/convert.h"
@@ -69,7 +71,7 @@ AddRouteDialog::AddRouteDialog ()
 	: ArdourDialog (_("Add Track/Bus/VCA"))
 	, routes_adjustment (1, 1, 128, 1, 4)
 	, routes_spinner (routes_adjustment)
-	, configuration_label (_("Configuration:"))
+	, configuration_label (_("Input Config:"))
 	, manual_label (_("Configuration:"))
 	, add_label (_("Add:"))
 	, name_label (_("Name:"))
@@ -87,7 +89,7 @@ AddRouteDialog::AddRouteDialog ()
 	set_name ("AddRouteDialog");
 	set_skip_taskbar_hint (true);
 	set_resizable (false);
-	set_position (WIN_POS_MOUSE);
+	set_position (UIConfiguration::instance().get_default_window_position());
 
 	name_template_entry.set_name (X_("AddRouteDialogNameTemplateEntry"));
 	// routes_spinner.set_name (X_("AddRouteDialogSpinner"));

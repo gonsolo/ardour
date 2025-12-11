@@ -21,8 +21,8 @@
 #endif
 
 #include <cassert>
-#include <gtkmm/frame.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/openuri.h"
 #include "pbd/unwind.h"
@@ -167,10 +167,10 @@ PluginManagerUI::PluginManagerUI ()
 	_pane.set_divider (0, .85);
 
 	Label* lbl       = manage (new Label ("")); // spacer
-	Frame* f_info    = manage (new Frame (_("Plugin Count")));
-	Frame* f_paths   = manage (new Frame (_("Preferences")));
-	Frame* f_search  = manage (new Frame (_("Search")));
-	Frame* f_actions = manage (new Frame (_("Scan Actions")));
+	Gtk::Frame* f_info    = manage (new Gtk::Frame (_("Plugin Count")));
+	Gtk::Frame* f_paths   = manage (new Gtk::Frame (_("Preferences")));
+	Gtk::Frame* f_search  = manage (new Gtk::Frame (_("Search")));
+	Gtk::Frame* f_actions = manage (new Gtk::Frame (_("Scan Actions")));
 	VBox*  b_paths   = manage (new VBox ());
 	VBox*  b_actions = manage (new VBox ());
 
@@ -291,9 +291,9 @@ PluginManagerUI::PluginManagerUI ()
 
 	/* connect to signals */
 
-	PluginManager::instance ().PluginListChanged.connect (_manager_connections, invalidator (*this), boost::bind (&PluginManagerUI::refill, this), gui_context ());
-	PluginManager::instance ().PluginScanLogChanged.connect (_manager_connections, invalidator (*this), boost::bind (&PluginManagerUI::refill, this), gui_context ());
-	PluginManager::instance ().PluginStatusChanged.connect (_manager_connections, invalidator (*this), boost::bind (&PluginManagerUI::plugin_status_changed, this, _1, _2, _3), gui_context ());
+	PluginManager::instance ().PluginListChanged.connect (_manager_connections, invalidator (*this), std::bind (&PluginManagerUI::refill, this), gui_context ());
+	PluginManager::instance ().PluginScanLogChanged.connect (_manager_connections, invalidator (*this), std::bind (&PluginManagerUI::refill, this), gui_context ());
+	PluginManager::instance ().PluginStatusChanged.connect (_manager_connections, invalidator (*this), std::bind (&PluginManagerUI::plugin_status_changed, this, _1, _2, _3), gui_context ());
 
 	_btn_reindex.signal_clicked.connect (sigc::mem_fun (*this, &PluginManagerUI::reindex));
 	_btn_discover.signal_clicked.connect (sigc::mem_fun (*this, &PluginManagerUI::discover));
@@ -405,8 +405,10 @@ plugin_type (const PluginType t)
 }
 
 bool
-PluginManagerUI::show_this_plugin (boost::shared_ptr<PluginScanLogEntry> psle, PluginInfoPtr pip, const std::string& searchstr)
+PluginManagerUI::show_this_plugin (std::shared_ptr<PluginScanLogEntry> psle, PluginInfoPtr pip, const std::string& searchstr)
 {
+	using PBD::match_search_strings;
+
 	if (searchstr.empty ()) {
 		return true;
 	}
@@ -474,7 +476,7 @@ PluginManagerUI::refill ()
 {
 	/* save selection and sort-column, clear model to speed-up refill */
 	TreeIter                              iter = plugin_display.get_selection ()->get_selected ();
-	boost::shared_ptr<PluginScanLogEntry> sel;
+	std::shared_ptr<PluginScanLogEntry> sel;
 	if (iter) {
 		sel = (*iter)[plugin_columns.psle];
 	}
@@ -492,14 +494,14 @@ PluginManagerUI::refill ()
 
 	std::map<PluginType, PluginCount> plugin_count;
 
-	std::vector<boost::shared_ptr<PluginScanLogEntry> > psl;
+	std::vector<std::shared_ptr<PluginScanLogEntry> > psl;
 	PluginManager& manager (PluginManager::instance ());
 	manager.scan_log (psl);
 
 	std::string searchstr = _entry_search.get_text ();
 	setup_search_string (searchstr);
 
-	for (std::vector<boost::shared_ptr<PluginScanLogEntry> >::const_iterator i = psl.begin (); i != psl.end (); ++i) {
+	for (std::vector<std::shared_ptr<PluginScanLogEntry> >::const_iterator i = psl.begin (); i != psl.end (); ++i) {
 		PluginInfoList const& plugs = (*i)->nfo ();
 
 		if (!(*i)->recent ()) {
@@ -575,7 +577,7 @@ PluginManagerUI::refill ()
 	if (sel) {
 		TreeModel::Children rows = plugin_model->children ();
 		for (TreeModel::Children::iterator i = rows.begin (); i != rows.end (); ++i) {
-			boost::shared_ptr<PluginScanLogEntry> const& srow ((*i)[plugin_columns.psle]);
+			std::shared_ptr<PluginScanLogEntry> const& srow ((*i)[plugin_columns.psle]);
 			if (*sel == *srow) {
 				plugin_display.get_selection ()->select (*i);
 				TreeIter iter = plugin_display.get_selection ()->get_selected ();
@@ -657,7 +659,7 @@ PluginManagerUI::selection_changed ()
 	}
 
 	TreeIter                                     iter = plugin_display.get_selection ()->get_selected ();
-	boost::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
+	std::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
 
 	_log.get_buffer ()->set_text (psle->log ());
 
@@ -677,7 +679,7 @@ PluginManagerUI::row_activated (TreeModel::Path const& p, TreeViewColumn*)
 	if (!iter) {
 		return;
 	}
-	boost::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
+	std::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
 
 	switch (psle->type ()) {
 		case Windows_VST:
@@ -703,7 +705,7 @@ PluginManagerUI::blacklist_changed (std::string const& path)
 {
 	TreeIter iter;
 	if ((iter = plugin_model->get_iter (path))) {
-		boost::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
+		std::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
 		if ((*iter)[plugin_columns.blacklisted]) {
 			PluginScanDialog psd (false, true, this);
 			PluginManager::instance ().rescan_plugin (psle->type (), psle->path ());
@@ -781,7 +783,7 @@ PluginManagerUI::rescan_all ()
 {
 	ArdourMessageDialog msg (_("Are you sure you want to rescan all plugins?"), false, MESSAGE_QUESTION, BUTTONS_YES_NO, true);
 	msg.set_title (_("Rescan Plugins"));
-	msg.set_secondary_text (_("This starts a fresh scan, dropping all cached plugin data and ignorelist. Depending on the number if plugins installed this can take a long time."));
+	msg.set_secondary_text (_("This starts a fresh scan, dropping all cached plugin data and ignorelist. Depending on the number of plugins installed this can take a long time."));
 
 	if (msg.run () != RESPONSE_YES) {
 		return;
@@ -834,7 +836,7 @@ PluginManagerUI::rescan_selected ()
 	}
 
 	TreeIter                                     iter = plugin_display.get_selection ()->get_selected ();
-	boost::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
+	std::shared_ptr<PluginScanLogEntry> const& psle ((*iter)[plugin_columns.psle]);
 
 	PluginScanDialog psd (false, true, this);
 	PluginManager::instance ().rescan_plugin (psle->type (), psle->path ());

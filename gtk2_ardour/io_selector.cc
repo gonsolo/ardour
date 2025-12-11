@@ -44,7 +44,7 @@ using namespace ARDOUR;
 using namespace ARDOUR_UI_UTILS;
 using namespace Gtk;
 
-IOSelector::IOSelector (Gtk::Window* p, ARDOUR::Session* session, boost::shared_ptr<ARDOUR::IO> io)
+IOSelector::IOSelector (Gtk::Window* p, ARDOUR::Session* session, std::shared_ptr<ARDOUR::IO> io)
 	: PortMatrix (p, session, DataType::NIL)
 	, _io (io)
 {
@@ -65,7 +65,7 @@ IOSelector::IOSelector (Gtk::Window* p, ARDOUR::Session* session, boost::shared_
 	_port_group.reset (new PortGroup (io->name()));
 	_ports[_ours].add_group (_port_group);
 
-	io->changed.connect (_io_connection, invalidator (*this), boost::bind (&IOSelector::io_changed_proxy, this), gui_context ());
+	io->changed.connect (_io_connection, invalidator (*this), std::bind (&IOSelector::io_changed_proxy, this), gui_context ());
 
 	setup_all_ports ();
 	init ();
@@ -79,7 +79,7 @@ IOSelector::setup_type ()
 	int N = 0;
 	DataType type_with_ports = DataType::NIL;
 	for (DataType::iterator i = DataType::begin(); i != DataType::end(); ++i) {
-		if (_io->ports().num_ports (*i)) {
+		if (_io->ports()->num_ports (*i)) {
 			type_with_ports = *i;
 			++N;
 		}
@@ -141,7 +141,7 @@ IOSelector::set_state (ARDOUR::BundleChannel c[2], bool s)
 	for (ARDOUR::Bundle::PortList::const_iterator i = our_ports.begin(); i != our_ports.end(); ++i) {
 		for (ARDOUR::Bundle::PortList::const_iterator j = other_ports.begin(); j != other_ports.end(); ++j) {
 
-			boost::shared_ptr<Port> f = _session->engine().get_port_by_name (*i);
+			std::shared_ptr<Port> f = _session->engine().get_port_by_name (*i);
 			if (!f) {
 				return;
 			}
@@ -162,7 +162,7 @@ IOSelector::set_state (ARDOUR::BundleChannel c[2], bool s)
 PortMatrixNode::State
 IOSelector::get_state (ARDOUR::BundleChannel c[2]) const
 {
-	if (c[0].bundle->nchannels() == ChanCount::ZERO || c[1].bundle->nchannels() == ChanCount::ZERO) {
+	if (c[0].nchannels() == ChanCount::ZERO || c[1].nchannels() == ChanCount::ZERO) {
 		return PortMatrixNode::NOT_ASSOCIATED;
 	}
 
@@ -178,7 +178,7 @@ IOSelector::get_state (ARDOUR::BundleChannel c[2]) const
 	for (ARDOUR::Bundle::PortList::const_iterator i = our_ports.begin(); i != our_ports.end(); ++i) {
 		for (ARDOUR::Bundle::PortList::const_iterator j = other_ports.begin(); j != other_ports.end(); ++j) {
 
-			boost::shared_ptr<Port> f = _session->engine().get_port_by_name (*i);
+			std::shared_ptr<Port> f = _session->engine().get_port_by_name (*i);
 
 			/* since we are talking about an IO, our ports should all have an associated Port *,
 			   so the above call should never fail */
@@ -222,7 +222,7 @@ IOSelector::channel_noun () const
 	return _("port");
 }
 
-IOSelectorWindow::IOSelectorWindow (ARDOUR::Session* session, boost::shared_ptr<ARDOUR::IO> io, bool /*can_cancel*/)
+IOSelectorWindow::IOSelectorWindow (ARDOUR::Session* session, std::shared_ptr<ARDOUR::IO> io, bool /*can_cancel*/)
 	: ArdourWindow (_("I/O selector"))
 	, _selector (this, session, io)
 {

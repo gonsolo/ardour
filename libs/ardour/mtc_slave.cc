@@ -22,7 +22,6 @@
 #include <iostream>
 #include <errno.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "pbd/error.h"
 #include "pbd/pthread_utils.h"
@@ -83,11 +82,11 @@ MTC_TransportMaster::init ()
 }
 
 void
-MTC_TransportMaster::connection_handler (boost::weak_ptr<ARDOUR::Port> w0, std::string n0, boost::weak_ptr<ARDOUR::Port> w1, std::string n1, bool con) 
+MTC_TransportMaster::connection_handler (std::weak_ptr<ARDOUR::Port> w0, std::string n0, std::weak_ptr<ARDOUR::Port> w1, std::string n1, bool con) 
 {
 	TransportMaster::connection_handler(w0, n0, w1, n1, con);
 
-	boost::shared_ptr<Port> p = w1.lock ();
+	std::shared_ptr<Port> p = w1.lock ();
 	if (p == _port) {
 		resync_latency (false);
 	}
@@ -118,14 +117,14 @@ MTC_TransportMaster::set_session (Session* s)
 		parse_timecode_offset ();
 		reset (true);
 
-		parser.mtc_time.connect_same_thread (port_connections,  boost::bind (&MTC_TransportMaster::update_mtc_time, this, _1, _2, _3));
-		parser.mtc_qtr.connect_same_thread (port_connections, boost::bind (&MTC_TransportMaster::update_mtc_qtr, this, _1, _2, _3));
-		parser.mtc_status.connect_same_thread (port_connections, boost::bind (&MTC_TransportMaster::update_mtc_status, this, _1));
+		parser.mtc_time.connect_same_thread (port_connections,  std::bind (&MTC_TransportMaster::update_mtc_time, this, _1, _2, _3));
+		parser.mtc_qtr.connect_same_thread (port_connections, std::bind (&MTC_TransportMaster::update_mtc_qtr, this, _1, _2, _3));
+		parser.mtc_status.connect_same_thread (port_connections, std::bind (&MTC_TransportMaster::update_mtc_status, this, _1));
 	}
 }
 
 void
-MTC_TransportMaster::pre_process (MIDI::pframes_t nframes, samplepos_t now, boost::optional<samplepos_t> session_pos)
+MTC_TransportMaster::pre_process (MIDI::pframes_t nframes, samplepos_t now, std::optional<samplepos_t> session_pos)
 {
 	/* Read and parse incoming MIDI */
 
@@ -404,7 +403,7 @@ MTC_TransportMaster::update_mtc_time (const MIDI::byte *msg, bool was_full, samp
 
 	if (was_full || outside_window (mtc_frame)) {
 		DEBUG_TRACE (DEBUG::MTC, string_compose ("update_mtc_time: full TC %1 or outside window %2 MTC %3\n", was_full, outside_window (mtc_frame), mtc_frame));
-		boost::shared_ptr<TransportMaster> c = TransportMasterManager::instance().current();
+		std::shared_ptr<TransportMaster> c = TransportMasterManager::instance().current();
 		if (c && c.get() == this && _session->config.get_external_sync()) {
 			_session->set_requested_return_sample (-1);
 			_session->request_locate (mtc_frame, false, MustStop, TRS_MTC);
@@ -548,7 +547,7 @@ MTC_TransportMaster::delta_string () const
 	current.safe_read (last);
 
 	if (last.timestamp == 0 || reset_pending) {
-		return X_("\u2012\u2012\u2012\u2012");
+		return X_(u8"\u2012\u2012\u2012\u2012");
 	} else {
 		return format_delta_time (_current_delta);
 	}

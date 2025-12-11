@@ -18,17 +18,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_preset_selector_h__
-#define __export_preset_selector_h__
+#pragma once
 
 #include <sigc++/signal.h>
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/treemodel.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/treemodel.h>
 
 #include "ardour/export_profile_manager.h"
 
@@ -37,14 +36,14 @@ class ExportPresetSelector : public Gtk::HBox
 public:
 	ExportPresetSelector (bool readonly = false);
 
-	void set_manager (boost::shared_ptr<ARDOUR::ExportProfileManager> manager);
+	void set_manager (std::shared_ptr<ARDOUR::ExportProfileManager> manager);
 
 	sigc::signal<void> CriticalSelectionChanged;
 
 	Gtk::ComboBox& the_combo () { return combo; }
 
 private:
-	typedef boost::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
 	typedef ARDOUR::ExportPresetPtr                         PresetPtr;
 	typedef ARDOUR::ExportProfileManager::PresetList        PresetList;
 
@@ -84,4 +83,3 @@ private:
 	sigc::connection select_connection;
 };
 
-#endif

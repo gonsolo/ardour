@@ -23,7 +23,6 @@
  */
 
 #include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <float.h>
 #include <cerrno>
@@ -376,10 +375,10 @@ MidiSource::mark_streaming_write_started (const WriterLock& lock)
 void
 MidiSource::mark_midi_streaming_write_completed (const WriterLock&                                  lock,
                                                  Evoral::Sequence<Temporal::Beats>::StuckNoteOption option,
-                                                 Temporal::Beats                                    end)
+                                                 Temporal::timecnt_t const &                        duration)
 {
 	if (_model) {
-		_model->end_write (option, end);
+		_model->end_write (option, duration.beats());
 
 		/* Make captured controls discrete to play back user input exactly. */
 		for (MidiModel::Controls::iterator i = _model->controls().begin(); i != _model->controls().end(); ++i) {
@@ -395,13 +394,13 @@ MidiSource::mark_midi_streaming_write_completed (const WriterLock&              
 }
 
 void
-MidiSource::mark_streaming_write_completed (const WriterLock& lock)
+MidiSource::mark_streaming_write_completed (const WriterLock& lock, Temporal::timecnt_t const & duration)
 {
-	mark_midi_streaming_write_completed (lock, Evoral::Sequence<Temporal::Beats>::DeleteStuckNotes);
+	mark_midi_streaming_write_completed (lock, Evoral::Sequence<Temporal::Beats>::DeleteStuckNotes, duration);
 }
 
 int
-MidiSource::export_write_to (const ReaderLock& lock, boost::shared_ptr<MidiSource> newsrc, Temporal::Beats begin, Temporal::Beats end)
+MidiSource::export_write_to (const ReaderLock& lock, std::shared_ptr<MidiSource> newsrc, Temporal::Beats begin, Temporal::Beats end)
 {
 	WriterLock newsrc_lock (newsrc->mutex ());
 
@@ -418,7 +417,7 @@ MidiSource::export_write_to (const ReaderLock& lock, boost::shared_ptr<MidiSourc
 }
 
 int
-MidiSource::write_to (const ReaderLock& lock, boost::shared_ptr<MidiSource> newsrc, Temporal::Beats begin, Temporal::Beats end)
+MidiSource::write_to (const ReaderLock& lock, std::shared_ptr<MidiSource> newsrc, Temporal::Beats begin, Temporal::Beats end)
 {
 	WriterLock newsrc_lock (newsrc->mutex ());
 
@@ -451,7 +450,7 @@ MidiSource::write_to (const ReaderLock& lock, boost::shared_ptr<MidiSource> news
 
 	/* this file is not removable (but since it is MIDI, it is mutable) */
 
-	boost::dynamic_pointer_cast<FileSource> (newsrc)->prevent_deletion ();
+	std::dynamic_pointer_cast<FileSource> (newsrc)->prevent_deletion ();
 
 	return 0;
 }
@@ -471,7 +470,7 @@ MidiSource::session_saved()
 
 		/* Temporarily drop our reference to the model so that as the model
 		   pushes its current state to us, we don't try to update it. */
-		boost::shared_ptr<MidiModel> mm = _model;
+		std::shared_ptr<MidiModel> mm = _model;
 		_model.reset ();
 
 		/* Flush model contents to disk. */
@@ -494,9 +493,10 @@ MidiSource::drop_model (const WriterLock& lock)
 }
 
 void
-MidiSource::set_model (const WriterLock& lock, boost::shared_ptr<MidiModel> m)
+MidiSource::set_model (const WriterLock& lock, std::shared_ptr<MidiModel> m)
 {
 	_model = m;
+	std::cerr << "Source " << name() << " switched to model " << _model << std::endl;
 	invalidate(lock);
 	ModelChanged (); /* EMIT SIGNAL */
 }
@@ -565,13 +565,13 @@ MidiSource::set_automation_state_of (Evoral::Parameter const& p, AutoState s)
 }
 
 void
-MidiSource::copy_interpolation_from (boost::shared_ptr<MidiSource> s)
+MidiSource::copy_interpolation_from (std::shared_ptr<MidiSource> s)
 {
 	copy_interpolation_from (s.get ());
 }
 
 void
-MidiSource::copy_automation_state_from (boost::shared_ptr<MidiSource> s)
+MidiSource::copy_automation_state_from (std::shared_ptr<MidiSource> s)
 {
 	copy_automation_state_from (s.get ());
 }

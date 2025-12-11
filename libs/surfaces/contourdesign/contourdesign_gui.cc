@@ -18,14 +18,14 @@
 
 #include <libusb.h>
 
-#include <gtkmm/adjustment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
 
 #include "pbd/unwind.h"
 
@@ -59,7 +59,7 @@ private:
 	Gtk::CheckButton _keep_rolling;
 	void toggle_keep_rolling ();
 
-	std::vector<boost::shared_ptr<Gtk::Adjustment> > _shuttle_speed_adjustments;
+	std::vector<std::shared_ptr<Gtk::Adjustment> > _shuttle_speed_adjustments;
 	void set_shuttle_speed (int index);
 
 	JumpDistanceWidget _jog_distance;
@@ -72,7 +72,7 @@ private:
 	void test_button_press (unsigned short btn);
 	void test_button_release (unsigned short btn);
 
-	std::vector<boost::shared_ptr<ArdourWidgets::ArdourButton> > _btn_leds;
+	std::vector<std::shared_ptr<ArdourWidgets::ArdourButton> > _btn_leds;
 
 	void init_on_show ();
 	bool reset_test_state (GdkEventAny* = 0);
@@ -122,7 +122,7 @@ ContourDesignGUI::ContourDesignGUI (ContourDesignControlProtocol& ccp)
 	HBox* speed_box = manage (new HBox);
 	for (int i=0; i != ContourDesignControlProtocol::num_shuttle_speeds; ++i) {
 		double speed = ccp.shuttle_speed (i);
-		boost::shared_ptr<Gtk::Adjustment> adj (new Gtk::Adjustment (speed, 0.0, 100.0, 0.25));
+		std::shared_ptr<Gtk::Adjustment> adj (new Gtk::Adjustment (speed, 0.0, 100.0, 0.25));
 		_shuttle_speed_adjustments.push_back (adj);
 		SpinButton* sb = manage (new SpinButton (*adj, 0.25, 2));
 		speed_box->pack_start (*sb);
@@ -163,14 +163,14 @@ ContourDesignGUI::ContourDesignGUI (ContourDesignControlProtocol& ccp)
 	table->set_col_spacings (6);;
 
 	for (int btn_idx=0; btn_idx < _ccp.get_button_count(); ++btn_idx) {
-		boost::shared_ptr<ArdourButton> b (new ArdourButton (string_compose (_("Setting for button %1"), btn_idx+1),
+		std::shared_ptr<ArdourButton> b (new ArdourButton (string_compose (_("Setting for button %1"), btn_idx+1),
 								     ArdourButton::Element(ArdourButton::Indicator|ArdourButton::Text|ArdourButton::Inactive)));
 		table->attach (*b, 0, 2, btn_idx, btn_idx+1);
 		_btn_leds.push_back (b);
 
 		ButtonConfigWidget* bcw = manage (new ButtonConfigWidget);
 
-		boost::shared_ptr<ButtonBase> btn_act = _ccp.get_button_action (btn_idx);
+		std::shared_ptr<ButtonBase> btn_act = _ccp.get_button_action (btn_idx);
 		assert (btn_act);
 		bcw->set_current_config (btn_act);
 
@@ -195,8 +195,8 @@ ContourDesignGUI::ContourDesignGUI (ContourDesignControlProtocol& ccp)
 	pack_start (*top_box);
 	pack_start (*btn_action_sample);
 
-	_ccp.ButtonPress.connect (*this, invalidator (*this), boost::bind (&ContourDesignGUI::test_button_press, this, _1), gui_context ());
-	_ccp.ButtonRelease.connect (*this, invalidator (*this), boost::bind (&ContourDesignGUI::test_button_release, this, _1), gui_context ());
+	_ccp.ButtonPress.connect (*this, invalidator (*this), std::bind (&ContourDesignGUI::test_button_press, this, _1), gui_context ());
+	_ccp.ButtonRelease.connect (*this, invalidator (*this), std::bind (&ContourDesignGUI::test_button_release, this, _1), gui_context ());
 
 	signal_map().connect (sigc::mem_fun (*this, &ContourDesignGUI::init_on_show));
 	update_device_state ();
@@ -253,7 +253,7 @@ ContourDesignGUI::reset_test_state (GdkEventAny*)
 {
 	_ccp.set_test_mode (false);
 	_test_button.set_active (Gtkmm2ext::Off);
-	vector<boost::shared_ptr<ArdourButton> >::const_iterator it;
+	vector<std::shared_ptr<ArdourButton> >::const_iterator it;
 	for (it = _btn_leds.begin(); it != _btn_leds.end(); ++it) {
 		(*it)->set_active_state (Gtkmm2ext::Off);
 	}

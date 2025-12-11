@@ -19,26 +19,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_audio_unit_h__
-#define __ardour_audio_unit_h__
+#pragma once
 
-#include <stdint.h>
-#include <boost/shared_ptr.hpp>
-
+#include <atomic>
+#include <cstdint>
 #include <list>
+#include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
-#include <map>
 
-#include "pbd/g_atomic_compat.h"
 #include "ardour/plugin.h"
 
 #include <AudioUnit/AudioUnit.h>
 #include <AudioUnit/AudioUnitProperties.h>
 #include "AUParamInfo.h"
 
-#include <boost/shared_ptr.hpp>
 
 class CAComponent;
 class CAAudioUnit;
@@ -62,7 +59,7 @@ struct LIBARDOUR_API AUParameterDescriptor : public ParameterDescriptor {
 class LIBARDOUR_API AUPlugin : public ARDOUR::Plugin
 {
   public:
-	AUPlugin (AudioEngine& engine, Session& session, boost::shared_ptr<CAComponent> comp);
+	AUPlugin (AudioEngine& engine, Session& session, std::shared_ptr<CAComponent> comp);
 	AUPlugin (const AUPlugin& other);
 	virtual ~AUPlugin ();
 
@@ -83,6 +80,7 @@ class LIBARDOUR_API AUPlugin : public ARDOUR::Plugin
 	void deactivate ();
 	void flush ();
 	int set_block_size (pframes_t nframes);
+	void set_non_realtime (bool);
 
 	int connect_and_run (BufferSet& bufs,
 			samplepos_t start, samplepos_t end, double speed,
@@ -118,8 +116,8 @@ class LIBARDOUR_API AUPlugin : public ARDOUR::Plugin
 		_requires_fixed_size_buffers = yn;
 	}
 
-	boost::shared_ptr<CAAudioUnit> get_au () { return unit; }
-	boost::shared_ptr<CAComponent> get_comp () const { return comp; }
+	std::shared_ptr<CAAudioUnit> get_au () { return unit; }
+	std::shared_ptr<CAComponent> get_comp () const { return comp; }
 
 	OSStatus render_callback(AudioUnitRenderActionFlags *ioActionFlags,
 	                         const AudioTimeStamp       *inTimeStamp,
@@ -164,15 +162,16 @@ class LIBARDOUR_API AUPlugin : public ARDOUR::Plugin
 	samplecnt_t plugin_latency() const;
 	void find_presets ();
 
-	boost::shared_ptr<CAComponent> comp;
-	boost::shared_ptr<CAAudioUnit> unit;
+	std::shared_ptr<CAComponent> comp;
+	std::shared_ptr<CAAudioUnit> unit;
 
 	bool initialized;
+	bool process_offline;
 	int32_t input_channels;
 	int32_t output_channels;
 	std::vector<std::pair<int,int> > io_configs;
 	samplecnt_t _last_nframes;
-	mutable GATOMIC_QUAL guint _current_latency;
+	mutable std::atomic<unsigned int> _current_latency;
 	bool _requires_fixed_size_buffers;
 	AudioBufferList* buffers;
 	bool _has_midi_input;
@@ -239,7 +238,7 @@ class LIBARDOUR_API AUPlugin : public ARDOUR::Plugin
 
 class LIBARDOUR_API AUPluginInfo : public PluginInfo {
 public:
-	 AUPluginInfo (boost::shared_ptr<CAComponentDescription>);
+	 AUPluginInfo (std::shared_ptr<CAComponentDescription>);
 	~AUPluginInfo () {}
 
 	PluginPtr load (Session& session);
@@ -265,11 +264,10 @@ public:
 	static std::string convert_old_unique_id (std::string const&);
 
 private:
-	boost::shared_ptr<CAComponentDescription> descriptor;
+	std::shared_ptr<CAComponentDescription> descriptor;
 };
 
-typedef boost::shared_ptr<AUPluginInfo> AUPluginInfoPtr;
+typedef std::shared_ptr<AUPluginInfo> AUPluginInfoPtr;
 
 } // namespace ARDOUR
 
-#endif // __ardour_audio_unit_h__

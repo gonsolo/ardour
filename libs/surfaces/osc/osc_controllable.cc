@@ -31,12 +31,12 @@ using namespace PBD;
 using namespace ARDOUR;
 using namespace ArdourSurface;
 
-OSCControllable::OSCControllable (lo_address a, const std::string& p, boost::shared_ptr<Controllable> c)
+OSCControllable::OSCControllable (lo_address a, const std::string& p, std::shared_ptr<Controllable> c)
 	: controllable (c)
 	, path (p)
 {
 	addr = lo_address_new (lo_address_get_hostname(a) , lo_address_get_port(a));
-	c->Changed.connect (changed_connection, MISSING_INVALIDATOR, boost::bind (&OSCControllable::send_change_message, this), OSC::instance());
+	c->Changed.connect (changed_connection, MISSING_INVALIDATOR, std::bind (&OSCControllable::send_change_message, this), OSC::instance());
 }
 
 OSCControllable::~OSCControllable ()
@@ -74,7 +74,7 @@ OSCControllable::send_change_message ()
 /*------------------------------------------------------------*/
 
 OSCRouteControllable::OSCRouteControllable (lo_address a, const std::string& p,
-					    boost::shared_ptr<Controllable> c, boost::shared_ptr<Route> r)
+					    std::shared_ptr<Controllable> c, std::shared_ptr<Route> r)
 	: OSCControllable (a, p, c)
 	, _route (r)
 {

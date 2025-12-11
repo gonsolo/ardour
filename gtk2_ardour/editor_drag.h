@@ -29,17 +29,18 @@
 #include <list>
 #include <vector>
 
-#include <gdk/gdk.h>
+#include <ydk/gdk.h>
 #include <stdint.h>
 
 #include "ardour/tempo.h"
 #include "ardour/types.h"
 
+#include "evoral/ControlList.h"
+
 #include "canvas/types.h"
 
 #include "gtkmm2ext/bindings.h"
 
-#include "cursor_context.h"
 #include "editor_items.h"
 #include "mouse_cursors.h"
 #include "editing.h"
@@ -56,16 +57,20 @@ namespace ArdourCanvas {
 	class Item;
 	class Line;
 	class Rectangle;
+	class Lollipop;
 }
 
 namespace PBD {
 	class StatefulDiffCommand;
 }
 
+class CueEditor;
 class PatchChange;
+class EditingContext;
 class Editor;
 class EditorCursor;
 class TimeAxisView;
+class Pianoroll;
 class MidiTimeAxisView;
 class Drag;
 class NoteBase;
@@ -73,6 +78,7 @@ class TimeAxisView;
 class RouteTimeAxisView;
 class RegionSelection;
 class MidiRegionView;
+class MidiView;
 class MeterMarker;
 class ArdourMarker;
 class TempoMarker;
@@ -81,17 +87,18 @@ class ControlPoint;
 class AudioRegionView;
 class AutomationLine;
 class AutomationTimeAxisView;
+class VelocityDisplay;
 
 /** Class to manage current drags */
 class DragManager
 {
 public:
 
-	DragManager (Editor* e);
+	DragManager (EditingContext* e);
 	~DragManager ();
 
 	bool motion_handler (GdkEvent *, bool);
-
+	bool mid_drag_key_event (GdkEventKey*);
 	void abort ();
 	void add (Drag *);
 	void set (Drag *, GdkEvent *, Gdk::Cursor* c = MouseCursors::invalid_cursor());
@@ -134,7 +141,7 @@ public:
 	bool preview_video () const;
 
 private:
-	Editor* _editor;
+	EditingContext* _editing_context;
 	std::list<Drag*> _drags;
 	bool _ending; ///< true if end_grab or abort is in progress, otherwise false
 	double _current_pointer_x; ///< canvas-coordinate space x of the current pointer
@@ -147,11 +154,15 @@ private:
 class Drag
 {
 public:
-	Drag (Editor *, ArdourCanvas::Item *, Temporal::TimeDomain td, bool trackview_only = true);
-	virtual ~Drag () {}
+	Drag (EditingContext&, ArdourCanvas::Item *, Temporal::TimeDomain td, ArdourCanvas::Item const * bounding_item, bool hide_snapped_cursor = true);
+	virtual ~Drag ();
 
 	void set_manager (DragManager* m) {
 		_drags = m;
+	}
+
+	void set_bounding_item (ArdourCanvas::Item const * i) {
+		_bounding_item = i;
 	}
 
 	/** @return the canvas item being dragged */
@@ -160,7 +171,7 @@ public:
 	}
 
 	Temporal::TimeDomain time_domain() const { return _time_domain; }
-
+	void set_time_domain (Temporal::TimeDomain);
 
 	void swap_grab (ArdourCanvas::Item *, Gdk::Cursor *, uint32_t);
 	bool motion_handler (GdkEvent*, bool);
@@ -212,11 +223,15 @@ public:
 	}
 
 	/** @return minimum number of samples (in x) and pixels (in y) that should be considered a movement */
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (1, Temporal::AudioTime), 1);
-	}
+	typedef std::pair<int,int> MoveThreshold;
+
+	virtual MoveThreshold move_threshold () const;
 
 	virtual bool allow_vertical_autoscroll () const {
+		return true;
+	}
+
+	virtual bool allow_horizontal_autoscroll () const {
 		return true;
 	}
 
@@ -229,6 +244,8 @@ public:
 	virtual bool y_movement_matters () const {
 		return true;
 	}
+
+	virtual bool mid_drag_key_event (GdkEventKey*)  { return false; }
 
 	bool initially_vertical() const {
 		return _initially_vertical;
@@ -258,7 +275,7 @@ protected:
 		return _grab_y;
 	}
 
-	Temporal::timepos_t pixel_to_time (double x) const;
+	Temporal::timepos_t pixel_duration_to_time (double x) const;
 
 	Temporal::timepos_t raw_grab_time () const {
 		return _raw_grab_time;
@@ -296,16 +313,17 @@ protected:
 	/* sets snap delta from unsnapped pos */
 	void setup_snap_delta (Temporal::timepos_t const & pos);
 
-	boost::shared_ptr<ARDOUR::Region> add_midi_region (MidiTimeAxisView*, bool commit);
+	std::shared_ptr<ARDOUR::Region> add_midi_region (MidiTimeAxisView*, bool commit);
 
 	void show_verbose_cursor_time (Temporal::timepos_t const &);
 	void show_verbose_cursor_duration (Temporal::timepos_t const & , Temporal::timepos_t const & , double xoffset = 0);
 	void show_verbose_cursor_text (std::string const &);
 	void show_view_preview (Temporal::timepos_t const &);
 
-	Editor* _editor; ///< our editor
+	EditingContext& editing_context;
 	DragManager* _drags;
 	ArdourCanvas::Item* _item; ///< our item
+	ArdourCanvas::Item const * _bounding_item; ///< our coordinate reference (normally null)
 	/** Offset from the mouse's position for the drag to the start of the thing that is being dragged */
 	Temporal::timecnt_t _pointer_offset;
 	Temporal::timecnt_t _video_offset;
@@ -314,15 +332,17 @@ protected:
 	bool _y_constrained; ///< true if y motion is constrained, otherwise false
 	bool _was_rolling; ///< true if the session was rolling before the drag started, otherwise false
 	ARDOUR::timepos_t _earliest_time_limit; ///< time we cannot drag before (defaults to 0, indicating no such limit)
+	bool _copy;
 
 private:
 	bool _trackview_only; ///< true if pointer y value should always be relative to the top of the trackview group
+	bool _hide_snapped_cursor; ///< set true of Drag::motion does not call `set_snapped_cursor_position`
 	bool _move_threshold_passed; ///< true if the move threshold has been passed, otherwise false
 	bool _starting_point_passed; ///< true if we called move () with first_move flag, otherwise false
 	bool _initially_vertical; ///< true if after move threshold is passed we appear to be moving vertically; undefined before that
 	bool _was_double_click; ///< true if drag initiated by a double click event
 	double _grab_x; ///< trackview x of the grab start position
-	double _grab_y; ///< y of the grab start position, possibly adjusted if _trackview_only is true
+	double _grab_y; ///< y of the grab start position, possibly adjusted if _bounding_itme is non-null
 	double _last_pointer_x; ///< trackview x of the pointer last time a motion occurred
 	double _last_pointer_y; ///< trackview y of the pointer last time a motion occurred
 	Temporal::timepos_t _raw_grab_time; ///< unsnapped time that the mouse was at when start_grab was called, or 0
@@ -334,11 +354,23 @@ private:
 	 *  samplepos. used for relative snap.
 	 */
 	Temporal::timecnt_t _snap_delta;
-	CursorContext::Handle _cursor_ctx; ///< cursor change context
 	bool _constraint_pressed; ///< if the keyboard indicated constraint modifier was pressed on start_grab()
 	int _grab_button;
 
 	Gtkmm2ext::Bindings::DragsBlockBindings binding_blocker;
+};
+
+/** EditorDrag:
+ *
+ * a base class for Drags that will need access to the full Editor, not just an
+ * Editing Context.
+ */
+class EditorDrag : public Drag
+{
+  public:
+	EditorDrag (Editor&, ArdourCanvas::Item *, Temporal::TimeDomain td, ArdourCanvas::Item const * bounding_item, bool hide_snapped_cursor = true);
+  protected:
+	Editor& _editor;
 };
 
 class RegionDrag;
@@ -363,15 +395,15 @@ public:
 	Temporal::timepos_t initial_position; ///< initial position of the region
 	Temporal::timepos_t initial_end; ///< initial end position of the region
 	samplepos_t anchored_fade_length; ///< fade_length when anchored during drag
-	boost::shared_ptr<ARDOUR::Playlist> initial_playlist;
+	std::shared_ptr<ARDOUR::Playlist> initial_playlist;
 	TimeAxisView* initial_time_axis_view;
 };
 
 /** Abstract base class for drags that involve region(s) */
-class RegionDrag : public Drag, public sigc::trackable
+class RegionDrag : public EditorDrag, public sigc::trackable
 {
 public:
-	RegionDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain);
+	RegionDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain, bool hide_snapped_cursor = true);
 	virtual ~RegionDrag () {}
 
 protected:
@@ -393,8 +425,7 @@ protected:
 	friend class DraggingView;
 
 protected:
-	typedef std::set<boost::shared_ptr<ARDOUR::Playlist> > PlaylistSet;
-	void add_stateful_diff_commands_for_playlists (PlaylistSet const &);
+	void add_stateful_diff_commands_for_playlists (ARDOUR::PlaylistSet const &);
 
 private:
 
@@ -407,7 +438,7 @@ class RegionSlipContentsDrag : public RegionDrag
 {
 public:
 
-	RegionSlipContentsDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
+	RegionSlipContentsDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
 	virtual ~RegionSlipContentsDrag () {}
 
 	virtual void start_grab (GdkEvent *, Gdk::Cursor *);
@@ -420,7 +451,7 @@ public:
 class RegionBrushDrag : public RegionDrag
 {
 public:
-	RegionBrushDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
+	RegionBrushDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
 	virtual ~RegionBrushDrag () {}
 
 	virtual void start_grab (GdkEvent *, Gdk::Cursor *);
@@ -437,7 +468,7 @@ class RegionMotionDrag : public RegionDrag
 {
 public:
 
-	RegionMotionDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
+	RegionMotionDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
 	virtual ~RegionMotionDrag () {}
 
 	virtual void start_grab (GdkEvent *, Gdk::Cursor *);
@@ -476,7 +507,7 @@ private:
 class RegionMoveDrag : public RegionMotionDrag
 {
 public:
-	RegionMoveDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, bool, Temporal::TimeDomain);
+	RegionMoveDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, bool, Temporal::TimeDomain);
 	virtual ~RegionMoveDrag () {}
 
 	void motion (GdkEvent *, bool);
@@ -487,10 +518,6 @@ public:
 
 	bool regions_came_from_canvas () const {
 		return true;
-	}
-
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (4, Temporal::AudioTime), 4);
 	}
 
 	void setup_pointer_offset ();
@@ -511,24 +538,23 @@ private:
 		);
 
 	RegionView* insert_region_into_playlist (
-		boost::shared_ptr<ARDOUR::Region>,
+		std::shared_ptr<ARDOUR::Region>,
 		RouteTimeAxisView*,
 		ARDOUR::layer_t,
 		Temporal::timepos_t const &,
-		PlaylistSet&
+		ARDOUR::PlaylistSet&
 		);
 
 	void remove_region_from_playlist (
-		boost::shared_ptr<ARDOUR::Region>,
-		boost::shared_ptr<ARDOUR::Playlist>,
-		PlaylistSet& modified_playlists
+		std::shared_ptr<ARDOUR::Region>,
+		std::shared_ptr<ARDOUR::Playlist>,
+		ARDOUR::PlaylistSet& modified_playlists
 		);
 
 
 	void collect_new_region_view (RegionView *);
-	RouteTimeAxisView* create_destination_time_axis (boost::shared_ptr<ARDOUR::Region>, TimeAxisView* original);
+	RouteTimeAxisView* create_destination_time_axis (std::shared_ptr<ARDOUR::Region>, TimeAxisView* original);
 
-	bool _copy;
 	RegionView* _new_region_view;
 };
 
@@ -536,7 +562,7 @@ private:
 class RegionInsertDrag : public RegionMotionDrag
 {
 public:
-	RegionInsertDrag (Editor *, boost::shared_ptr<ARDOUR::Region>, RouteTimeAxisView*, Temporal::timepos_t const &, Temporal::TimeDomain);
+	RegionInsertDrag (Editor&, std::shared_ptr<ARDOUR::Region>, RouteTimeAxisView*, Temporal::timepos_t const &, Temporal::TimeDomain);
 
 	void finished (GdkEvent *, bool);
 	void aborted (bool);
@@ -547,25 +573,23 @@ public:
 };
 
 /** "Drag" to cut a region (action only on button release) */
-class RegionCutDrag : public Drag
+class RegionCutDrag : public EditorDrag
 {
 public:
-	RegionCutDrag (Editor*, ArdourCanvas::Item*, samplepos_t);
+	RegionCutDrag (Editor&, ArdourCanvas::Item*, samplepos_t);
 	~RegionCutDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent*, bool);
 	void finished (GdkEvent*, bool);
 	void aborted (bool);
-
-private:
 };
 
 /** Drags to create regions */
-class RegionCreateDrag : public Drag
+class RegionCreateDrag : public EditorDrag
 {
 public:
-	RegionCreateDrag (Editor *, ArdourCanvas::Item *, TimeAxisView *);
+	RegionCreateDrag (Editor&, ArdourCanvas::Item *, TimeAxisView *);
 
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
@@ -573,14 +597,14 @@ public:
 
 private:
 	MidiTimeAxisView* _view;
-	boost::shared_ptr<ARDOUR::Region> _region;
+	std::shared_ptr<ARDOUR::Region> _region;
 };
 
 /** Drags to resize MIDI notes */
 class NoteResizeDrag : public Drag
 {
 public:
-	NoteResizeDrag (Editor *, ArdourCanvas::Item *);
+	NoteResizeDrag (EditingContext&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -592,18 +616,18 @@ public:
 	}
 
 private:
-	MidiRegionView*     region;
-	bool                relative;
-	bool                at_front;
-	bool                _was_selected;
-	double              _snap_delta;
+	MidiView*     midi_view;
+	bool          relative;
+	bool          at_front;
+	bool         _was_selected;
+	double       _snap_delta;
 };
 
 /** Drags to move MIDI notes */
 class NoteDrag : public Drag
 {
 public:
-	NoteDrag (Editor*, ArdourCanvas::Item*);
+	NoteDrag (EditingContext&, ArdourCanvas::Item*);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -621,20 +645,19 @@ private:
 	Temporal::timecnt_t total_dx (GdkEvent * event) const; // total movement in quarter notes
 	int8_t total_dy () const;
 
-	MidiRegionView* _region;
+	MidiView* _view;
 	NoteBase* _primary;
 	Temporal::timecnt_t _cumulative_dx;
 	double _cumulative_dy;
 	Temporal::timepos_t  _earliest; // earliest note in note selection
 	bool   _was_selected;
 	double _note_height;
-	bool   _copy;
 };
 
 class NoteCreateDrag : public Drag
 {
 public:
-	NoteCreateDrag (Editor *, ArdourCanvas::Item *, MidiRegionView *);
+	NoteCreateDrag (EditingContext&, ArdourCanvas::Item *, MidiView *);
 	~NoteCreateDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -658,12 +681,7 @@ private:
 	double y_to_region (double) const;
 	Temporal::Beats round_to_grid (Temporal::timepos_t const & pos, GdkEvent const * event) const;
 
-	/** @return minimum number of samples (in x) and pixels (in y) that should be considered a movement */
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (0, Temporal::AudioTime), 0);
-	}
-
-	MidiRegionView* _region_view;
+	MidiView* _midi_view;
 	ArdourCanvas::Rectangle* _drag_rect;
 	Temporal::timepos_t _note[2];
 };
@@ -671,7 +689,7 @@ private:
 class HitCreateDrag : public Drag
 {
 public:
-	HitCreateDrag (Editor *, ArdourCanvas::Item *, MidiRegionView *);
+	HitCreateDrag (EditingContext&, ArdourCanvas::Item *, MidiView *);
 	~HitCreateDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -690,22 +708,50 @@ public:
 private:
 	double y_to_region (double) const;
 
-	/** @return minimum number of samples (in x) and pixels (in y) that should be considered a movement */
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t::zero (Temporal::AudioTime), 0);
+	MidiView*           _midi_view;
+	int                 _y;
+
+};
+
+class NoteBrushDrag : public Drag
+{
+public:
+	NoteBrushDrag (EditingContext&, ArdourCanvas::Item *, MidiView *, Temporal::Beats specified_length = Temporal::Beats(), int stride_multiple = 1, int held_note = -1);
+	~NoteBrushDrag ();
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void motion (GdkEvent *, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool) {}
+
+	bool active (Editing::MouseMode mode) {
+		return mode == Editing::MouseDraw || mode == Editing::MouseContent;
 	}
 
-	MidiRegionView* _region_view;
-	Temporal::timepos_t _last_pos;
-	double          _y;
+	bool y_movement_matters () const {
+		return false;
+	}
 
+private:
+	double y_to_region (double) const;
+	Temporal::Beats get_stride (Temporal::Beats const & pos, Temporal::BBT_Offset const & quantization);
+
+	MidiView*           _midi_view;
+	Temporal::timepos_t _last_pos;
+	int                 _y;
+	Temporal::Beats      stride;
+	Temporal::Beats      next_grid;
+	bool                 added_notes;
+	Temporal::Beats      specified_length;
+	int                  stride_multiple;
+	int                  held_note;
 };
 
 /** Drag to move MIDI patch changes */
 class PatchChangeDrag : public Drag
 {
 public:
-	PatchChangeDrag (Editor *, PatchChange *, MidiRegionView *);
+	PatchChangeDrag (EditingContext&, PatchChange *, MidiView *);
 
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
@@ -722,7 +768,7 @@ public:
 	void setup_pointer_offset ();
 
 private:
-	MidiRegionView* _region_view;
+	MidiView* _region_view;
 	PatchChange* _patch_change;
 	double _cumulative_dx;
 };
@@ -738,10 +784,10 @@ public:
 };
 
 /** Drag of video offset */
-class VideoTimeLineDrag : public Drag
+class VideoTimeLineDrag : public EditorDrag
 {
 public:
-	VideoTimeLineDrag (Editor *e, ArdourCanvas::Item *i);
+	VideoTimeLineDrag (Editor&e, ArdourCanvas::Item *i);
 
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
@@ -775,7 +821,7 @@ public:
 		EndTrim
 	};
 
-	TrimDrag (Editor *, ArdourCanvas::Item *, RegionView*, std::list<RegionView*> const &, Temporal::TimeDomain td, bool preserve_fade_anchor = false);
+	TrimDrag (Editor&, ArdourCanvas::Item *, RegionView*, std::list<RegionView*> const &, Temporal::TimeDomain td, bool preserve_fade_anchor = false);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -803,10 +849,10 @@ private:
 };
 
 /** Meter marker drag */
-class MeterMarkerDrag : public Drag
+class MeterMarkerDrag : public EditorDrag
 {
 public:
-	MeterMarkerDrag (Editor *, ArdourCanvas::Item *, bool);
+	MeterMarkerDrag (Editor&, ArdourCanvas::Item *, bool);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -835,10 +881,10 @@ private:
 };
 
 /** Tempo curve drag */
-class TempoCurveDrag : public Drag
+class TempoCurveDrag : public EditorDrag
 {
 public:
-	TempoCurveDrag (Editor*, ArdourCanvas::Item*);
+	TempoCurveDrag (Editor&, ArdourCanvas::Item*);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -853,10 +899,10 @@ private:
 };
 
 /** Tempo marker drag */
-class TempoMarkerDrag : public Drag
+class TempoMarkerDrag : public EditorDrag
 {
 public:
-	TempoMarkerDrag (Editor *, ArdourCanvas::Item *);
+	TempoMarkerDrag (Editor&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -879,16 +925,16 @@ private:
 	Temporal::TempoMap::WritableSharedPtr map;
 
 	bool _movable;
-	Temporal::Tempo _grab_bpm;
+	double _grab_bpm;
 	Temporal::Beats _grab_qn;
 	XMLNode* _before_state;
 };
 
 /** Tempo marker drag */
-class BBTMarkerDrag : public Drag
+class BBTMarkerDrag : public EditorDrag
 {
 public:
-	BBTMarkerDrag (Editor *, ArdourCanvas::Item *);
+	BBTMarkerDrag (Editor&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -913,12 +959,10 @@ private:
 	XMLNode* _before_state;
 };
 
-
-/** BBT Ruler drag */
-class BBTRulerDrag : public Drag
+class MappingEndDrag : public EditorDrag
 {
 public:
-	BBTRulerDrag (Editor *, ArdourCanvas::Item *);
+	MappingEndDrag (Editor&, ArdourCanvas::Item *, Temporal::TempoMap::WritableSharedPtr&, Temporal::TempoPoint&, Temporal::TempoPoint& after, XMLNode& before_state);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -929,6 +973,10 @@ public:
 		return false;
 	}
 
+	bool allow_horizontal_autoscroll () const {
+		return false;
+	}
+
 	bool y_movement_matters () const {
 		return false;
 	}
@@ -936,19 +984,66 @@ public:
 	void setup_pointer_offset ();
 
 private:
-	Temporal::Beats _grab_qn;
-	Temporal::TempoPoint* _tempo;
+	Temporal::TempoPoint& _tempo;
+	Temporal::TempoPoint& _after;
+	double _grab_bpm;
 	Temporal::TempoMap::WritableSharedPtr map;
 
 	XMLNode* _before_state;
 	bool     _drag_valid;
 };
 
-/** tempo curve twist drag */
-class TempoTwistDrag : public Drag
+class MappingTwistDrag : public EditorDrag
 {
 public:
-	TempoTwistDrag (Editor *, ArdourCanvas::Item *);
+	MappingTwistDrag (Editor&, ArdourCanvas::Item *, Temporal::TempoMap::WritableSharedPtr&,
+	                  Temporal::TempoPoint& prev,
+	                  Temporal::TempoPoint& focus,
+	                  Temporal::TempoPoint& next,
+	                  XMLNode&,
+	                  bool ramped);
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void motion (GdkEvent *, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool);
+
+	bool allow_vertical_autoscroll () const {
+		return false;
+	}
+
+	bool allow_horizontal_autoscroll () const {
+		return false;
+	}
+
+	bool y_movement_matters () const {
+		return false;
+	}
+
+	void setup_pointer_offset ();
+
+private:
+	Temporal::TempoPoint& prev;
+	Temporal::TempoPoint& focus;
+	Temporal::TempoPoint& next;
+	Temporal::TempoMap::WritableSharedPtr map;
+
+	double direction;
+	double delta;
+	double initial_focus_npm;
+	double initial_pre_npm;
+
+	XMLNode* _before_state;
+	bool     _drag_valid;
+	bool     _do_ramp;
+};
+
+
+/** tempo curve twist drag */
+class TempoTwistDrag : public EditorDrag
+{
+public:
+	TempoTwistDrag (Editor&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -968,7 +1063,6 @@ public:
 private:
 	Temporal::Beats _grab_qn;
 	Temporal::TempoPoint* _tempo;
-	Temporal::TempoPoint*  _grab_tempo;
 	Temporal::TempoPoint const * _next_tempo;
 	Temporal::TempoMap::WritableSharedPtr map;
 	bool _drag_valid;
@@ -976,10 +1070,10 @@ private:
 };
 
 /** tempo curve twist drag */
-class TempoEndDrag : public Drag
+class TempoEndDrag : public EditorDrag
 {
 public:
-	TempoEndDrag (Editor *, ArdourCanvas::Item *);
+	TempoEndDrag (Editor&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1007,10 +1101,10 @@ private:
 };
 
 /** Drag of the playhead cursor */
-class CursorDrag : public Drag
+class CursorDrag : public EditorDrag
 {
 public:
-	CursorDrag (Editor *, EditorCursor&, bool);
+	CursorDrag (Editor&, EditorCursor&, bool);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1043,7 +1137,7 @@ private:
 class FadeInDrag : public RegionDrag
 {
 public:
-	FadeInDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain);
+	FadeInDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1065,7 +1159,7 @@ public:
 class FadeOutDrag : public RegionDrag
 {
 public:
-	FadeOutDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
+	FadeOutDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1084,10 +1178,10 @@ public:
 };
 
 /** Marker drag */
-class MarkerDrag : public Drag
+class MarkerDrag : public EditorDrag
 {
 public:
-	MarkerDrag (Editor *, ArdourCanvas::Item *);
+	MarkerDrag (Editor&, ArdourCanvas::Item *);
 	~MarkerDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -1118,6 +1212,8 @@ private:
 		CopiedLocationMarkerInfo (ARDOUR::Location* l, ArdourMarker* m);
 	};
 
+	std::vector<ARDOUR::Location::ChangeSuspender> lcs;
+
 	typedef std::list<CopiedLocationMarkerInfo> CopiedLocationInfo;
 	CopiedLocationInfo _copied_locations;
 	ArdourCanvas::Points _points;
@@ -1127,7 +1223,7 @@ private:
 class ControlPointDrag : public Drag
 {
 public:
-	ControlPointDrag (Editor *, ArdourCanvas::Item *);
+	ControlPointDrag (EditingContext&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1146,18 +1242,19 @@ private:
 	ControlPoint* _point;
 	double _fixed_grab_x;
 	double _fixed_grab_y;
-	double _cumulative_x_drag;
 	double _cumulative_y_drag;
 	bool     _pushing;
         uint32_t _final_index;
 	static double _zero_gain_fraction;
+
+	Temporal::timecnt_t total_dt (GdkEvent*) const;
 };
 
 /** Gain or automation line drag */
 class LineDrag : public Drag
 {
 public:
-	LineDrag (Editor *e, ArdourCanvas::Item *i);
+	LineDrag (EditingContext &e, ArdourCanvas::Item *i, std::function<void(GdkEvent*,Temporal::timepos_t const &,double)>);
 	~LineDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -1178,13 +1275,14 @@ private:
 	uint32_t _before;
 	uint32_t _after;
 	bool    have_command;
+	std::function<void(GdkEvent*,Temporal::timepos_t const &,double)> click_functor;
 };
 
 /** Transient feature line drags*/
 class FeatureLineDrag : public Drag
 {
 public:
-	FeatureLineDrag (Editor *e, ArdourCanvas::Item *i);
+	FeatureLineDrag (Editor&e, ArdourCanvas::Item *i);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1207,16 +1305,12 @@ private:
 class RubberbandSelectDrag : public Drag
 {
 public:
-	RubberbandSelectDrag (Editor *, ArdourCanvas::Item *);
+	RubberbandSelectDrag (EditingContext&, ArdourCanvas::Item *, std::function<bool(GdkEvent*,Temporal::timepos_t const &)> click_functor);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
 	void aborted (bool);
-
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (8, Temporal::AudioTime), 1);
-	}
 
 	void do_select_things (GdkEvent *, bool);
 
@@ -1228,76 +1322,57 @@ public:
 	 *  @param y2 The bottom of the rectangle in trackview coordinates.
 	 *  @param drag_in_progress true if the drag is currently happening.
 	 */
-	virtual void select_things (int button_state, Temporal::timepos_t const & x1, Temporal::timepos_t const & x2, double y1, double y2, bool drag_in_progress) = 0;
-
-	virtual void deselect_things () = 0;
+	virtual void select_things (int button_state, Temporal::timepos_t const & x1, Temporal::timepos_t const & x2, double y1, double y2, bool drag_in_progress);
+	virtual void deselect_things ();
 
   protected:
 	bool _vertical_only;
-};
-
-/** A general editor RubberbandSelectDrag (for regions, automation points etc.) */
-class EditorRubberbandSelectDrag : public RubberbandSelectDrag
-{
-public:
-	EditorRubberbandSelectDrag (Editor *, ArdourCanvas::Item *);
-
-	void select_things (int, Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, bool);
-	void deselect_things ();
+	std::function<bool(GdkEvent*,Temporal::timepos_t const &)> click_functor;
 };
 
 /** A RubberbandSelectDrag for selecting MIDI notes */
 class MidiRubberbandSelectDrag : public RubberbandSelectDrag
 {
-public:
-	MidiRubberbandSelectDrag (Editor *, MidiRegionView *);
+  public:
+	MidiRubberbandSelectDrag (EditingContext&, MidiView *);
 
 	void select_things (int, Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, bool);
 	void deselect_things ();
+	void finished (GdkEvent *, bool);
 
-private:
-	MidiRegionView* _region_view;
+  private:
+	MidiView* _midi_view;
 };
 
 /** A RubberbandSelectDrag for selecting MIDI notes but with no horizontal component */
 class MidiVerticalSelectDrag : public RubberbandSelectDrag
 {
 public:
-	MidiVerticalSelectDrag (Editor *, MidiRegionView *);
+	MidiVerticalSelectDrag (EditingContext&, MidiView *);
 
 	void select_things (int, Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, bool);
 	void deselect_things ();
 
 private:
-	MidiRegionView* _region_view;
+	MidiView* _midi_view;
 };
 
 /** Region drag in time-FX mode */
 class TimeFXDrag : public RegionDrag
 {
 public:
-	TimeFXDrag (Editor *, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
+	TimeFXDrag (Editor&, ArdourCanvas::Item *, RegionView *, std::list<RegionView*> const &, Temporal::TimeDomain td);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
 	void aborted (bool);
-};
-
-/** Scrub drag in audition mode */
-class ScrubDrag : public Drag
-{
-public:
-	ScrubDrag (Editor *, ArdourCanvas::Item *);
-
-	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
-	void motion (GdkEvent *, bool);
-	void finished (GdkEvent *, bool);
-	void aborted (bool);
+private:
+	bool _dragging_start;
 };
 
 /** Drag in range select mode */
-class SelectionDrag : public Drag
+class SelectionDrag : public EditorDrag
 {
 public:
 	enum Operation {
@@ -1308,7 +1383,7 @@ public:
 		SelectionExtend
 	};
 
-	SelectionDrag (Editor *, ArdourCanvas::Item *, Operation);
+	SelectionDrag (Editor&, ArdourCanvas::Item *, Operation);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1326,8 +1401,25 @@ private:
 	Temporal::timepos_t end_at_start;
 };
 
+/** Drag time-selection markers */
+class SelectionMarkerDrag : public EditorDrag
+{
+public:
+	SelectionMarkerDrag (Editor&, ArdourCanvas::Item*);
+
+	void start_grab (GdkEvent*, Gdk::Cursor* c = 0);
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool);
+
+private:
+	bool                _edit_start;
+	Temporal::timepos_t _start_at_start;
+	Temporal::timepos_t _end_at_start;
+};
+
 /** Range marker drag */
-class RangeMarkerBarDrag : public Drag
+class RangeMarkerBarDrag : public EditorDrag
 {
 public:
 	enum Operation {
@@ -1337,7 +1429,7 @@ public:
 		CreateCDMarker
 	};
 
-	RangeMarkerBarDrag (Editor *, ArdourCanvas::Item *, Operation);
+	RangeMarkerBarDrag (Editor&, ArdourCanvas::Item *, Operation);
 	~RangeMarkerBarDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -1358,23 +1450,18 @@ private:
 
 	Operation _operation;
 	ArdourCanvas::Rectangle* _drag_rect;
-	bool _copy;
 };
 
 /** Drag of rectangle to set zoom */
-class MouseZoomDrag : public Drag
+class MouseZoomDrag : public EditorDrag
 {
 public:
-	MouseZoomDrag (Editor *, ArdourCanvas::Item *);
+	MouseZoomDrag (Editor&, ArdourCanvas::Item *);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
 	void finished (GdkEvent *, bool);
 	void aborted (bool);
-
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (4, Temporal::AudioTime), 4);
-	}
 
 private:
 	bool _zoom_out;
@@ -1386,8 +1473,8 @@ private:
 class AutomationRangeDrag : public Drag
 {
 public:
-	AutomationRangeDrag (Editor *, AutomationTimeAxisView *, float initial_value, std::list<ARDOUR::TimelineRange> const &);
-	AutomationRangeDrag (Editor *, std::list<RegionView*> const &, std::list<ARDOUR::TimelineRange> const &, double y_origin, double y_height);
+	AutomationRangeDrag (EditingContext&, AutomationTimeAxisView *, float initial_value, std::list<ARDOUR::TimelineRange> const &);
+	AutomationRangeDrag (EditingContext&, std::list<RegionView*> const &, std::list<ARDOUR::TimelineRange> const &, double y_origin, double y_height);
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
 	void motion (GdkEvent *, bool);
@@ -1399,15 +1486,15 @@ public:
 	}
 
 private:
-	void setup (std::list<boost::shared_ptr<AutomationLine> > const &);
+	void setup (std::list<std::shared_ptr<AutomationLine> > const &);
 	double y_fraction (double global_y_position) const;
-	double value (boost::shared_ptr<ARDOUR::AutomationList> list, Temporal::timepos_t const & x) const;
+	double value (std::shared_ptr<ARDOUR::AutomationList> list, Temporal::timepos_t const & x) const;
 
 	std::list<ARDOUR::TimelineRange> _ranges;
 
 	/** A line that is part of the drag */
 	struct Line {
-		boost::shared_ptr<AutomationLine> line; ///< the line
+		std::shared_ptr<AutomationLine> line; ///< the line
 		std::list<ControlPoint*> points; ///< points to drag on the line
 		std::pair<Temporal::timepos_t, Temporal::timepos_t> range; ///< the range of all points on the line, in session time
 		XMLNode* state; ///< the XML state node before the drag
@@ -1426,7 +1513,7 @@ private:
 class CrossfadeEdgeDrag : public Drag
 {
 public:
-	CrossfadeEdgeDrag (Editor*, AudioRegionView*, ArdourCanvas::Item*, bool start);
+	CrossfadeEdgeDrag (Editor&, AudioRegionView*, ArdourCanvas::Item*, bool start);
 
 	void start_grab (GdkEvent*, Gdk::Cursor* c = 0);
 	void motion (GdkEvent*, bool);
@@ -1437,10 +1524,6 @@ public:
 		return false;
 	}
 
-	std::pair<Temporal::timecnt_t,int> move_threshold () const {
-		return std::make_pair (Temporal::timecnt_t (4, Temporal::AudioTime), 4);
-	}
-
 private:
 	AudioRegionView* arv;
 	bool start;
@@ -1449,7 +1532,7 @@ private:
 class RegionMarkerDrag : public Drag
 {
   public:
-	RegionMarkerDrag (Editor*, RegionView*, ArdourCanvas::Item*);
+	RegionMarkerDrag (Editor&, RegionView*, ArdourCanvas::Item*);
 	~RegionMarkerDrag ();
 
 	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
@@ -1465,13 +1548,138 @@ class RegionMarkerDrag : public Drag
 		return false;
 	}
 
-	void setup_pointer_sample_offset ();
+	void setup_pointer_offset ();
 
   private:
 	RegionView* rv;
 	ArdourMarker* view;
 	ARDOUR::CueMarker model;
 	ARDOUR::CueMarker dragging_model;
+};
+
+
+class LollipopDrag : public Drag
+{
+  public:
+	LollipopDrag (EditingContext&, ArdourCanvas::Item*);
+	~LollipopDrag ();
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void motion (GdkEvent *, bool);
+	void finished (GdkEvent *, bool);
+	void aborted (bool);
+
+	bool allow_vertical_autoscroll () const {
+		return false;
+	}
+
+	bool allow_horizontal_autoscroll () const {
+		return false;
+	}
+
+	bool x_movement_matters () const {
+		return false;
+	}
+
+	void setup_pointer_offset ();
+
+  private:
+	VelocityDisplay*          _display;
+	ArdourCanvas::Lollipop*   _primary;
+};
+
+template<typename OrderedPointList, typename OrderedPoint>
+class FreehandLineDrag : public Drag
+{
+  public:
+	FreehandLineDrag (EditingContext&, ArdourCanvas::Item*, ArdourCanvas::Rectangle&, bool, Temporal::TimeDomain);
+	~FreehandLineDrag ();
+
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent*, bool);
+	bool mid_drag_key_event (GdkEventKey*);
+	virtual void point_added  (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x) {}
+	virtual void line_extended  (ArdourCanvas::Duple const & from, ArdourCanvas::Duple const & to, ArdourCanvas::Rectangle const & r, double last_x) {
+		point_added (to, r, last_x);
+	}
+
+  protected:
+	ArdourCanvas::Item* parent; /* we do not own this. If null, use base_rect as the parent */
+	ArdourCanvas::Rectangle& base_rect; /* we do not own this */
+	ArdourCanvas::PolyLine* dragging_line;
+	bool horizontally_bounded;
+	int direction;
+	int edge_x;
+	bool did_snap;
+	bool line_break_pending;
+	OrderedPointList drawn_points;
+	ArdourCanvas::Coord line_start_x;
+	ArdourCanvas::Coord line_start_y;
+
+	void maybe_add_point (GdkEvent*, Temporal::timepos_t const &, bool first_move);
+};
+
+class AutomationDrawDrag : public FreehandLineDrag<Evoral::ControlList::OrderedPoints, Evoral::ControlList::OrderedPoint>
+{
+  public:
+	AutomationDrawDrag (EditingContext&, ArdourCanvas::Item*, ArdourCanvas::Rectangle&, bool, Temporal::TimeDomain);
+	~AutomationDrawDrag ();
+
+	void finished (GdkEvent*, bool);
+	void aborted (bool) {}
+};
+
+class VelocityLineDrag : public FreehandLineDrag<Evoral::ControlList::OrderedPoints, Evoral::ControlList::OrderedPoint>
+{
+  public:
+	VelocityLineDrag (EditingContext&, ArdourCanvas::Rectangle&, bool, Temporal::TimeDomain);
+	~VelocityLineDrag ();
+
+	void start_grab (GdkEvent *, Gdk::Cursor* c = 0);
+	void finished (GdkEvent*, bool);
+	void aborted (bool);
+	void point_added  (ArdourCanvas::Duple const & d, ArdourCanvas::Rectangle const & r, double last_x);
+	void line_extended (ArdourCanvas::Duple const & from, ArdourCanvas::Duple const & to, ArdourCanvas::Rectangle const & r, double last_x);
+
+ private:
+	VelocityDisplay* vd;
+	bool drag_did_change;
+};
+
+class ClipStartDrag : public Drag
+{
+  public:
+	ClipStartDrag (CueEditor&, ArdourCanvas::Rectangle &);
+	~ClipStartDrag ();
+
+	void start_grab (GdkEvent*,Gdk::Cursor*);
+	bool end_grab (GdkEvent*);
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent*, bool);
+	void aborted (bool);
+
+  private:
+	CueEditor& ce;
+	ArdourCanvas::Rectangle* dragging_rect;
+	ArdourCanvas::Rect original_rect;
+};
+
+class ClipEndDrag : public Drag
+{
+  public:
+	ClipEndDrag (CueEditor&, ArdourCanvas::Rectangle &);
+	~ClipEndDrag ();
+
+	void start_grab (GdkEvent*,Gdk::Cursor*);
+	bool end_grab (GdkEvent*);
+	void motion (GdkEvent*, bool);
+	void finished (GdkEvent*, bool);
+	void aborted (bool);
+
+  private:
+	CueEditor& ce;
+	ArdourCanvas::Rectangle* dragging_rect;
+	ArdourCanvas::Rect original_rect;
 };
 
 #endif /* __gtk2_ardour_editor_drag_h_ */

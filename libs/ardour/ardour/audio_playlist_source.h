@@ -17,12 +17,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_audio_playlist_source_h__
-#define __ardour_audio_playlist_source_h__
+#pragma once
 
+#include <memory>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/ardour.h"
 #include "ardour/audiosource.h"
@@ -42,7 +40,7 @@ public:
 	bool clamped_at_unity () const { return false; }
 
 	samplecnt_t read_unlocked (Sample *dst, samplepos_t start, samplecnt_t cnt) const;
-	samplecnt_t write_unlocked (Sample *src, samplecnt_t cnt);
+	samplecnt_t write_unlocked (Sample const * src, samplecnt_t cnt);
 
 	float sample_rate () const;
 	int setup_peakfile ();
@@ -56,7 +54,7 @@ public:
 protected:
 	friend class SourceFactory;
 
-	AudioPlaylistSource (Session&, const PBD::ID& orig, const std::string& name, boost::shared_ptr<AudioPlaylist>, uint32_t chn,
+	AudioPlaylistSource (Session&, const PBD::ID& orig, const std::string& name, std::shared_ptr<AudioPlaylist>, uint32_t chn,
 	                     timepos_t const & begin, timepos_t const & len, Source::Flag flags);
 	AudioPlaylistSource (Session&, const XMLNode&);
 
@@ -70,4 +68,3 @@ private:
 
 } /* namespace */
 
-#endif /* __ardour_audio_playlist_source_h__ */

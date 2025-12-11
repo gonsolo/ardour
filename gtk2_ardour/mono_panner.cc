@@ -25,7 +25,7 @@
 #include <cstring>
 #include <cmath>
 
-#include <gtkmm/window.h>
+#include <ytkmm/window.h>
 #include <pangomm/layout.h>
 
 #include "pbd/compose.h"
@@ -61,7 +61,7 @@ bool MonoPanner::have_colors = false;
 Pango::AttrList MonoPanner::panner_font_attributes;
 bool            MonoPanner::have_font = false;
 
-MonoPanner::MonoPanner (boost::shared_ptr<ARDOUR::PannerShell> p)
+MonoPanner::MonoPanner (std::shared_ptr<ARDOUR::PannerShell> p)
 	: PannerInterface (p->panner())
 	, _panner_shell (p)
 	, position_control (_panner->pannable()->pan_azimuth_control)
@@ -86,10 +86,10 @@ MonoPanner::MonoPanner (boost::shared_ptr<ARDOUR::PannerShell> p)
 		have_font = true;
 	}
 
-	position_control->Changed.connect (panvalue_connections, invalidator(*this), boost::bind (&MonoPanner::value_change, this), gui_context());
+	position_control->Changed.connect (panvalue_connections, invalidator(*this), std::bind (&MonoPanner::value_change, this), gui_context());
 
-	_panner_shell->Changed.connect (panshell_connections, invalidator (*this), boost::bind (&MonoPanner::bypass_handler, this), gui_context());
-	_panner_shell->PannableChanged.connect (panshell_connections, invalidator (*this), boost::bind (&MonoPanner::pannable_handler, this), gui_context());
+	_panner_shell->Changed.connect (panshell_connections, invalidator (*this), std::bind (&MonoPanner::bypass_handler, this), gui_context());
+	_panner_shell->PannableChanged.connect (panshell_connections, invalidator (*this), std::bind (&MonoPanner::pannable_handler, this), gui_context());
 	UIConfiguration::instance().ColorsChanged.connect (sigc::mem_fun (*this, &MonoPanner::color_handler));
 
 	set_tooltip ();
@@ -207,7 +207,7 @@ MonoPanner::on_expose_event (GdkEventExpose*)
 
 	/* right box */
 	rounded_right_half_rectangle (context,
-			right - half_lr_box - .5,
+			right - half_lr_box + .5,
 			half_lr_box + step_down,
 			lr_box_size, lr_box_size, corner_radius);
 	context->set_source_rgba (UINT_RGBA_R_FLT(f), UINT_RGBA_G_FLT(f), UINT_RGBA_B_FLT(f), UINT_RGBA_A_FLT(f));
@@ -420,7 +420,7 @@ MonoPanner::on_motion_notify_event (GdkEventMotion* ev)
 	double delta = (ev->x - last_drag_x) / (double) w;
 
 	/* create a detent close to the center, at approx 1/180 deg */
-	if (!detented && fabsf (position_control->get_value() - .5f) < 0.006f) {
+	if (!detented && fabs (position_control->get_value() - .5) < 0.006) {
 		detented = true;
 		/* snap to center */
 		position_control->set_value (0.5, Controllable::NoGroup);
@@ -514,7 +514,7 @@ MonoPanner::pannable_handler ()
 	panvalue_connections.drop_connections();
 	position_control = _panner->pannable()->pan_azimuth_control;
 	position_binder.set_controllable(position_control);
-	position_control->Changed.connect (panvalue_connections, invalidator(*this), boost::bind (&MonoPanner::value_change, this), gui_context());
+	position_control->Changed.connect (panvalue_connections, invalidator(*this), std::bind (&MonoPanner::value_change, this), gui_context());
 	queue_draw ();
 }
 

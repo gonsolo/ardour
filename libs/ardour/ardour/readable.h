@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_readable_h__
-#define __ardour_readable_h__
+#pragma once
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/types.h"
@@ -31,7 +30,7 @@ class LIBARDOUR_API AudioReadable {
 public:
 	virtual ~AudioReadable() {}
 
-	static std::vector<boost::shared_ptr<AudioReadable> >
+	static std::vector<std::shared_ptr<AudioReadable> >
 		load (Session&, std::string const&);
 
 	virtual samplecnt_t read (Sample*, samplepos_t pos, samplecnt_t cnt, int channel) const = 0;
@@ -41,4 +40,3 @@ public:
 
 }
 
-#endif /* __ardour_readable_h__ */

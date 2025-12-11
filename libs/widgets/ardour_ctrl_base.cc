@@ -34,7 +34,7 @@
 #include "gtkmm2ext/utils.h"
 
 #include "widgets/ardour_ctrl_base.h"
-#include "widgets/ui_config.h"
+#include "gtkmm2ext/ui_config.h"
 
 #include "pbd/i18n.h"
 
@@ -60,6 +60,7 @@ ArdourCtrlBase::ArdourCtrlBase (Flags flags)
 	, _dead_zone_delta (0)
 {
 	UIConfigurationBase::instance().ColorsChanged.connect (sigc::mem_fun (*this, &ArdourCtrlBase::color_handler));
+	add_events (Gdk::TOUCH_UPDATE_MASK | Gdk::TOUCH_BEGIN_MASK | Gdk::TOUCH_END_MASK);
 
 #ifdef VBM
 	_flags = (Flags)(static_cast <int>(_flags) | (int)NoHorizontal);
@@ -107,7 +108,7 @@ ArdourCtrlBase::on_scroll_event (GdkEventScroll* ev)
 		scale *= -1;
 	}
 
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 	if (c) {
 		float val = c->get_interface (true);
 
@@ -129,7 +130,7 @@ ArdourCtrlBase::on_motion_notify_event (GdkEventMotion *ev)
 		return true;
 	}
 
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 	if (!c) {
 		return true;
 	}
@@ -179,14 +180,14 @@ ArdourCtrlBase::on_motion_notify_event (GdkEventMotion *ev)
 				delta = tozero + remain;
 				_dead_zone_delta = 0;
 			} else {
-				c->set_value (c->normal(), Controllable::NoGroup);
+				c->set_value (c->normal(), Controllable::UseGroup);
 				_dead_zone_delta = remain / px_deadzone;
 				return true;
 			}
 		}
 
 		if (fabsf (rintf((val - _normal) / scale) + _dead_zone_delta) < 1) {
-			c->set_value (c->normal(), Controllable::NoGroup);
+			c->set_value (c->normal(), Controllable::UseGroup);
 			_dead_zone_delta += delta / px_deadzone;
 			return true;
 		}
@@ -195,7 +196,7 @@ ArdourCtrlBase::on_motion_notify_event (GdkEventMotion *ev)
 	}
 
 	val += delta * scale;
-	c->set_interface (val, true);
+	c->set_interface (val, true, Controllable::UseGroup);
 
 	return true;
 }
@@ -211,7 +212,7 @@ ArdourCtrlBase::on_button_press_event (GdkEventButton *ev)
 		if (_grabbed) {
 			remove_modal_grab();
 			_grabbed = false;
-			StopGesture ();
+			StopGesture (ev->state);
 			gdk_pointer_ungrab (GDK_CURRENT_TIME);
 		}
 		return true;
@@ -229,7 +230,7 @@ ArdourCtrlBase::on_button_press_event (GdkEventButton *ev)
 	_tooltip.start_drag();
 	add_modal_grab();
 	_grabbed = true;
-	StartGesture ();
+	StartGesture (ev->state);
 	gdk_pointer_grab(ev->window,false,
 			GdkEventMask( Gdk::POINTER_MOTION_MASK | Gdk::BUTTON_PRESS_MASK |Gdk::BUTTON_RELEASE_MASK),
 			NULL,NULL,ev->time);
@@ -241,12 +242,12 @@ ArdourCtrlBase::on_button_release_event (GdkEventButton *ev)
 {
 	_tooltip.stop_drag();
 	_grabbed = false;
-	StopGesture ();
+	StopGesture (ev->state);
 	remove_modal_grab();
 	gdk_pointer_ungrab (GDK_CURRENT_TIME);
 
 	if ( (_grabbed_y == ev->y && _grabbed_x == ev->x) && Keyboard::modifier_state_equals (ev->state, Keyboard::TertiaryModifier)) {  //no move, shift-click sets to default
-		boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+		std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 		if (!c) return false;
 		c->set_value (c->normal(), Controllable::NoGroup);
 		return true;
@@ -257,6 +258,41 @@ ArdourCtrlBase::on_button_release_event (GdkEventButton *ev)
 	return true;
 }
 
+bool
+ArdourCtrlBase::on_touch_begin_event (GdkEventTouch *ev)
+{
+	_grabbed_x = ev->x;
+	_grabbed_y = ev->y;
+	_dead_zone_delta = 0;
+	_grabbed = true;
+	_tooltip.start_drag();
+	set_active_state (Gtkmm2ext::ExplicitActive);
+	StartGesture (ev->state);
+	return true;
+}
+
+bool
+ArdourCtrlBase::on_touch_end_event (GdkEventTouch *ev)
+{
+	_tooltip.stop_drag();
+	_grabbed = false;
+	StopGesture (ev->state);
+	unset_active_state ();
+	return true;
+}
+
+bool
+ArdourCtrlBase::on_touch_update_event (GdkEventTouch* ev)
+{
+	GdkEventMotion mev;
+	mev.window = ev->window;
+	mev.time   = ev->time;
+	mev.x      = ev->x;
+	mev.y      = ev->y;
+	mev.state  = Gdk::BUTTON1_MASK;
+	return ArdourCtrlBase::on_motion_notify_event (&mev);
+}
+
 void
 ArdourCtrlBase::color_handler ()
 {
@@ -264,7 +300,7 @@ ArdourCtrlBase::color_handler ()
 }
 
 void
-ArdourCtrlBase::set_controllable (boost::shared_ptr<Controllable> c)
+ArdourCtrlBase::set_controllable (std::shared_ptr<Controllable> c)
 {
 	watch_connection.disconnect ();  //stop watching the old controllable
 
@@ -272,7 +308,7 @@ ArdourCtrlBase::set_controllable (boost::shared_ptr<Controllable> c)
 
 	binding_proxy.set_controllable (c);
 
-	c->Changed.connect (watch_connection, invalidator(*this), boost::bind (&ArdourCtrlBase::controllable_changed, this, false), gui_context());
+	c->Changed.connect (watch_connection, invalidator(*this), std::bind (&ArdourCtrlBase::controllable_changed, this, false), gui_context());
 
 	_normal = c->internal_to_interface(c->normal());
 
@@ -282,7 +318,7 @@ ArdourCtrlBase::set_controllable (boost::shared_ptr<Controllable> c)
 void
 ArdourCtrlBase::controllable_changed (bool force_update)
 {
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 	if (!c) return;
 
 	float val = c->get_interface (true);
@@ -348,9 +384,9 @@ ArdourCtrlBase::on_enter_notify_event (GdkEventCrossing* ev)
 
 	set_dirty ();
 
-	boost::shared_ptr<PBD::Controllable> c (binding_proxy.get_controllable ());
+	std::shared_ptr<PBD::Controllable> c (binding_proxy.get_controllable ());
 	if (c) {
-		PBD::Controllable::GUIFocusChanged (boost::weak_ptr<PBD::Controllable> (c));
+		PBD::Controllable::GUIFocusChanged (std::weak_ptr<PBD::Controllable> (c));
 	}
 
 	return CairoWidget::on_enter_notify_event (ev);
@@ -364,7 +400,7 @@ ArdourCtrlBase::on_leave_notify_event (GdkEventCrossing* ev)
 	set_dirty ();
 
 	if (binding_proxy.get_controllable()) {
-		PBD::Controllable::GUIFocusChanged (boost::weak_ptr<PBD::Controllable> ());
+		PBD::Controllable::GUIFocusChanged (std::weak_ptr<PBD::Controllable> ());
 	}
 
 	return CairoWidget::on_leave_notify_event (ev);

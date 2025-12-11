@@ -20,13 +20,13 @@
 #define _gtkardour_loudness_dialog_h_
 
 #include <cairomm/cairomm.h>
-#include <gtkmm/box.h>
-#include <gtkmm/drawingarea.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/label.h>
-#include <gtkmm/progressbar.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
+#include <ytkmm/box.h>
+#include <ytkmm/drawingarea.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/label.h>
+#include <ytkmm/progressbar.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
 
 #include "widgets/ardour_button.h"
 #include "widgets/ardour_dropdown.h"
@@ -36,7 +36,7 @@
 #include "loudness_settings.h"
 
 namespace ARDOUR {
-	class TimelineRange;
+	struct TimelineRange;
 	class ExportAnalysis;
 	class ExportStatus;
 	class PluginInsert;
@@ -75,7 +75,7 @@ private:
 
 	void test_conformity ();
 
-	void plot_graph (boost::shared_ptr<ARDOUR::ExportAnalysis>);
+	void plot_graph (std::shared_ptr<ARDOUR::ExportAnalysis>);
 	void graph_size_request (Gtk::Requisition*);
 	bool graph_expose_event (GdkEventExpose*);
 
@@ -87,7 +87,7 @@ private:
 
 	ARDOUR::Session*                        _session;
 	ARDOUR::TimelineRange const&               _range;
-	boost::shared_ptr<ARDOUR::ExportStatus> _status;
+	std::shared_ptr<ARDOUR::ExportStatus> _status;
 	bool                                    _autostart;
 
 	Gtk::VBox        _setup_box;

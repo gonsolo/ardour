@@ -27,7 +27,7 @@
 
 using namespace ArdourWidgets;
 
-ArdourSpinner::ArdourSpinner (boost::shared_ptr<PBD::Controllable> c, Gtk::Adjustment* adj)
+ArdourSpinner::ArdourSpinner (std::shared_ptr<PBD::Controllable> c, Gtk::Adjustment* adj)
 	: _btn (ArdourButton::Text)
 	, _ctrl_adj (adj)
 	, _spin_adj (0, c->lower (), c->upper (), .1, .01)
@@ -56,7 +56,7 @@ ArdourSpinner::ArdourSpinner (boost::shared_ptr<PBD::Controllable> c, Gtk::Adjus
 
 	_spin_adj.signal_value_changed().connect (sigc::mem_fun(*this, &ArdourSpinner::spin_adjusted));
 	adj->signal_value_changed().connect (sigc::mem_fun(*this, &ArdourSpinner::ctrl_adjusted));
-	c->Changed.connect (watch_connection, invalidator(*this), boost::bind (&ArdourSpinner::controllable_changed, this), gui_context());
+	c->Changed.connect (watch_connection, invalidator(*this), std::bind (&ArdourSpinner::controllable_changed, this), gui_context());
 
 #if 0
 	// this assume the "upper" value needs most space.
@@ -117,7 +117,7 @@ ArdourSpinner::on_scroll_event (GdkEventScroll* ev)
 		}
 	}
 
-	boost::shared_ptr<PBD::Controllable> c = _btn.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = _btn.get_controllable();
 	if (c) {
 		float val = c->get_interface();
 

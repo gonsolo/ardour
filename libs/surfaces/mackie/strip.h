@@ -44,9 +44,7 @@ namespace ARDOUR {
 	class ChannelCount;
 }
 
-namespace ArdourSurface {
-
-namespace Mackie {
+namespace ArdourSurface { namespace MACKIE_NAMESPACE {
 
 class Control;
 class Surface;
@@ -72,13 +70,13 @@ public:
 	Strip (Surface&, const std::string & name, int index, const std::map<Button::ID,StripButtonInfo>&);
 	~Strip();
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable() const { return _stripable; }
+	std::shared_ptr<ARDOUR::Stripable> stripable() const { return _stripable; }
 
 	void add (Control & control);
 	int index() const { return _index; } // zero based
 	Surface* surface() const { return _surface; }
 
-	void set_stripable (boost::shared_ptr<ARDOUR::Stripable>, bool with_messages = true);
+	void set_stripable (std::shared_ptr<ARDOUR::Stripable>, bool with_messages = true);
 
 	// call all signal handlers manually
 	void notify_all ();
@@ -94,10 +92,12 @@ public:
 	MidiByteArray display (uint32_t lcd_number, uint32_t line_number, const std::string&);
 	MidiByteArray blank_display (uint32_t lcd_number, uint32_t line_number);
 	
+	static std::string remove_units (std::string s);
+
 	static std::string format_parameter_for_display(
 		ARDOUR::ParameterDescriptor const& desc, 
 		float val, 
-		boost::shared_ptr<ARDOUR::Stripable> stripable_for_non_mixbus_azimuth_automation, 
+		std::shared_ptr<ARDOUR::Stripable> stripable_for_azimuth_automation, 
 		bool& overwrite_screen_hold);
 
 	void zero ();
@@ -144,7 +144,7 @@ private:
 	std::string lcd2_current_display[2];
 	PBD::microseconds_t _block_screen_redisplay_until;
 	PBD::microseconds_t return_to_vpot_mode_display_at;
-	boost::shared_ptr<ARDOUR::Stripable> _stripable;
+	std::shared_ptr<ARDOUR::Stripable> _stripable;
 	PBD::ScopedConnectionList stripable_connections;
 
 	ARDOUR::AutomationType  _pan_mode;
@@ -156,7 +156,9 @@ private:
 
 	void notify_solo_changed ();
 	void notify_mute_changed ();
+	void notify_monitor_cut_changed ();
 	void notify_record_enable_changed ();
+	void notify_subview_type_changed ();
 	void notify_gain_changed (bool force_update = true);
 	void notify_property_changed (const PBD::PropertyChange&);
 	void notify_panner_azi_changed (bool force_update = true);
@@ -167,7 +169,7 @@ private:
 	void update_meter ();
 	std::string vpot_mode_string ();
 
-	boost::shared_ptr<ARDOUR::AutomationControl> mb_pan_controllable;
+	std::shared_ptr<ARDOUR::AutomationControl> mb_pan_controllable;
 
 	void return_to_vpot_mode_display ();
 	void next_pot_mode ();

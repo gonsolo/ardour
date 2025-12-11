@@ -16,12 +16,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_solo_control_h__
-#define __ardour_solo_control_h__
+#pragma once
 
+#include <memory>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/slavable_automation_control.h"
 #include "ardour/libardour_visibility.h"
@@ -35,7 +33,7 @@ class Muteable;
 class LIBARDOUR_API SoloControl : public SlavableAutomationControl
 {
   public:
-	SoloControl (Session& session, std::string const & name, Soloable& soloable, Muteable& m, Temporal::TimeDomain);
+	SoloControl (Session& session, std::string const & name, Soloable& soloable, Muteable& m, Temporal::TimeDomainProvider const &);
 
 	double get_value () const;
 	double get_save_value() const { return self_soloed(); }
@@ -98,9 +96,9 @@ class LIBARDOUR_API SoloControl : public SlavableAutomationControl
 
   protected:
 	void actually_set_value (double, PBD::Controllable::GroupControlDisposition group_override);
-	void master_changed (bool from_self, GroupControlDisposition, boost::weak_ptr<AutomationControl> m);
-	void pre_remove_master (boost::shared_ptr<AutomationControl>);
-	void post_add_master (boost::shared_ptr<AutomationControl>);
+	void master_changed (bool from_self, GroupControlDisposition, std::weak_ptr<AutomationControl> m);
+	void pre_remove_master (std::shared_ptr<AutomationControl>);
+	void post_add_master (std::shared_ptr<AutomationControl>);
 
   private:
 	Soloable& _soloable;
@@ -116,4 +114,3 @@ class LIBARDOUR_API SoloControl : public SlavableAutomationControl
 
 } /* namespace */
 
-#endif /* __libardour_solo_control_h__ */

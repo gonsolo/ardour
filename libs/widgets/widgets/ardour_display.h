@@ -23,9 +23,9 @@
 #include <list>
 #include <stdint.h>
 
-#include <gtkmm/action.h>
-#include <gtkmm/menu.h>
-#include <gtkmm/menuitem.h>
+#include <ytkmm/action.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/menuitem.h>
 
 #include "widgets/ardour_dropdown.h"
 #include "widgets/visibility.h"
@@ -39,8 +39,8 @@ public:
 	ArdourDisplay (Element e = default_elements);
 	virtual ~ArdourDisplay ();
 
-	boost::shared_ptr<PBD::Controllable> get_controllable() { return binding_proxy.get_controllable(); }
-	void set_controllable (boost::shared_ptr<PBD::Controllable> c);
+	std::shared_ptr<PBD::Controllable> get_controllable() { return binding_proxy.get_controllable(); }
+	void set_controllable (std::shared_ptr<PBD::Controllable> c);
 
 	bool on_scroll_event (GdkEventScroll* ev);
 

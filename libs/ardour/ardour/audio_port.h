@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_audio_port_h__
-#define __ardour_audio_port_h__
+#pragma once
 
 #include "zita-resampler/vmresampler.h"
 
@@ -42,8 +41,10 @@ public:
 	void cycle_end (pframes_t);
 	void cycle_split ();
 
+	void flush_buffers (pframes_t nframes);
+
 	/* reset SRC, clear out any state */
-	void reinit ();
+	void reinit (bool with_ratio);
 
 	Buffer& get_buffer (pframes_t nframes) {
 		return get_audio_buffer (nframes);
@@ -69,4 +70,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_audio_port_h__ */

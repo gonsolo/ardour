@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __midi_types_h__
-#define __midi_types_h__
+#pragma once
 
 #include <inttypes.h>
 
@@ -54,6 +53,7 @@ namespace MIDI {
 	    tune = 0xF6,
 	    eox = 0xF7,
 	    timing = 0xF8,
+	    tick = 0xF9,
 	    start = 0xFA,
 	    contineu = 0xFB, /* note spelling */
 	    stop = 0xFC,
@@ -90,7 +90,6 @@ namespace MIDI {
 
 } // namespace MIDI
 
-#endif // __midi_types_h__
 
 
 

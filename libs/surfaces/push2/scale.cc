@@ -47,13 +47,13 @@ row_interval_string (const Push2::RowInterval row_interval, const bool inkey)
 {
 	switch (row_interval) {
 	case Push2::Third:
-		return _("3rd \u2191");
+		return _(u8"3rd \u2191");
 	case Push2::Fourth:
-		return _("4th \u2191");
+		return _(u8"4th \u2191");
 	case Push2::Fifth:
-		return _("5th \u2191");
+		return _(u8"5th \u2191");
 	case Push2::Sequential:
-		return inkey ? _("Octave \u2191") : _("Sequential \u2191");
+		return inkey ? _(u8"Octave \u2191") : _(u8"Sequential \u2191");
 	}
 
 	return "";
@@ -62,7 +62,7 @@ row_interval_string (const Push2::RowInterval row_interval, const bool inkey)
 static const char*
 column_interval_string (const bool inkey)
 {
-	return inkey ? _("Scale \u2192") : _("Semitone \u2192");
+	return inkey ? _(u8"Scale \u2192") : _(u8"Semitone \u2192");
 }
 
 ScaleLayout::ScaleLayout (Push2& p, Session & s, std::string const & name)
@@ -179,19 +179,19 @@ ScaleLayout::ScaleLayout (Push2& p, Session & s, std::string const & name)
 			t->set (S_("Note|F"));
 			break;
 		case 2:
-			t->set (S_("Note|B\u266D/A\u266F"));
+			t->set (S_(u8"Note|B\u266D/A\u266F"));
 			break;
 		case 3:
-			t->set (S_("Note|E\u266D/D\u266F"));
+			t->set (S_(u8"Note|E\u266D/D\u266F"));
 			break;
 		case 4:
-			t->set (S_("Note|A\u266D/G\u266F"));
+			t->set (S_(u8"Note|A\u266D/G\u266F"));
 			break;
 		case 5:
-			t->set (S_("Note|D\u266D/C\u266F"));
+			t->set (S_(u8"Note|D\u266D/C\u266F"));
 			break;
 		case 6:
-			t->set (S_("Note|G\u266D/F\u266F"));
+			t->set (S_(u8"Note|G\u266D/F\u266F"));
 			break;
 		}
 
@@ -200,7 +200,7 @@ ScaleLayout::ScaleLayout (Push2& p, Session & s, std::string const & name)
 
 	build_scale_menu ();
 
-	_p2.ScaleChange.connect (_p2_connections, invalidator (*this), boost::bind (&ScaleLayout::show_root_state, this), &_p2);
+	_p2.ScaleChange.connect (_p2_connections, invalidator (*this), std::bind (&ScaleLayout::show_root_state, this), &_p2);
 }
 
 ScaleLayout::~ScaleLayout ()
@@ -352,7 +352,7 @@ ScaleLayout::button_right ()
 void
 ScaleLayout::show ()
 {
-	boost::shared_ptr<Push2::Button> b;
+	std::shared_ptr<Push2::Button> b;
 
 	_last_vpot = -1;
 
@@ -501,7 +501,7 @@ ScaleLayout::build_scale_menu ()
 	v.push_back ("Algeria");
 
 	_scale_menu = new Push2Menu (this, v);
-	_scale_menu->Rearranged.connect (_menu_connections, invalidator (*this), boost::bind (&ScaleLayout::menu_rearranged, this), &_p2);
+	_scale_menu->Rearranged.connect (_menu_connections, invalidator (*this), std::bind (&ScaleLayout::menu_rearranged, this), &_p2);
 
 	_scale_menu->set_layout (6, 6);
 	_scale_menu->set_text_color (_p2.get_color (Push2::ParameterName));
@@ -518,7 +518,7 @@ ScaleLayout::build_scale_menu ()
 
 	/* listen for changes */
 
-	_scale_menu->ActiveChanged.connect (_menu_connections, invalidator (*this), boost::bind (&ScaleLayout::mode_changed, this), &_p2);
+	_scale_menu->ActiveChanged.connect (_menu_connections, invalidator (*this), std::bind (&ScaleLayout::mode_changed, this), &_p2);
 }
 
 void
@@ -644,7 +644,7 @@ ScaleLayout::show_root_state ()
 
 	}
 
-	boost::shared_ptr<Push2::Button> b = _p2.button_by_id (bid);
+	std::shared_ptr<Push2::Button> b = _p2.button_by_id (bid);
 
 	if (b != _root_button) {
 		if (_root_button) {
@@ -719,7 +719,7 @@ ScaleLayout::menu_rearranged ()
 void
 ScaleLayout::update_cursor_buttons ()
 {
-	boost::shared_ptr<Push2::Button> b;
+	std::shared_ptr<Push2::Button> b;
 	bool change;
 
 	b = _p2.button_by_id (Push2::Up);

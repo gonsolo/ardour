@@ -43,12 +43,11 @@
 #include <bitset>
 #include <list>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
 #include <inttypes.h>
-#include <boost/type_traits.hpp>
-#include <boost/shared_ptr.hpp>
 
 #include "lua/luastate.h"
 

@@ -16,8 +16,7 @@
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 
-#ifndef __libpbd_integer_division_h__
-#define __libpbd_integer_division_h__
+#pragma once
 
 #include <cstdint>
 
@@ -52,20 +51,11 @@ namespace PBD {
 inline
 int64_t muldiv_round (int64_t v, int64_t n, int64_t d)
 {
-	/* either n or d or both could be negative but for now we assume that
-	   only d could be (that is, n and d represent negative rational numbers of the
-	   form 1/-2 rather than -1/2). This follows the behavior of the
-	   ratio_t type in the temporal library.
-
-	   Consequently, we only use d in the rounding-signdness expression.
-	*/
-	const int64_t hd = PBD_IDIV_ROUNDING (v, d);
-
 #ifndef COMPILER_INT128_SUPPORT
 	boost::multiprecision::int512_t bignum = v;
 
 	bignum *= n;
-	bignum += hd;
+	bignum += PBD_IDIV_ROUNDING (bignum, d);
 	bignum /= d;
 
 	try {
@@ -82,6 +72,9 @@ int64_t muldiv_round (int64_t v, int64_t n, int64_t d)
 	__int128 _n (n);
 	__int128 _d (d);
 	__int128 _v (v);
+	__int128 vn (_v * _n);
+
+	const int64_t hd = PBD_IDIV_ROUNDING (vn, d);
 
 	/* this could overflow, but will not do so merely because we are
 	 * multiplying two int64_t together and storing the result in an
@@ -89,7 +82,7 @@ int64_t muldiv_round (int64_t v, int64_t n, int64_t d)
 	 * limit) or where v * n / d > INT64_T (i.e. n > d)
 	 */
 
-	return(int64_t) (((_v * _n) + hd) / _d);
+	return(int64_t) ((vn + hd) / _d);
 #endif
 }
 
@@ -128,4 +121,3 @@ int64_t muldiv_floor (int64_t v, int64_t n, int64_t d)
 }
 } /* namespace */
 
-#endif /* __libpbd_integer_division_h___ */

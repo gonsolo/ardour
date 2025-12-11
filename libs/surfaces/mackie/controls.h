@@ -27,8 +27,6 @@
 #include <string>
 #include <stdint.h>
 
-#include <boost/smart_ptr.hpp>
-
 #include "pbd/controllable.h"
 #include "pbd/signals.h"
 
@@ -41,9 +39,7 @@ namespace ARDOUR {
 	class AutomationControl;
 }
 
-namespace ArdourSurface {
-
-namespace Mackie {
+namespace ArdourSurface { namespace MACKIE_NAMESPACE {
 
 class Strip;
 class Group;
@@ -71,8 +67,8 @@ public:
 	 */
 	Control* in_use_touch_control;
 
-	boost::shared_ptr<ARDOUR::AutomationControl> control () const { return normal_ac; }
-	virtual void set_control (boost::shared_ptr<ARDOUR::AutomationControl>);
+	std::shared_ptr<ARDOUR::AutomationControl> control () const { return normal_ac; }
+	virtual void set_control (std::shared_ptr<ARDOUR::AutomationControl>);
 
 	float get_value ();
 	void set_value (float val, PBD::Controllable::GroupControlDisposition gcd = PBD::Controllable::UseGroup);
@@ -81,7 +77,7 @@ public:
 	virtual void stop_touch (Temporal::timepos_t const & when);
 
   protected:
-	boost::shared_ptr<ARDOUR::AutomationControl> normal_ac;
+	std::shared_ptr<ARDOUR::AutomationControl> normal_ac;
 
   private:
 	int _id; /* possibly device-dependent ID */
@@ -93,6 +89,6 @@ public:
 }
 }
 
-std::ostream & operator <<  (std::ostream & os, const ArdourSurface::Mackie::Control & control);
+std::ostream & operator <<  (std::ostream & os, const ArdourSurface::MACKIE_NAMESPACE::Control & control);
 
 #endif /* __mackie_controls_h__ */

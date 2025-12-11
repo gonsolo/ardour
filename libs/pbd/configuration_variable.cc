@@ -20,6 +20,7 @@
 #include <iostream>
 
 #include "pbd/compose.h"
+#include "pbd/configuration.h"
 #include "pbd/configuration_variable.h"
 #include "pbd/debug.h"
 
@@ -36,6 +37,21 @@ ConfigVariableBase::add_to_node (XMLNode& node) const
 {
 	const std::string v = get_as_string ();
 	DEBUG_TRACE (DEBUG::Configuration, string_compose ("Config variable %1 stored as [%2]\n", _name, v));
+	XMLNode* child = new XMLNode ("Option");
+	child->set_property ("name", _name);
+	child->set_property ("value", v);
+	node.add_child_nocopy (*child);
+}
+
+void
+ConfigVariableBase::add_to_node_if_modified (XMLNode& node, std::string const& dflt) const
+{
+	const std::string v = get_as_string ();
+	if (v == dflt) {
+		DEBUG_TRACE (DEBUG::Configuration, string_compose ("Config variable '%1' used default, not saved\n", _name));
+		return;
+	}
+	DEBUG_TRACE (DEBUG::Configuration, string_compose ("Config variable '%1' stored as [%2]\n", _name, v));
 	XMLNode* child = new XMLNode ("Option");
 	child->set_property ("name", _name);
 	child->set_property ("value", v);
@@ -108,4 +124,19 @@ ConfigVariableBase::miss ()
 {
 	// placeholder for any debugging desired when a config variable
 	// is set but to the same value as it already has
+}
+
+std::map<std::string,Configuration::Metadata> Configuration::all_metadata;
+
+Configuration::Metadata const *
+Configuration::get_metadata (std::string const & name)
+{
+	auto i = all_metadata.find (name);
+	if (i != all_metadata.end()) {
+		/* Only return actual, useful metadata */
+		if (!i->second.empty() && !i->second.front().empty()) {
+			return &i->second;
+		}
+	}
+	return 0;
 }

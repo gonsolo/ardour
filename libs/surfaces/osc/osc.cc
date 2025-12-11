@@ -68,6 +68,7 @@
 #include "ardour/solo_isolate_control.h"
 #include "ardour/solo_safe_control.h"
 #include "ardour/vca_manager.h"
+#include "ardour/well_known_enum.h"
 #include "ardour/zeroconf.h"
 
 #include "osc_select_observer.h"
@@ -83,9 +84,7 @@ using namespace std;
 using namespace Glib;
 using namespace ArdourSurface;
 
-#include "pbd/abstract_ui.cc" // instantiate template
-
-OSC* OSC::_instance = 0;
+#include "pbd/abstract_ui.inc.cc" // instantiate template
 
 #ifdef DEBUG
 static void error_callback(int num, const char *m, const char *path)
@@ -128,28 +127,13 @@ OSC::OSC (Session& s, uint32_t port)
 	, _zeroconf (0)
 	, gui (0)
 {
-	_instance = this;
-
-	session->Exported.connect (*this, MISSING_INVALIDATOR, boost::bind (&OSC::session_exported, this, _1, _2), this);
+	session->Exported.connect (*this, MISSING_INVALIDATOR, std::bind (&OSC::session_exported, this, _1, _2), this);
 }
 
 OSC::~OSC()
 {
 	tick = false;
 	stop ();
-	tear_down_gui ();
-	_instance = 0;
-}
-
-void*
-OSC::request_factory (uint32_t num_requests)
-{
-	/* AbstractUI<T>::request_buffer_factory() is a template method only
-	   instantiated in this source module. To provide something visible for
-	   use in the interface/descriptor, we have this static method that is
-	   template-free.
-	*/
-	return request_buffer_factory (num_requests);
 }
 
 void
@@ -244,9 +228,11 @@ OSC::start ()
 	}
 #endif
 
-	PBD::info << "OSC @ " << get_server_url () << endmsg;
+	std::string server_url (get_server_url ());
 
-	_zeroconf = new ZeroConf ("_osc._udp", _port, lo_address_get_hostname (_osc_server));
+	PBD::info << "OSC @ " << server_url << endmsg;
+
+	_zeroconf = new ZeroConf ("_osc._udp", _port, lo_url_get_hostname (server_url.c_str()));
 
 	std::string url_file;
 
@@ -276,11 +262,11 @@ OSC::start ()
 
 	// catch track reordering
 	// receive routes added
-	session->RouteAdded.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&OSC::notify_routes_added, this, _1), this);
+	session->RouteAdded.connect(session_connections, MISSING_INVALIDATOR, std::bind (&OSC::notify_routes_added, this, _1), this);
 	// receive VCAs added
-	session->vca_manager().VCAAdded.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&OSC::notify_vca_added, this, _1), this);
+	session->vca_manager().VCAAdded.connect(session_connections, MISSING_INVALIDATOR, std::bind (&OSC::notify_vca_added, this, _1), this);
 	// order changed
-	PresentationInfo::Change.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&OSC::recalcbanks, this), this);
+	PresentationInfo::Change.connect (session_connections, MISSING_INVALIDATOR, std::bind (&OSC::recalcbanks, this), this);
 
 	_select = ControlProtocol::first_selected_stripable();
 	if(!_select) {
@@ -293,8 +279,6 @@ OSC::start ()
 void
 OSC::thread_init ()
 {
-	pthread_set_name (event_loop_name().c_str());
-
 	if (_osc_unix_server) {
 		Glib::RefPtr<IOSource> src = IOSource::create (lo_server_get_socket_fd (_osc_unix_server), IO_IN|IO_HUP|IO_ERR);
 		src->connect (sigc::bind (sigc::mem_fun (*this, &OSC::osc_input_handler), _osc_unix_server));
@@ -323,6 +307,8 @@ OSC::thread_init ()
 int
 OSC::stop ()
 {
+	tear_down_gui ();
+
 	periodic_connection.disconnect ();
 	session_connections.drop_connections ();
 
@@ -601,7 +587,6 @@ OSC::register_callbacks()
 		REGISTER_CALLBACK (serv, X_("/select/pan_lfe_control"), "f", sel_pan_lfe);
 		REGISTER_CALLBACK (serv, X_("/select/comp_enable"), "f", sel_comp_enable);
 		REGISTER_CALLBACK (serv, X_("/select/comp_threshold"), "f", sel_comp_threshold);
-		REGISTER_CALLBACK (serv, X_("/select/comp_speed"), "f", sel_comp_speed);
 		REGISTER_CALLBACK (serv, X_("/select/comp_mode"), "f", sel_comp_mode);
 		REGISTER_CALLBACK (serv, X_("/select/comp_makeup"), "f", sel_comp_makeup);
 		REGISTER_CALLBACK (serv, X_("/select/eq_enable"), "f", sel_eq_enable);
@@ -716,7 +701,7 @@ OSC::send_current_value (const char* path, lo_arg** argv, int argc, lo_message m
 	}
 
 	lo_message reply = lo_message_new ();
-	boost::shared_ptr<Route> r;
+	std::shared_ptr<Route> r;
 	int id;
 
 	lo_message_add_string (reply, path);
@@ -733,9 +718,9 @@ OSC::send_current_value (const char* path, lo_arg** argv, int argc, lo_message m
 
 			if (strcmp (path, X_("/strip/state")) == 0) {
 
-				if (boost::dynamic_pointer_cast<AudioTrack>(r)) {
+				if (std::dynamic_pointer_cast<AudioTrack>(r)) {
 					lo_message_add_string (reply, "AT");
-				} else if (boost::dynamic_pointer_cast<MidiTrack>(r)) {
+				} else if (std::dynamic_pointer_cast<MidiTrack>(r)) {
 					lo_message_add_string (reply, "MT");
 				} else {
 					lo_message_add_string (reply, "B");
@@ -840,7 +825,7 @@ OSC::catchall (const char *path, const char* types, lo_arg **argv, int argc, lo_
 			PBD::warning << "OSC: Can't add strips with custom enabled." << endmsg;
 		} else {
 			for (int n = 0; n < argc; ++n) {
-				boost::shared_ptr<Stripable> s = boost::shared_ptr<Stripable>();
+				std::shared_ptr<Stripable> s = std::shared_ptr<Stripable>();
 				if (types[n] == 'f') {
 					s = get_strip ((uint32_t) argv[n]->f, get_address (msg));
 				} else if (types[n] == 'i') {
@@ -869,7 +854,7 @@ OSC::catchall (const char *path, const char* types, lo_arg **argv, int argc, lo_
 					st_no = (uint32_t) argv[n]->i;
 				}
 				if (st_no && st_no <= sur->custom_strips.size ()) {
-					sur->custom_strips[argv[n]->i - 1] = boost::shared_ptr<Stripable>();
+					sur->custom_strips[argv[n]->i - 1] = std::shared_ptr<Stripable>();
 				}
 			}
 			if (ls) {
@@ -1056,25 +1041,27 @@ OSC::routes_list (lo_message msg)
 
 	for (int n = 0; n < (int) sur->nstrips; ++n) {
 
-		boost::shared_ptr<Stripable> s = get_strip (n + 1, get_address (msg));
+		std::shared_ptr<Stripable> s = get_strip (n + 1, get_address (msg));
 
 		if (s) {
 			// some things need the route
-			boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+			std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 			lo_message reply = lo_message_new ();
 
-			if (boost::dynamic_pointer_cast<AudioTrack>(s)) {
+			if (std::dynamic_pointer_cast<AudioTrack>(s)) {
 				lo_message_add_string (reply, "AT");
-			} else if (boost::dynamic_pointer_cast<MidiTrack>(s)) {
+			} else if (std::dynamic_pointer_cast<MidiTrack>(s)) {
 				lo_message_add_string (reply, "MT");
-			} else if (boost::dynamic_pointer_cast<VCA>(s)) {
+			} else if (std::dynamic_pointer_cast<VCA>(s)) {
 				lo_message_add_string (reply, "V");
 			} else if (s->is_master()) {
 				lo_message_add_string (reply, "MA");
 			} else if (s->is_monitor()) {
 				lo_message_add_string (reply, "MO");
-			} else if (boost::dynamic_pointer_cast<Route>(s) && !boost::dynamic_pointer_cast<Track>(s)) {
+			} else if (s->is_surround_master()) {
+				lo_message_add_string (reply, "SM");
+			} else if (std::dynamic_pointer_cast<Route>(s) && !std::dynamic_pointer_cast<Track>(s)) {
 				if (!(s->presentation_info().flags() & PresentationInfo::MidiBus)) {
 					if (s->is_foldbackbus()) {
 						lo_message_add_string (reply, "FB");
@@ -1142,7 +1129,7 @@ OSC::routes_list (lo_message msg)
 	// send feedback for newly created control surface
 	strip_feedback (sur, true);
 	global_feedback (sur);
-	_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
+	_strip_select (std::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
 
 }
 
@@ -1414,7 +1401,7 @@ OSC::clear_devices ()
 	link_sets.clear ();
 	_ports.clear ();
 
-	PresentationInfo::Change.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&OSC::recalcbanks, this), this);
+	PresentationInfo::Change.connect (session_connections, MISSING_INVALIDATOR, std::bind (&OSC::recalcbanks, this), this);
 
 	observer_busy = false;
 	tick = true;
@@ -1879,14 +1866,15 @@ OSC::set_surface (uint32_t b_size, uint32_t strips, uint32_t fb, uint32_t gm, ui
 	s->bank_size = b_size;
 	s->strip_types = strips;
 	s->feedback = fb;
+	if (s->sel_obs) {
+		s->sel_obs->set_feedback(fb);
+	}
 	s->gainmode = gm;
 	if (s->strip_types[10]) {
 		s->usegroup = PBD::Controllable::UseGroup;
 	} else {
 		s->usegroup = PBD::Controllable::NoGroup;
 	}
-	s->send_page_size = se_size;
-	s->plug_page_size = pi_size;
 	if (s->temp_mode) {
 		s->temp_mode = TempOff;
 	}
@@ -1897,7 +1885,7 @@ OSC::set_surface (uint32_t b_size, uint32_t strips, uint32_t fb, uint32_t gm, ui
 		// set bank and strip feedback
 		strip_feedback(s, true);
 		_set_bank (1, get_address (msg));
-		_strip_select (boost::shared_ptr<Stripable> (), get_address (msg));
+		_strip_select (std::shared_ptr<Stripable> (), get_address (msg));
 	}
 
 	global_feedback (s);
@@ -1946,7 +1934,7 @@ OSC::set_surface_strip_types (uint32_t st, lo_message msg)
 	// set bank and strip feedback
 	strip_feedback(s, false);
 	set_bank (1, msg);
-	_strip_select (boost::shared_ptr<Stripable> (), get_address (msg));
+	_strip_select (std::shared_ptr<Stripable> (), get_address (msg));
 	return 0;
 }
 
@@ -1959,11 +1947,14 @@ OSC::set_surface_feedback (uint32_t fb, lo_message msg)
 	}
 	OSCSurface *s = get_surface(get_address (msg), true);
 	s->feedback = fb;
+	if (s->sel_obs) {
+		s->sel_obs->set_feedback(fb);
+	}
 
 	strip_feedback (s, true);
 	global_feedback (s);
 
-	_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
+	_strip_select (std::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
 	return 0;
 }
 
@@ -1978,7 +1969,7 @@ OSC::set_surface_gainmode (uint32_t gm, lo_message msg)
 
 	strip_feedback (s, true);
 	global_feedback (s);
-	_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
+	_strip_select (std::shared_ptr<ARDOUR::Stripable>(), get_address (msg));
 	return 0;
 }
 
@@ -2085,7 +2076,7 @@ OSC::get_surface (lo_address addr , bool quiet)
 	s.sel_obs = 0;
 	s.expand = 0;
 	s.expand_enable = false;
-	s.expand_strip = boost::shared_ptr<Stripable> ();
+	s.expand_strip = std::shared_ptr<Stripable> ();
 	s.cue = false;
 	s.aux = 0;
 	s.cue_obs = 0;
@@ -2107,7 +2098,7 @@ OSC::get_surface (lo_address addr , bool quiet)
 		strip_feedback (&s, true);
 		global_feedback (&s);
 	}
-	_strip_select2 (boost::shared_ptr<ARDOUR::Stripable>(), &_surface[_surface.size() - 1], addr);
+	_strip_select2 (std::shared_ptr<ARDOUR::Stripable>(), &_surface[_surface.size() - 1], addr);
 
 	return &_surface[_surface.size() - 1];
 }
@@ -2177,8 +2168,8 @@ OSC::strip_feedback (OSCSurface* sur, bool new_bank_size)
 				OSCRouteObserver* o = new OSCRouteObserver (*this, i + 1, sur);
 				sur->observers.push_back (o);
 				if (sur->temp_mode == BusOnly) {
-					boost::shared_ptr<ARDOUR::Stripable> str = get_strip (i + 1, lo_address_new_from_url (sur->remote_url.c_str()));
-					boost::shared_ptr<ARDOUR::Send> send = get_send (str, lo_address_new_from_url (sur->remote_url.c_str()));
+					std::shared_ptr<ARDOUR::Stripable> str = get_strip (i + 1, lo_address_new_from_url (sur->remote_url.c_str()));
+					std::shared_ptr<ARDOUR::Send> send = get_send (str, lo_address_new_from_url (sur->remote_url.c_str()));
 					if (send) {
 						o->refresh_send (send, true);
 					}
@@ -2189,10 +2180,10 @@ OSC::strip_feedback (OSCSurface* sur, bool new_bank_size)
 	} else {
 		if (sur->feedback[0] || sur->feedback[1]) {
 			for (uint32_t i = 0; i < sur->observers.size(); i++) {
-				boost::shared_ptr<ARDOUR::Stripable> str = get_strip (i + 1, lo_address_new_from_url (sur->remote_url.c_str()));
+				std::shared_ptr<ARDOUR::Stripable> str = get_strip (i + 1, lo_address_new_from_url (sur->remote_url.c_str()));
 				sur->observers[i]->refresh_strip(str, true);
 				if (sur->temp_mode == BusOnly) {
-					boost::shared_ptr<ARDOUR::Send> send = get_send (str, lo_address_new_from_url (sur->remote_url.c_str()));
+					std::shared_ptr<ARDOUR::Send> send = get_send (str, lo_address_new_from_url (sur->remote_url.c_str()));
 					if (send) {
 						sur->observers[i]->refresh_send (send, true);
 					}
@@ -2257,7 +2248,7 @@ OSC::_recalcbanks ()
 		} else {
 			strip_feedback (sur, false);
 		}
-		_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), addr);
+		_strip_select (std::shared_ptr<ARDOUR::Stripable>(), addr);
 	}
 }
 
@@ -2310,7 +2301,7 @@ OSC::_set_bank (uint32_t bank_start, lo_address addr)
 					sur->bank = bank_start;
 					bank_start = bank_start + sur->bank_size;
 					strip_feedback (sur, false);
-					_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), sur_addr);
+					_strip_select (std::shared_ptr<ARDOUR::Stripable>(), sur_addr);
 					bank_leds (sur);
 					lo_address_free (sur_addr);
 				}
@@ -2333,7 +2324,7 @@ OSC::_set_bank (uint32_t bank_start, lo_address addr)
 
 		s->bank = bank_limits_check (bank_start, s->bank_size, nstrips);
 		strip_feedback (s, true);
-		_strip_select (boost::shared_ptr<ARDOUR::Stripable>(), addr);
+		_strip_select (std::shared_ptr<ARDOUR::Stripable>(), addr);
 		bank_leds (s);
 	}
 
@@ -2478,11 +2469,11 @@ int
 OSC::parse_sel_group (const char *path, const char* types, lo_arg **argv, int argc, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s = sur->select;
+	std::shared_ptr<Stripable> s = sur->select;
 	int ret = 1; /* unhandled */
 	/// these could be added to strip
 	if (s) {
-		boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (s);
+		std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (s);
 		if (!rt) {
 			PBD::warning << "OSC: VCAs can not be part of a group." << endmsg;
 			return ret;
@@ -2603,21 +2594,21 @@ OSC::parse_sel_group (const char *path, const char* types, lo_arg **argv, int ar
 	return ret;
  }
 
-boost::shared_ptr<VCA>
+std::shared_ptr<VCA>
 OSC::get_vca_by_name (std::string vname)
 {
 	StripableList stripables;
 	session->get_stripables (stripables);
 	for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
-		boost::shared_ptr<Stripable> s = *it;
-		boost::shared_ptr<VCA> v = boost::dynamic_pointer_cast<VCA> (s);
+		std::shared_ptr<Stripable> s = *it;
+		std::shared_ptr<VCA> v = std::dynamic_pointer_cast<VCA> (s);
 		if (v) {
 			if (vname == v->name()) {
 				return v;
 			}
 		}
 	}
-	return boost::shared_ptr<VCA>();
+	return std::shared_ptr<VCA>();
 }
 
 int
@@ -2625,31 +2616,31 @@ OSC::set_temp_mode (lo_address addr)
 {
 	bool ret = 1;
 	OSCSurface *sur = get_surface(addr);
-	boost::shared_ptr<Stripable> s = sur->temp_master;
+	std::shared_ptr<Stripable> s = sur->temp_master;
 	if (s) {
 		if (sur->temp_mode == GroupOnly) {
-			boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (s);
+			std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (s);
 			if (rt) {
 				RouteGroup *rg = rt->route_group();
 				if (rg) {
 					sur->temp_strips.clear();
-					boost::shared_ptr<RouteList> rl = rg->route_list();
+					std::shared_ptr<RouteList> rl = rg->route_list();
 					for (RouteList::iterator it = rl->begin(); it != rl->end(); ++it) {
-						boost::shared_ptr<Route> r = *it;
-						boost::shared_ptr<Stripable> st = boost::dynamic_pointer_cast<Stripable> (r);
+						std::shared_ptr<Route> r = *it;
+						std::shared_ptr<Stripable> st = std::dynamic_pointer_cast<Stripable> (r);
 						sur->temp_strips.push_back(st);
 					}
 					// check if this group feeds a bus or is slaved
-					boost::shared_ptr<Stripable> mstr = boost::shared_ptr<Stripable> ();
+					std::shared_ptr<Stripable> mstr = std::shared_ptr<Stripable> ();
 					if (rg->has_control_master()) {
-						boost::shared_ptr<VCA> vca = session->vca_manager().vca_by_number (rg->group_master_number());
+						std::shared_ptr<VCA> vca = session->vca_manager().vca_by_number (rg->group_master_number());
 						if (vca) {
-							mstr = boost::dynamic_pointer_cast<Stripable> (vca);
+							mstr = std::dynamic_pointer_cast<Stripable> (vca);
 						}
 					} else if (rg->has_subgroup()) {
-						boost::shared_ptr<Route> sgr = rg->subgroup_bus().lock();
+						std::shared_ptr<Route> sgr = rg->subgroup_bus().lock();
 						if (sgr) {
-							mstr = boost::dynamic_pointer_cast<Stripable> (sgr);
+							mstr = std::dynamic_pointer_cast<Stripable> (sgr);
 						}
 					}
 					if (mstr) {
@@ -2661,13 +2652,13 @@ OSC::set_temp_mode (lo_address addr)
 				}
 			}
 		} else if (sur->temp_mode == VCAOnly) {
-			boost::shared_ptr<VCA> vca = boost::dynamic_pointer_cast<VCA> (s);
+			std::shared_ptr<VCA> vca = std::dynamic_pointer_cast<VCA> (s);
 			if (vca) {
 				sur->temp_strips.clear();
 				StripableList stripables;
 				session->get_stripables (stripables);
 				for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
-					boost::shared_ptr<Stripable> st = *it;
+					std::shared_ptr<Stripable> st = *it;
 					if (st->slaved_to (vca)) {
 						sur->temp_strips.push_back(st);
 					}
@@ -2678,7 +2669,7 @@ OSC::set_temp_mode (lo_address addr)
 				ret = 0;
 			}
 		} else if (sur->temp_mode == BusOnly) {
-			boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (s);
+			std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (s);
 			if (rt) {
 				if (!rt->is_track () && rt->can_solo ()) {
 					// this is a bus, but not master, monitor or audition
@@ -2686,8 +2677,8 @@ OSC::set_temp_mode (lo_address addr)
 					StripableList stripables;
 					session->get_stripables (stripables, PresentationInfo::AllStripables);
 					for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
-						boost::shared_ptr<Stripable> st = *it;
-						boost::shared_ptr<Route> ri = boost::dynamic_pointer_cast<Route> (st);
+						std::shared_ptr<Stripable> st = *it;
+						std::shared_ptr<Route> ri = std::dynamic_pointer_cast<Route> (st);
 						bool sends = true;
 						if (ri && ri->direct_feeds_according_to_graph (rt, &sends)) {
 							sur->temp_strips.push_back(st);
@@ -2720,18 +2711,18 @@ OSC::set_temp_mode (lo_address addr)
 	return ret;
 }
 
-boost::shared_ptr<Send>
-OSC::get_send (boost::shared_ptr<Stripable> st, lo_address addr)
+std::shared_ptr<Send>
+OSC::get_send (std::shared_ptr<Stripable> st, lo_address addr)
 {
 	OSCSurface *sur = get_surface(addr);
-	boost::shared_ptr<Stripable> s = sur->temp_master;
+	std::shared_ptr<Stripable> s = sur->temp_master;
 	if (st && s && (st != s)) {
-		boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (s);
-		boost::shared_ptr<Route> rst = boost::dynamic_pointer_cast<Route> (st);
+		std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (s);
+		std::shared_ptr<Route> rst = std::dynamic_pointer_cast<Route> (st);
 		//find what send number feeds s
 		return rst->internal_send_for (rt);
 	}
-	return boost::shared_ptr<Send> ();
+	return std::shared_ptr<Send> ();
 }
 
 int
@@ -2763,7 +2754,7 @@ OSC::name_session (char *n, lo_message msg)
 }
 
 uint32_t
-OSC::get_sid (boost::shared_ptr<ARDOUR::Stripable> strip, lo_address addr)
+OSC::get_sid (std::shared_ptr<ARDOUR::Stripable> strip, lo_address addr)
 {
 	if (!strip) {
 		return 0;
@@ -2790,7 +2781,7 @@ OSC::get_sid (boost::shared_ptr<ARDOUR::Stripable> strip, lo_address addr)
 	return 0;
 }
 
-boost::shared_ptr<ARDOUR::Stripable>
+std::shared_ptr<ARDOUR::Stripable>
 OSC::get_strip (uint32_t ssid, lo_address addr)
 {
 	OSCSurface *s = get_surface(addr);
@@ -2798,7 +2789,7 @@ OSC::get_strip (uint32_t ssid, lo_address addr)
 		return s->strips[ssid + s->bank - 2];
 	}
 	// guess it is out of range
-	return boost::shared_ptr<ARDOUR::Stripable>();
+	return std::shared_ptr<ARDOUR::Stripable>();
 }
 
 // send and plugin paging commands
@@ -2883,9 +2874,9 @@ int
 OSC::_sel_plugin (int id, lo_address addr)
 {
 	OSCSurface *sur = get_surface(addr);
-	boost::shared_ptr<Stripable> s = sur->select;
+	std::shared_ptr<Stripable> s = sur->select;
 	if (s) {
-		boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(s);
+		std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(s);
 		if (!r) {
 			return 1;
 		}
@@ -2893,7 +2884,7 @@ OSC::_sel_plugin (int id, lo_address addr)
 		/* find out how many plugins we have */
 		sur->plugins.clear();
 		for (int nplugs = 0; true; ++nplugs) {
-			boost::shared_ptr<Processor> proc = r->nth_plugin (nplugs);
+			std::shared_ptr<Processor> proc = r->nth_plugin (nplugs);
 			if (!proc) {
 				break;
 			}
@@ -2902,7 +2893,7 @@ OSC::_sel_plugin (int id, lo_address addr)
 			}
 #ifdef MIXBUS
 			/* need to check for mixbus channel strips (and exclude them) */
-			boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert>(proc);
+			std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert>(proc);
 			if (pi && pi->is_channelstrip()) {
 				continue;
 			}
@@ -2927,13 +2918,13 @@ OSC::_sel_plugin (int id, lo_address addr)
 		}
 
 		// we have a plugin number now get the processor
-		boost::shared_ptr<Processor> proc = r->nth_plugin (sur->plugins[sur->plugin_id - 1]);
-		boost::shared_ptr<PluginInsert> pi;
-		if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(proc))) {
+		std::shared_ptr<Processor> proc = r->nth_plugin (sur->plugins[sur->plugin_id - 1]);
+		std::shared_ptr<PluginInsert> pi;
+		if (!(pi = std::dynamic_pointer_cast<PluginInsert>(proc))) {
 			PBD::warning << "OSC: Plugin: " << sur->plugin_id << " does not seem to be a plugin" << endmsg;
 			return 1;
 		}
-		boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+		std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 		bool ok = false;
 		// put only input controls into a vector
 		sur->plug_params.clear ();
@@ -3179,7 +3170,7 @@ OSC::mixer_scene_state (lo_address addr, bool zero_it)
 	for (int scn = 0; scn < 8; scn++) {  //TODO: mixer scene size
 		lo_message scene_msg = lo_message_new ();
 		if (!zero_it && session->nth_mixer_scene_valid(scn)) {
-			boost::shared_ptr<ARDOUR::MixerScene> scene = session->nth_mixer_scene(scn);
+			std::shared_ptr<ARDOUR::MixerScene> scene = session->nth_mixer_scene(scn);
 			lo_message_add_string (scene_msg, scene->name().c_str());
 		} else {
 			lo_message_add_string (scene_msg, "");
@@ -3190,20 +3181,6 @@ OSC::mixer_scene_state (lo_address addr, bool zero_it)
 	return 0;
 }
 
-// two structs to help with going to markers
-struct LocationMarker {
-	LocationMarker (const std::string& l, samplepos_t w)
-		: label (l), when (w) {}
-	std::string label;
-	samplepos_t  when;
-};
-
-struct LocationMarkerSort {
-	bool operator() (const LocationMarker& a, const LocationMarker& b) {
-		return (a.when < b.when);
-	}
-};
-
 int
 OSC::set_marker (const char* types, lo_arg **argv, int argc, lo_message msg)
 {
@@ -3211,6 +3188,7 @@ OSC::set_marker (const char* types, lo_arg **argv, int argc, lo_message msg)
 		PBD::warning << "Wrong number of parameters, one only." << endmsg;
 		return -1;
 	}
+
 	const Locations::LocationList& ll (session->locations ()->list ());
 	uint32_t marker = 0;
 
@@ -3246,15 +3224,15 @@ OSC::set_marker (const char* types, lo_arg **argv, int argc, lo_message msg)
 			return -1;
 			break;
 	}
-	std::vector<LocationMarker> lm;
+	std::vector<ArdourSurface::LocationMarker> lm;
 	// get Locations that are marks
 	for (Locations::LocationList::const_iterator l = ll.begin(); l != ll.end(); ++l) {
 		if ((*l)->is_mark ()) {
-			lm.push_back (LocationMarker((*l)->name(), (*l)->start_sample ()));
+			lm.push_back (ArdourSurface::LocationMarker((*l)->name(), (*l)->start_sample ()));
 		}
 	}
 	// sort them by position
-	LocationMarkerSort location_marker_sort;
+	ArdourSurface::LocationMarkerSort location_marker_sort;
 	std::sort (lm.begin(), lm.end(), location_marker_sort);
 	// go there
 	if (marker < lm.size()) {
@@ -3315,12 +3293,12 @@ OSC::route_get_sends(lo_message msg) {
 
 	int rid = argv[0]->i;
 
-	boost::shared_ptr<Stripable> strip = get_strip(rid, get_address(msg));
+	std::shared_ptr<Stripable> strip = get_strip(rid, get_address(msg));
 	if (!strip) {
 		return -1;
 	}
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (strip);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (strip);
 	if (!r) {
 		return -1;
 	}
@@ -3330,13 +3308,13 @@ OSC::route_get_sends(lo_message msg) {
 
 	int i = 0;
 	for (;;) {
-		boost::shared_ptr<Processor> p = r->nth_send(i++);
+		std::shared_ptr<Processor> p = r->nth_send(i++);
 
 		if (!p) {
 			break;
 		}
 
-		boost::shared_ptr<InternalSend> isend = boost::dynamic_pointer_cast<InternalSend> (p);
+		std::shared_ptr<InternalSend> isend = std::dynamic_pointer_cast<InternalSend> (p);
 		if (isend) {
 			lo_message_add_int32(reply, get_sid(isend->target_route(), get_address(msg)));
 			lo_message_add_string(reply, isend->name().c_str());
@@ -3365,36 +3343,36 @@ OSC::route_get_receives(lo_message msg) {
 	uint32_t rid = argv[0]->i;
 
 
-	boost::shared_ptr<Stripable> strip = get_strip(rid, get_address(msg));
+	std::shared_ptr<Stripable> strip = get_strip(rid, get_address(msg));
 	if (!strip) {
 		return -1;
 	}
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (strip);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (strip);
 	if (!r) {
 		return -1;
 	}
 
-	boost::shared_ptr<RouteList> route_list = session->get_routes();
+	std::shared_ptr<RouteList const> route_list = session->get_routes();
 
 	lo_message reply = lo_message_new();
 	lo_message_add_int32(reply, rid);
 
-	for (RouteList::iterator i = route_list->begin(); i != route_list->end(); ++i) {
-		boost::shared_ptr<Route> tr = boost::dynamic_pointer_cast<Route> (*i);
+	for (auto const& i : *route_list) {
+		std::shared_ptr<Route> tr = std::dynamic_pointer_cast<Route> (i);
 		if (!tr) {
 			continue;
 		}
 		int j = 0;
 
 		for (;;) {
-			boost::shared_ptr<Processor> p = tr->nth_send(j++);
+			std::shared_ptr<Processor> p = tr->nth_send(j++);
 
 			if (!p) {
 				break;
 			}
 
-			boost::shared_ptr<InternalSend> isend = boost::dynamic_pointer_cast<InternalSend> (p);
+			std::shared_ptr<InternalSend> isend = std::dynamic_pointer_cast<InternalSend> (p);
 			if (isend) {
 				if( isend->target_route()->id() == r->id()){
 					lo_message_add_int32(reply, get_sid(tr, get_address(msg)));
@@ -3431,7 +3409,7 @@ OSC::master_parse (const char *path, const char* types, lo_arg **argv, int argc,
 	}
 
 	//OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s = session->master_out();
+	std::shared_ptr<Stripable> s = session->master_out();
 	if (s) {
 		ret = _strip_parse (path, sub_path, types, argv, argc, s, 0, false, msg);
 	} else {
@@ -3455,9 +3433,9 @@ OSC::monitor_parse (const char *path, const char* types, lo_arg **argv, int argc
 	}
 
 	//OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s = session->monitor_out();
+	std::shared_ptr<Stripable> s = session->monitor_out();
 	if (s) {
-		boost::shared_ptr<MonitorProcessor> mon = session->monitor_out()->monitor_control();
+		std::shared_ptr<MonitorProcessor> mon = session->monitor_out()->monitor_control();
 		int state = 0;
 		if (types[0] == 'f') {
 			state = (uint32_t) argv[0]->f;
@@ -3547,7 +3525,7 @@ OSC::select_parse (const char *path, const char* types, lo_arg **argv, int argc,
 	}
 	else {
 		/// this is in both strip and select
-		boost::shared_ptr<Stripable> s = sur->select;
+		std::shared_ptr<Stripable> s = sur->select;
 		if (s) {
 			if (!strncmp (sub_path, X_("expand"), 6)) {
 				int yn = 0;
@@ -3563,11 +3541,11 @@ OSC::select_parse (const char *path, const char* types, lo_arg **argv, int argc,
 				}
 				sur->expand_strip = s;
 				sur->expand_enable = (bool) yn;
-				boost::shared_ptr<Stripable> sel;
+				std::shared_ptr<Stripable> sel;
 				if (yn) {
 					sel = s;
 				} else {
-					sel = boost::shared_ptr<Stripable> ();
+					sel = std::shared_ptr<Stripable> ();
 				}
 
 				return _strip_select (sel, get_address (msg));
@@ -3640,7 +3618,7 @@ OSC::strip_parse (const char *path, const char* types, lo_arg **argv, int argc, 
 			return 1;
 		}
 	}
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 	if (s) {
 		if (!strncmp (sub_path, X_("expand"), 6)) {
 			/// this is in both strip and select should be in _parse_strip
@@ -3658,11 +3636,11 @@ OSC::strip_parse (const char *path, const char* types, lo_arg **argv, int argc, 
 			sur->expand_strip = s;
 			sur->expand_enable = (bool) yn;
 			sur->expand = ssid;
-			boost::shared_ptr<Stripable> sel;
+			std::shared_ptr<Stripable> sel;
 			if (yn) {
 				sel = s;
 			} else {
-				sel = boost::shared_ptr<Stripable> ();
+				sel = std::shared_ptr<Stripable> ();
 			}
 
 			return _strip_select (sel, get_address (msg));
@@ -3678,7 +3656,7 @@ OSC::strip_parse (const char *path, const char* types, lo_arg **argv, int argc, 
 }
 
 int
-OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo_arg **argv, int argc, boost::shared_ptr<ARDOUR::Stripable> s, int param_1, bool strp, lo_message msg)
+OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo_arg **argv, int argc, std::shared_ptr<ARDOUR::Stripable> s, int param_1, bool strp, lo_message msg)
 {
 	int ret = 1;
 	int yn = 0;
@@ -3711,7 +3689,7 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 	bool send_active = strp && sur->temp_mode == BusOnly && get_send (s, get_address (msg));
 	bool control_disabled = strp && (sur->temp_mode == BusOnly) && (s != sur->temp_master);
 	bool n_mo = !s->is_monitor();
-	boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (s);
 
 	if (!strlen(sub_path)) {
 		// send stripable info
@@ -3726,7 +3704,7 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 		ret = strip_state (path, s, sid, msg);
 	}
 	else if (!strncmp (sub_path, X_("gain"), 4) || !strncmp (sub_path, X_("fader"), 5) ||  !strncmp (sub_path, X_("db_delta"), 8)){
-		boost::shared_ptr<GainControl> gain_control;
+		std::shared_ptr<GainControl> gain_control;
 		gain_control = s->gain_control();
 		if (gain_control) {
 			if (argc > (param_1)) {
@@ -3794,22 +3772,22 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 		}
 	}
 	else if (!strncmp (sub_path, X_("pan_stereo_position"), 19)) {
-		boost::shared_ptr<PBD::Controllable> pan_control = boost::shared_ptr<PBD::Controllable>();
+		std::shared_ptr<PBD::Controllable> pan_control = std::shared_ptr<PBD::Controllable>();
 		pan_control = s->pan_azimuth_control();
 		if (n_mo && pan_control) {
 			if (argc > (param_1)) {
 				if (s_flt) {
 					if (send_active) {
-						boost::shared_ptr<ARDOUR::Send> send = get_send (s, get_address (msg));
+						std::shared_ptr<ARDOUR::Send> send = get_send (s, get_address (msg));
 						if (send->pan_outs() > 1) {
 							pan_control = send->panner_shell()->panner()->pannable()->pan_azimuth_control;
 						} else {
-							pan_control = boost::shared_ptr<PBD::Controllable>();
+							pan_control = std::shared_ptr<PBD::Controllable>();
 						}
 					}
 					if(pan_control) {
 						pan_control->set_value (s->pan_azimuth_control()->interface_to_internal (value), sur->usegroup);
-						boost::shared_ptr<AutomationControl>pan_automate = boost::dynamic_pointer_cast<AutomationControl> (pan_control);
+						std::shared_ptr<AutomationControl>pan_automate = std::dynamic_pointer_cast<AutomationControl> (pan_control);
 						fake_touch (pan_automate);
 						ret = 0;
 					}
@@ -3890,7 +3868,7 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 		}
 	}
 	else if (!strncmp (sub_path, X_("monitor_input"), 13)) {
-		boost::shared_ptr<Track> track = boost::dynamic_pointer_cast<Track> (s);
+		std::shared_ptr<Track> track = std::dynamic_pointer_cast<Track> (s);
 		if (!control_disabled && track && track->monitoring_control()) {
 			std::bitset<32> mon_bs = track->monitoring_control()->get_value ();
 			if (argc > (param_1)) {
@@ -3906,7 +3884,7 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 		}
 	}
 	else if (!strncmp (sub_path, X_("monitor_disk"), 12)) {
-		boost::shared_ptr<Track> track = boost::dynamic_pointer_cast<Track> (s);
+		std::shared_ptr<Track> track = std::dynamic_pointer_cast<Track> (s);
 		if (!control_disabled && track && track->monitoring_control()) {
 			std::bitset<32> mon_bs = track->monitoring_control()->get_value ();
 			if (argc > (param_1)) {
@@ -4097,12 +4075,12 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 		}
 	}
 	else if (!strncmp (sub_path, X_("vca"), 3)) {
-		boost::shared_ptr<Slavable> slv = boost::dynamic_pointer_cast<Slavable> (s);
+		std::shared_ptr<Slavable> slv = std::dynamic_pointer_cast<Slavable> (s);
 		if (!control_disabled && slv) {
 			if (argc > (param_1)) {
 				string svalue = strng;
 				string v_name = svalue.substr (0, svalue.rfind (" ["));
-				boost::shared_ptr<VCA> vca = get_vca_by_name (v_name);
+				std::shared_ptr<VCA> vca = get_vca_by_name (v_name);
 				uint32_t ivalue = 0;
 				if (!strncmp (sub_path, X_("vca/toggle"), 10)) {
 					if (vca) {
@@ -4154,8 +4132,8 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 				StripableList stripables;
 				session->get_stripables (stripables);
 				for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
-					boost::shared_ptr<Stripable> st = *it;
-					boost::shared_ptr<VCA> v = boost::dynamic_pointer_cast<VCA> (st);
+					std::shared_ptr<Stripable> st = *it;
+					std::shared_ptr<VCA> v = std::dynamic_pointer_cast<VCA> (st);
 					if (v && s->slaved_to (v)) {
 						lo_message_add_string (rmsg, v->name().c_str());
 					}
@@ -4222,11 +4200,11 @@ OSC::_strip_parse (const char *path, const char *sub_path, const char* types, lo
 }
 
 int
-OSC::strip_state (const char *path, boost::shared_ptr<ARDOUR::Stripable> s, int ssid, lo_message msg)
+OSC::strip_state (const char *path, std::shared_ptr<ARDOUR::Stripable> s, int ssid, lo_message msg)
 {
 	PBD::info << string_compose("OSC: strip_state path:%1", path) << endmsg;
 	// some things need the route
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 	lo_message reply = lo_message_new ();
 	if (ssid) {
@@ -4234,17 +4212,17 @@ OSC::strip_state (const char *path, boost::shared_ptr<ARDOUR::Stripable> s, int 
 		lo_message_add_int32 (reply, ssid);
 	}
 
-	if (boost::dynamic_pointer_cast<AudioTrack>(s)) {
+	if (std::dynamic_pointer_cast<AudioTrack>(s)) {
 		lo_message_add_string (reply, "AT");
-	} else if (boost::dynamic_pointer_cast<MidiTrack>(s)) {
+	} else if (std::dynamic_pointer_cast<MidiTrack>(s)) {
 		lo_message_add_string (reply, "MT");
-	} else if (boost::dynamic_pointer_cast<VCA>(s)) {
+	} else if (std::dynamic_pointer_cast<VCA>(s)) {
 		lo_message_add_string (reply, "V");
 	} else if (s->is_master()) {
 		lo_message_add_string (reply, "MA");
 	} else if (s->is_monitor()) {
 		lo_message_add_string (reply, "MO");
-	} else if (boost::dynamic_pointer_cast<Route>(s) && !boost::dynamic_pointer_cast<Track>(s)) {
+	} else if (std::dynamic_pointer_cast<Route>(s) && !std::dynamic_pointer_cast<Track>(s)) {
 		if (!(s->presentation_info().flags() & PresentationInfo::MidiBus)) {
 			if (s->is_foldbackbus()) {
 				lo_message_add_string (reply, "FB");
@@ -4299,7 +4277,7 @@ OSC::strip_list (lo_message msg)
 			ssid = n + 1;
 		}
 
-		boost::shared_ptr<Stripable> s = get_strip (n + 1, get_address (msg));
+		std::shared_ptr<Stripable> s = get_strip (n + 1, get_address (msg));
 
 		if (s) {
 			strip_state (temppath.c_str(), s, ssid, msg);
@@ -4316,11 +4294,11 @@ OSC::set_automation (const char *path, const char* types, lo_arg **argv, int arg
 
 	int ret = 1;
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> strp = boost::shared_ptr<Stripable>();
+	std::shared_ptr<Stripable> strp = std::shared_ptr<Stripable>();
 	uint32_t ctr = 0;
 	uint32_t aut = 0;
 	uint32_t ssid;
-	boost::shared_ptr<Send> send = boost::shared_ptr<Send> ();
+	std::shared_ptr<Send> send = std::shared_ptr<Send> ();
 
 	if (argc) {
 		if (types[argc - 1] == 'f') {
@@ -4353,7 +4331,7 @@ OSC::set_automation (const char *path, const char* types, lo_arg **argv, int arg
 		return ret;
 	}
 	if (strp) {
-		boost::shared_ptr<AutomationControl> control = boost::shared_ptr<AutomationControl>();
+		std::shared_ptr<AutomationControl> control = std::shared_ptr<AutomationControl>();
 		// other automatable controls can be added by repeating the next 6.5 lines
 		if ((!strncmp (&path[ctr], X_("fader"), 5)) || (!strncmp (&path[ctr], X_("gain"), 4))) {
 			if (send) {
@@ -4368,8 +4346,8 @@ OSC::set_automation (const char *path, const char* types, lo_arg **argv, int arg
 				if (send->panner_linked_to_route () || !send->has_panner ()) {
 					PBD::warning << "Send panner not available" << endmsg;
 				} else {
-					boost::shared_ptr<Delivery> _send_del = boost::dynamic_pointer_cast<Delivery> (send);
-					boost::shared_ptr<Pannable> pannable = _send_del->panner()->pannable();
+					std::shared_ptr<Delivery> _send_del = std::dynamic_pointer_cast<Delivery> (send);
+					std::shared_ptr<Pannable> pannable = _send_del->panner()->pannable();
 					if (pannable->pan_azimuth_control) {
 						control = pannable->pan_azimuth_control;
 					} else {
@@ -4442,8 +4420,8 @@ OSC::touch_detect (const char *path, const char* types, lo_arg **argv, int argc,
 
 	int ret = 1;
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> strp = boost::shared_ptr<Stripable>();
-	boost::shared_ptr<Send> send = boost::shared_ptr<Send> ();
+	std::shared_ptr<Stripable> strp = std::shared_ptr<Stripable>();
+	std::shared_ptr<Send> send = std::shared_ptr<Send> ();
 	uint32_t ctr = 0;
 	uint32_t touch = 0;
 	uint32_t ssid;
@@ -4479,7 +4457,7 @@ OSC::touch_detect (const char *path, const char* types, lo_arg **argv, int argc,
 		return ret;
 	}
 	if (strp) {
-		boost::shared_ptr<AutomationControl> control = boost::shared_ptr<AutomationControl>();
+		std::shared_ptr<AutomationControl> control = std::shared_ptr<AutomationControl>();
 		// other automatable controls can be added by repeating the next 6.5 lines
 		if ((!strncmp (&path[ctr], X_("fader"), 5)) || (!strncmp (&path[ctr], X_("gain"), 4))) {
 			if (strp->gain_control ()) {
@@ -4495,8 +4473,8 @@ OSC::touch_detect (const char *path, const char* types, lo_arg **argv, int argc,
 				if (send->panner_linked_to_route () || !send->has_panner ()) {
 					PBD::warning << "Send panner not available" << endmsg;
 				} else {
-					boost::shared_ptr<Delivery> _send_del = boost::dynamic_pointer_cast<Delivery> (send);
-					boost::shared_ptr<Pannable> pannable = _send_del->panner()->pannable();
+					std::shared_ptr<Delivery> _send_del = std::dynamic_pointer_cast<Delivery> (send);
+					std::shared_ptr<Pannable> pannable = _send_del->panner()->pannable();
 					if (!strncmp (&path[ctr], X_("pan_stereo_position"), 19)) {
 						if (pannable->pan_azimuth_control) {
 							control = pannable->pan_azimuth_control;
@@ -4555,7 +4533,7 @@ OSC::touch_detect (const char *path, const char* types, lo_arg **argv, int argc,
 }
 
 int
-OSC::fake_touch (boost::shared_ptr<ARDOUR::AutomationControl> ctrl)
+OSC::fake_touch (std::shared_ptr<ARDOUR::AutomationControl> ctrl)
 {
 	if (ctrl) {
 		//start touch
@@ -4580,7 +4558,7 @@ OSC::spill (const char *path, const char* types, lo_arg **argv, int argc, lo_mes
 
 	int ret = 1;
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> strp = boost::shared_ptr<Stripable>();
+	std::shared_ptr<Stripable> strp = std::shared_ptr<Stripable>();
 	uint32_t value = 0;
 	OSCTempMode new_mode = TempOff;
 
@@ -4615,8 +4593,8 @@ OSC::spill (const char *path, const char* types, lo_arg **argv, int argc, lo_mes
 		return ret;
 	}
 	if (strp) {
-		boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (strp);
-		boost::shared_ptr<VCA> v = boost::dynamic_pointer_cast<VCA> (strp);
+		std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (strp);
+		std::shared_ptr<VCA> v = std::dynamic_pointer_cast<VCA> (strp);
 		if (strstr (path, X_("/vca")) || v) {
 			//strp must be a VCA
 			if (v) {
@@ -4670,11 +4648,11 @@ int
 OSC::sel_new_personal_send (char *foldback, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
-	boost::shared_ptr<Route> rt = boost::shared_ptr<Route> ();
+	std::shared_ptr<Route> rt = std::shared_ptr<Route> ();
 	if (s) {
-		rt = boost::dynamic_pointer_cast<Route> (s);
+		rt = std::dynamic_pointer_cast<Route> (s);
 		if (!rt) {
 			PBD::warning << "OSC: can not send from VCAs." << endmsg;
 			return -1;
@@ -4689,10 +4667,10 @@ OSC::sel_new_personal_send (char *foldback, lo_message msg)
 	if (foldbackbus.find ("- FB") == string::npos) {
 		foldback_name = string_compose ("%1 - FB", foldbackbus);
 	}
-	boost::shared_ptr<Route> lsn_rt = session->route_by_name (foldback_name);
+	std::shared_ptr<Route> lsn_rt = session->route_by_name (foldback_name);
 	if (!lsn_rt) {
 		// doesn't exist but check if raw name does and is foldbackbus
-		boost::shared_ptr<Route> raw_rt = session->route_by_name (foldbackbus);
+		std::shared_ptr<Route> raw_rt = session->route_by_name (foldbackbus);
 		if (raw_rt && raw_rt->is_foldbackbus()) {
 			lsn_rt = raw_rt;
 		} else {
@@ -4704,13 +4682,13 @@ OSC::sel_new_personal_send (char *foldback, lo_message msg)
 		}
 	}
 	if (lsn_rt) {
-		//boost::shared_ptr<Route> rt_send = ;
+		//std::shared_ptr<Route> rt_send = ;
 		if (rt && (lsn_rt != rt)) {
 			// make sure there isn't one already
 			if (!rt->feeds (lsn_rt)) {
 				// create send
 				rt->add_foldback_send (lsn_rt, false);
-				//boost::shared_ptr<Send> snd = rt->internal_send_for (aux);
+				//std::shared_ptr<Send> snd = rt->internal_send_for (aux);
 				session->dirty ();
 				return 0;
 			} else {
@@ -4727,7 +4705,7 @@ OSC::sel_new_personal_send (char *foldback, lo_message msg)
 }
 
 int
-OSC::_strip_select (boost::shared_ptr<Stripable> s, lo_address addr)
+OSC::_strip_select (std::shared_ptr<Stripable> s, lo_address addr)
 {
 	if (!session) {
 		return -1;
@@ -4737,13 +4715,13 @@ OSC::_strip_select (boost::shared_ptr<Stripable> s, lo_address addr)
 }
 
 int
-OSC::_strip_select2 (boost::shared_ptr<Stripable> s, OSCSurface *sur, lo_address addr)
+OSC::_strip_select2 (std::shared_ptr<Stripable> s, OSCSurface *sur, lo_address addr)
 {
 	// this allows get_surface  to call this part without calling itself
-	boost::weak_ptr<Stripable> o_sel = sur->select;
-	boost::shared_ptr<Stripable> old_sel= o_sel.lock ();
-	boost::weak_ptr<Stripable> o_expand = sur->expand_strip;
-	boost::shared_ptr<Stripable> old_expand= o_expand.lock ();
+	std::weak_ptr<Stripable> o_sel = sur->select;
+	std::shared_ptr<Stripable> old_sel= o_sel.lock ();
+	std::weak_ptr<Stripable> o_expand = sur->expand_strip;
+	std::shared_ptr<Stripable> old_expand= o_expand.lock ();
 
 	// we got a null strip check that old strips are valid
 	if (!s) {
@@ -4752,7 +4730,7 @@ OSC::_strip_select2 (boost::shared_ptr<Stripable> s, OSCSurface *sur, lo_address
 			if (sur->strip_types[11] || sur->expand) {
 				s = old_expand;
 			} else {
-				sur->expand_strip = boost::shared_ptr<Stripable> ();
+				sur->expand_strip = std::shared_ptr<Stripable> ();
 			}
 		}
 	}
@@ -4765,6 +4743,9 @@ OSC::_strip_select2 (boost::shared_ptr<Stripable> s, OSCSurface *sur, lo_address
 			s = session->master_out ();
 		}
 		_select = s;
+	}
+	if (!s) {
+		return 0;
 	}
 	if (s != old_sel) {
 		sur->select = s;
@@ -4780,7 +4761,7 @@ OSC::_strip_select2 (boost::shared_ptr<Stripable> s, OSCSurface *sur, lo_address
 	} while (sends);
 	sur->nsends = nsends;
 
-	s->DropReferences.connect (*this, MISSING_INVALIDATOR, boost::bind (&OSC::recalcbanks, this), this);
+	s->DropReferences.connect (*this, MISSING_INVALIDATOR, std::bind (&OSC::recalcbanks, this), this);
 
 	OSCSelectObserver* so = dynamic_cast<OSCSelectObserver*>(sur->sel_obs);
 	if (sur->feedback[13]) {
@@ -4811,9 +4792,9 @@ OSC::_strip_select2 (boost::shared_ptr<Stripable> s, OSCSurface *sur, lo_address
 	}
 	// need to set monitor for processor changed signal (for paging)
 	string address = lo_address_get_url (addr);
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(s);
 	if (r) {
-		r->processors_changed.connect  (sur->proc_connection, MISSING_INVALIDATOR, boost::bind (&OSC::processor_changed, this, address), this);
+		r->processors_changed.connect  (sur->proc_connection, MISSING_INVALIDATOR, std::bind (&OSC::processor_changed, this, address), this);
 		_sel_plugin (sur->plugin_id, addr);
 	}
 
@@ -4836,17 +4817,17 @@ int
 OSC::sel_expand (uint32_t state, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	if (!sur->expand_strip) {
 		state = 0;
 		float_message (X_("/select/expand"), 0.0, get_address (msg));
 	}
 	if (state) {
 		sur->expand_enable = (bool) state;
-		s = boost::shared_ptr<Stripable> ();
+		s = std::shared_ptr<Stripable> ();
 	} else {
 		sur->expand_enable = false;
-		s = boost::shared_ptr<Stripable> ();
+		s = std::shared_ptr<Stripable> ();
 	}
 
 	return _strip_select (s, get_address (msg));
@@ -4878,9 +4859,9 @@ OSC::sel_delta (int delta, lo_message msg)
 	if (!nstps) {
 		return -1;
 	}
-	boost::shared_ptr<Stripable> new_sel = boost::shared_ptr<Stripable> ();
-	boost::weak_ptr<Stripable> o_sel = sur->select;
-	boost::shared_ptr<Stripable> old_sel= o_sel.lock ();
+	std::shared_ptr<Stripable> new_sel = std::shared_ptr<Stripable> ();
+	std::weak_ptr<Stripable> o_sel = sur->select;
+	std::shared_ptr<Stripable> old_sel= o_sel.lock ();
 	for (uint32_t i = 0; i < nstps; i++) {
 		if (old_sel == sel_strips[i]) {
 			if (i && delta < 0) {
@@ -4923,7 +4904,7 @@ OSC::route_set_send_gain_dB (int ssid, int id, float val, lo_message msg)
 	if (!session) {
 		return -1;
 	}
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 	OSCSurface *sur = get_surface(get_address (msg));
 	float abs;
 	if (s) {
@@ -4949,7 +4930,7 @@ OSC::route_set_send_fader (int ssid, int id, float val, lo_message msg)
 	if (!session) {
 		return -1;
 	}
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 	OSCSurface *sur = get_surface(get_address (msg));
 	float abs;
 	if (s) {
@@ -4974,7 +4955,7 @@ OSC::sel_sendgain (int id, float val, lo_message msg)
 	if (sur->send_page_size && (id > (int)sur->send_page_size)) {
 		return float_message_with_id (X_("/select/send_gain"), id, -193, sur->feedback[2], get_address (msg));
 	}
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	float abs;
 	int send_id = 0;
@@ -5005,7 +4986,7 @@ OSC::sel_sendfader (int id, float val, lo_message msg)
 	if (sur->send_page_size && (id > (int)sur->send_page_size)) {
 		return float_message_with_id (X_("/select/send_fader"), id, 0, sur->feedback[2], get_address (msg));
 	}
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	float abs;
 	int send_id = 0;
@@ -5033,7 +5014,7 @@ OSC::route_set_send_enable (int ssid, int sid, float val, lo_message msg)
 	if (!session) {
 		return -1;
 	}
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 	OSCSurface *sur = get_surface(get_address (msg));
 
 	if (s) {
@@ -5050,11 +5031,11 @@ OSC::route_set_send_enable (int ssid, int sid, float val, lo_message msg)
 		}
 
 		if (s->send_level_controllable (sid)) {
-			boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+			std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 			if (!r) {
 				return 0;
 			}
-			boost::shared_ptr<Send> snd = boost::dynamic_pointer_cast<Send> (r->nth_send(sid));
+			std::shared_ptr<Send> snd = std::dynamic_pointer_cast<Send> (r->nth_send(sid));
 			if (snd) {
 				if (val) {
 					snd->activate();
@@ -5077,7 +5058,7 @@ OSC::sel_sendenable (int id, float val, lo_message msg)
 	if (sur->send_page_size && (id > (int)sur->send_page_size)) {
 		return float_message_with_id (X_("/select/send_enable"), id, 0, sur->feedback[2], get_address (msg));
 	}
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	int send_id = 0;
 	if (s) {
@@ -5092,12 +5073,12 @@ OSC::sel_sendenable (int id, float val, lo_message msg)
 			return 0;
 		}
 		if (s->send_level_controllable (send_id)) {
-			boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+			std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 			if (!r) {
 				// should never get here
 				return float_message_with_id (X_("/select/send_enable"), id, 0, sur->feedback[2], get_address (msg));
 			}
-			boost::shared_ptr<Send> snd = boost::dynamic_pointer_cast<Send> (r->nth_send(send_id));
+			std::shared_ptr<Send> snd = std::dynamic_pointer_cast<Send> (r->nth_send(send_id));
 			if (snd) {
 				if (val) {
 					snd->activate();
@@ -5115,7 +5096,7 @@ int
 OSC::sel_master_send_enable (int state, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (s->master_send_enable_controllable ()) {
@@ -5182,18 +5163,18 @@ OSC::select_plugin_parameter (const char *path, const char* types, lo_arg **argv
 	if (sur->plug_page_size && (paid > (int)sur->plug_page_size)) {
 		return float_message_with_id (X_("/select/plugin/parameter"), paid, 0, sur->feedback[2], get_address (msg));
 	}
-	boost::shared_ptr<Stripable> s = sur->select;
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(s);
+	std::shared_ptr<Stripable> s = sur->select;
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(s);
 	if (!r) {
 		return 1;
 	}
 
-	boost::shared_ptr<Processor> proc = r->nth_plugin (sur->plugins[sur->plugin_id - 1]);
-	boost::shared_ptr<PluginInsert> pi;
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(proc))) {
+	std::shared_ptr<Processor> proc = r->nth_plugin (sur->plugins[sur->plugin_id - 1]);
+	std::shared_ptr<PluginInsert> pi;
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(proc))) {
 		return 1;
 	}
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	// paid is paged parameter convert to absolute
 	int parid = paid + (int)sur->plug_page - 1;
 	if (parid > (int) sur->plug_params.size ()) {
@@ -5211,7 +5192,7 @@ OSC::select_plugin_parameter (const char *path, const char* types, lo_arg **argv
 	ParameterDescriptor pd;
 	pip->get_parameter_descriptor(controlid, pd);
 	if ( pip->parameter_is_input(controlid) || pip->parameter_is_control(controlid) ) {
-		boost::shared_ptr<AutomationControl> c = pi->automation_control(Evoral::Parameter(PluginAutomation, 0, controlid));
+		std::shared_ptr<AutomationControl> c = pi->automation_control(Evoral::Parameter(PluginAutomation, 0, controlid));
 		if (c) {
 			if (pd.integer_step && pd.upper == 1) {
 				if (c->get_value () && value < 1.0) {
@@ -5236,15 +5217,15 @@ OSC::sel_plugin_activate (float state, lo_message msg)
 	}
 	OSCSurface *sur = get_surface(get_address (msg));
 	if (sur->plugins.size() > 0) {
-		boost::shared_ptr<Stripable> s = sur->select;
+		std::shared_ptr<Stripable> s = sur->select;
 
-		boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+		std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 		if (r) {
-			boost::shared_ptr<Processor> redi=r->nth_plugin (sur->plugins[sur->plugin_id -1]);
+			std::shared_ptr<Processor> redi=r->nth_plugin (sur->plugins[sur->plugin_id -1]);
 			if (redi) {
-				boost::shared_ptr<PluginInsert> pi;
-				if ((pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+				std::shared_ptr<PluginInsert> pi;
+				if ((pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 					if(state > 0) {
 						pi->activate();
 					} else {
@@ -5266,7 +5247,7 @@ OSC::route_plugin_list (int ssid, lo_message msg) {
 		return -1;
 	}
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
@@ -5279,20 +5260,20 @@ OSC::route_plugin_list (int ssid, lo_message msg) {
 
 
 	for (;;) {
-		boost::shared_ptr<Processor> redi = r->nth_plugin(piid);
+		std::shared_ptr<Processor> redi = r->nth_plugin(piid);
 		if ( !redi ) {
 			break;
 		}
 
-		boost::shared_ptr<PluginInsert> pi;
+		std::shared_ptr<PluginInsert> pi;
 
-		if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+		if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 			PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 			continue;
 		}
 		lo_message_add_int32 (reply, piid + 1);
 
-		boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+		std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 		lo_message_add_string (reply, pip->name());
 		lo_message_add_int32(reply, redi->enabled() ? 1 : 0);
 
@@ -5310,28 +5291,28 @@ OSC::route_plugin_descriptor (int ssid, int piid, lo_message msg) {
 		return -1;
 	}
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi = r->nth_plugin(piid - 1);
+	std::shared_ptr<Processor> redi = r->nth_plugin(piid - 1);
 
 	if (!redi) {
 		PBD::error << "OSC: cannot find plugin # " << piid << " for RID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	bool ok = false;
 
 	for ( uint32_t ppi = 0; ppi < pip->parameter_count(); ppi++) {
@@ -5340,7 +5321,7 @@ OSC::route_plugin_descriptor (int ssid, int piid, lo_message msg) {
 		if (!ok) {
 			continue;
 		}
-		boost::shared_ptr<AutomationControl> c = pi->automation_control(Evoral::Parameter(PluginAutomation, 0, controlid));
+		std::shared_ptr<AutomationControl> c = pi->automation_control(Evoral::Parameter(PluginAutomation, 0, controlid));
 
 		lo_message reply = lo_message_new();
 		lo_message_add_int32 (reply, ssid);
@@ -5438,23 +5419,23 @@ OSC::route_plugin_reset (int ssid, int piid, lo_message msg) {
 		return -1;
 	}
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(get_strip (ssid, get_address (msg)));
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi = r->nth_plugin(piid - 1);
+	std::shared_ptr<Processor> redi = r->nth_plugin(piid - 1);
 
 	if (!redi) {
 		PBD::error << "OSC: cannot find plugin # " << piid << " for RID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 		return -1;
 	}
@@ -5469,30 +5450,30 @@ OSC::route_plugin_parameter (int ssid, int piid, int par, float val, lo_message 
 {
 	if (!session)
 		return -1;
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
+	std::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
 
 	if (!redi) {
 		PBD::error << "OSC: cannot find plugin # " << piid << " for RID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	bool ok=false;
 
 	uint32_t controlid = pip->nth_parameter (par - 1,ok);
@@ -5512,7 +5493,7 @@ OSC::route_plugin_parameter (int ssid, int piid, int par, float val, lo_message 
 
 	if (val >= pd.lower && val <= pd.upper) {
 
-		boost::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter(PluginAutomation, 0, controlid));
+		std::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter(PluginAutomation, 0, controlid));
 		// cerr << "parameter:" << redi->describe_parameter(controlid) << " val:" << val << "\n";
 		c->set_value (val, PBD::Controllable::NoGroup);
 	} else {
@@ -5538,7 +5519,7 @@ OSC::trigger_stop (int route_index, int now, lo_message msg)
 	session->get_stripables (sl);
 	sl.sort (Stripable::Sorter ());
 	for (StripableList::iterator s = sl.begin (); s != sl.end (); ++s) {
-		boost::shared_ptr<Route>     r = boost::dynamic_pointer_cast<Route> (*s);
+		std::shared_ptr<Route>     r = std::dynamic_pointer_cast<Route> (*s);
 		if (!r || !r->triggerbox ()) {
 			continue;
 		}
@@ -5586,27 +5567,27 @@ OSC::route_plugin_parameter_print (int ssid, int piid, int par, lo_message msg)
 	if (!session) {
 		return -1;
 	}
-	boost::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, get_address (msg));
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 	if (!r) {
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
+	std::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
 
 	if (!redi) {
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		return -1;
 	}
 
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	bool ok=false;
 
 	uint32_t controlid = pip->nth_parameter (par - 1,ok);
@@ -5618,7 +5599,7 @@ OSC::route_plugin_parameter_print (int ssid, int piid, int par, lo_message msg)
 	ParameterDescriptor pd;
 
 	if (pi->plugin()->get_parameter_descriptor (controlid, pd) == 0) {
-		boost::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter(PluginAutomation, 0, controlid));
+		std::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter(PluginAutomation, 0, controlid));
 
 		cerr << "parameter:     " << pd.label  << "\n";
 		if (c) {
@@ -5638,30 +5619,30 @@ OSC::route_plugin_activate (int ssid, int piid, lo_message msg)
 {
 	if (!session)
 		return -1;
-	boost::shared_ptr<Stripable> s = get_strip (ssid, lo_message_get_source (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, lo_message_get_source (msg));
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
+	std::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
 
 	if (!redi) {
 		PBD::error << "OSC: cannot find plugin # " << piid << " for RID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	pi->activate();
 
 	return 0;
@@ -5672,30 +5653,30 @@ OSC::route_plugin_deactivate (int ssid, int piid, lo_message msg)
 {
 	if (!session)
 		return -1;
-	boost::shared_ptr<Stripable> s = get_strip (ssid, lo_message_get_source (msg));
+	std::shared_ptr<Stripable> s = get_strip (ssid, lo_message_get_source (msg));
 
-	boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s);
+	std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s);
 
 	if (!r) {
 		PBD::error << "OSC: Invalid Remote Control ID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
+	std::shared_ptr<Processor> redi=r->nth_plugin (piid - 1);
 
 	if (!redi) {
 		PBD::error << "OSC: cannot find plugin # " << piid << " for RID '" << ssid << "'" << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<PluginInsert> pi;
+	std::shared_ptr<PluginInsert> pi;
 
-	if (!(pi = boost::dynamic_pointer_cast<PluginInsert>(redi))) {
+	if (!(pi = std::dynamic_pointer_cast<PluginInsert>(redi))) {
 		PBD::error << "OSC: given processor # " << piid << " on RID '" << ssid << "' is not a Plugin." << endmsg;
 		return -1;
 	}
 
-	boost::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
+	std::shared_ptr<ARDOUR::Plugin> pip = pi->plugin();
 	pi->deactivate();
 
 	return 0;
@@ -5707,7 +5688,7 @@ int
 OSC::sel_pan_elevation (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (s->pan_elevation_control()) {
@@ -5722,7 +5703,7 @@ int
 OSC::sel_pan_frontback (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (s->pan_frontback_control()) {
@@ -5737,7 +5718,7 @@ int
 OSC::sel_pan_lfe (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (s->pan_lfe_control()) {
@@ -5753,11 +5734,11 @@ int
 OSC::sel_comp_enable (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->comp_enable_controllable()) {
-			s->comp_enable_controllable()->set_value (s->comp_enable_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (Comp_Enable)) {
+			s->mapped_control (Comp_Enable)->set_value (s->mapped_control (Comp_Enable)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5768,11 +5749,11 @@ int
 OSC::sel_comp_threshold (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->comp_threshold_controllable()) {
-			s->comp_threshold_controllable()->set_value (s->comp_threshold_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (Comp_Threshold)) {
+			s->mapped_control (Comp_Threshold)->set_value (s->mapped_control (Comp_Threshold)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5780,29 +5761,14 @@ OSC::sel_comp_threshold (float val, lo_message msg)
 }
 
 int
-OSC::sel_comp_speed (float val, lo_message msg)
-{
-	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
-	s = sur->select;
-	if (s) {
-		if (s->comp_speed_controllable()) {
-			s->comp_speed_controllable()->set_value (s->comp_speed_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
-			return 0;
-		}
-	}
-	return float_message(X_("/select/comp_speed"), 0, get_address (msg));
-}
-
-int
 OSC::sel_comp_mode (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->comp_mode_controllable()) {
-			s->comp_mode_controllable()->set_value (s->comp_mode_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (Comp_Mode)) {
+			s->mapped_control (Comp_Mode)->set_value (s->mapped_control (Comp_Mode)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5813,11 +5779,11 @@ int
 OSC::sel_comp_makeup (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->comp_makeup_controllable()) {
-			s->comp_makeup_controllable()->set_value (s->comp_makeup_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (Comp_Makeup)) {
+			s->mapped_control (Comp_Makeup)->set_value (s->mapped_control (Comp_Makeup)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5830,11 +5796,11 @@ int
 OSC::sel_eq_enable (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->eq_enable_controllable()) {
-			s->eq_enable_controllable()->set_value (s->eq_enable_controllable()->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control(EQ_Enable)) {
+			s->mapped_control(EQ_Enable)->set_value (s->mapped_control(EQ_Enable)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5845,11 +5811,11 @@ int
 OSC::sel_eq_hpf_freq (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_freq_controllable(true)) {
-			s->filter_freq_controllable(true)->set_value (s->filter_freq_controllable(true)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (HPF_Freq)) {
+			s->mapped_control (HPF_Freq)->set_value (s->mapped_control (HPF_Freq)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5860,11 +5826,11 @@ int
 OSC::sel_eq_lpf_freq (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_freq_controllable(false)) {
-			s->filter_freq_controllable(false)->set_value (s->filter_freq_controllable(false)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (LPF_Freq)) {
+			s->mapped_control (LPF_Freq)->set_value (s->mapped_control (LPF_Freq)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5875,11 +5841,11 @@ int
 OSC::sel_eq_hpf_enable (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_enable_controllable(true)) {
-			s->filter_enable_controllable(true)->set_value (s->filter_enable_controllable(true)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (HPF_Enable)) {
+			s->mapped_control (HPF_Enable)->set_value (s->mapped_control (HPF_Enable)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5890,11 +5856,11 @@ int
 OSC::sel_eq_lpf_enable (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_enable_controllable(false)) {
-			s->filter_enable_controllable(false)->set_value (s->filter_enable_controllable(false)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (LPF_Enable)) {
+			s->mapped_control (LPF_Enable)->set_value (s->mapped_control (LPF_Enable)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5905,11 +5871,11 @@ int
 OSC::sel_eq_hpf_slope (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_slope_controllable(true)) {
-			s->filter_slope_controllable(true)->set_value (s->filter_slope_controllable(true)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (HPF_Slope)) {
+			s->mapped_control (HPF_Slope)->set_value (s->mapped_control (HPF_Slope)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5920,11 +5886,11 @@ int
 OSC::sel_eq_lpf_slope (float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
-		if (s->filter_slope_controllable(false)) {
-			s->filter_slope_controllable(false)->set_value (s->filter_slope_controllable(false)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (LPF_Slope)) {
+			s->mapped_control (LPF_Slope)->set_value (s->mapped_control (LPF_Slope)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5935,14 +5901,14 @@ int
 OSC::sel_eq_gain (int id, float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (id > 0) {
 			--id;
 		}
-		if (s->eq_gain_controllable (id)) {
-			s->eq_gain_controllable (id)->set_value (s->eq_gain_controllable(id)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (EQ_BandGain, id)) {
+			s->mapped_control (EQ_BandGain, id)->set_value (s->mapped_control(EQ_BandGain, id)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5953,14 +5919,14 @@ int
 OSC::sel_eq_freq (int id, float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (id > 0) {
 			--id;
 		}
-		if (s->eq_freq_controllable (id)) {
-			s->eq_freq_controllable (id)->set_value (s->eq_freq_controllable(id)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (EQ_BandFreq, id)) {
+			s->mapped_control (EQ_BandFreq, id)->set_value (s->mapped_control (EQ_BandFreq, id)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5971,14 +5937,14 @@ int
 OSC::sel_eq_q (int id, float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (id > 0) {
 			--id;
 		}
-		if (s->eq_q_controllable (id)) {
-			s->eq_q_controllable (id)->set_value (s->eq_q_controllable(id)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (EQ_BandQ, id)) {
+			s->mapped_control (EQ_BandQ, id)->set_value (s->mapped_control (EQ_BandQ, id)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -5989,14 +5955,14 @@ int
 OSC::sel_eq_shape (int id, float val, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg));
-	boost::shared_ptr<Stripable> s;
+	std::shared_ptr<Stripable> s;
 	s = sur->select;
 	if (s) {
 		if (id > 0) {
 			--id;
 		}
-		if (s->eq_shape_controllable (id)) {
-			s->eq_shape_controllable (id)->set_value (s->eq_shape_controllable(id)->interface_to_internal (val), PBD::Controllable::NoGroup);
+		if (s->mapped_control (EQ_BandShape, id)) {
+			s->mapped_control (EQ_BandShape, id)->set_value (s->mapped_control (EQ_BandShape, id)->interface_to_internal (val), PBD::Controllable::NoGroup);
 			return 0;
 		}
 	}
@@ -6061,7 +6027,7 @@ OSC::periodic (void)
 	for (FakeTouchMap::iterator x = _touch_timeout.begin(); x != _touch_timeout.end();) {
 		_touch_timeout[(*x).first] = (*x).second - 1;
 		if (!(*x).second) {
-			boost::shared_ptr<ARDOUR::AutomationControl> ctrl = (*x).first;
+			std::shared_ptr<ARDOUR::AutomationControl> ctrl = (*x).first;
 			// turn touch off
 			ctrl->stop_touch (timepos_t (ctrl->session().transport_sample()));
 			_touch_timeout.erase (x++);
@@ -6117,7 +6083,7 @@ OSC::set_state (const XMLNode& node, int version)
 // predicate for sort call in get_sorted_stripables
 struct StripableByPresentationOrder
 {
-	bool operator () (const boost::shared_ptr<Stripable> & a, const boost::shared_ptr<Stripable> & b) const
+	bool operator () (const std::shared_ptr<Stripable> & a, const std::shared_ptr<Stripable> & b) const
 	{
 		return a->presentation_info().order() < b->presentation_info().order();
 	}
@@ -6145,19 +6111,19 @@ OSC::get_sorted_stripables(std::bitset<32> types, bool cue, uint32_t custom, Sor
 	if (custom) {
 		uint32_t nstps = my_list.size ();
 		// check each custom strip to see if it still exists
-		boost::shared_ptr<Stripable> s;
+		std::shared_ptr<Stripable> s;
 		for (uint32_t i = 0; i < nstps; i++) {
 			bool exists = false;
 			s = my_list[i];
 			for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
-				boost::shared_ptr<Stripable> sl = *it;
+				std::shared_ptr<Stripable> sl = *it;
 				if (s == sl) {
 					exists = true;
 					break;
 				}
 			}
 			if(!exists) {
-				my_list[i] = boost::shared_ptr<Stripable>();
+				my_list[i] = std::shared_ptr<Stripable>();
 			} else {
 				custom_list.push_back (s);
 			}
@@ -6171,7 +6137,7 @@ OSC::get_sorted_stripables(std::bitset<32> types, bool cue, uint32_t custom, Sor
 	// Look for stripables that match bit in sur->strip_types
 	for (StripableList::iterator it = stripables.begin(); it != stripables.end(); ++it) {
 
-		boost::shared_ptr<Stripable> s = *it;
+		std::shared_ptr<Stripable> s = *it;
 		if (!s) {
 			break;
 		}
@@ -6188,11 +6154,11 @@ OSC::get_sorted_stripables(std::bitset<32> types, bool cue, uint32_t custom, Sor
 		} else if (s->is_master() || s->is_monitor() || s->is_auditioner()) {
 			// do nothing for these either (we add them later)
 		} else {
-			if (types[0] && boost::dynamic_pointer_cast<AudioTrack>(s)) {
+			if (types[0] && std::dynamic_pointer_cast<AudioTrack>(s)) {
 				sorted.push_back (s);
-			} else if (types[1] && boost::dynamic_pointer_cast<MidiTrack>(s)) {
+			} else if (types[1] && std::dynamic_pointer_cast<MidiTrack>(s)) {
 				sorted.push_back (s);
-			} else if (types[4] && boost::dynamic_pointer_cast<VCA>(s)) {
+			} else if (types[4] && std::dynamic_pointer_cast<VCA>(s)) {
 				sorted.push_back (s);
 			} else  if (s->is_foldbackbus()) {
 				if (types[7]) {
@@ -6204,8 +6170,8 @@ OSC::get_sorted_stripables(std::bitset<32> types, bool cue, uint32_t custom, Sor
 				sorted.push_back (s);
 			} else
 #endif
-			if (boost::dynamic_pointer_cast<Route>(s) && !boost::dynamic_pointer_cast<Track>(s)) {
-				boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(s);
+			if (std::dynamic_pointer_cast<Route>(s) && !std::dynamic_pointer_cast<Track>(s)) {
+				std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(s);
 				if (!(s->presentation_info().flags() & PresentationInfo::MidiBus)) {
 					// note some older sessions will show midibuses as busses
 					// this is a bus
@@ -6384,13 +6350,13 @@ OSC::_cue_set (uint32_t aux, lo_address addr)
 	s->aux = aux;
 	// get a list of Auxes
 	for (uint32_t n = 0; n < s->nstrips; ++n) {
-		boost::shared_ptr<Stripable> stp = s->strips[n];
+		std::shared_ptr<Stripable> stp = s->strips[n];
 		if (stp) {
 			text_message (string_compose (X_("/cue/name/%1"), n+1), stp->name(), addr);
 			if (aux == n+1) {
 				// aux must be at least one
 
-				stp->DropReferences.connect (*this, MISSING_INVALIDATOR, boost::bind (&OSC::_cue_set, this, aux, addr), this);
+				stp->DropReferences.connect (*this, MISSING_INVALIDATOR, std::bind (&OSC::_cue_set, this, aux, addr), this);
 				// make a list of stripables with sends that go to this bus
 				s->sends = cue_get_sorted_stripables(stp, aux, addr);
 				if (s->cue_obs) {
@@ -6414,23 +6380,23 @@ OSC::cue_new_aux (string name, string dest_1, string dest_2, uint32_t count, lo_
 {
 	// create a new bus named name - monitor
 	RouteList list;
-	boost::shared_ptr<Stripable> aux;
+	std::shared_ptr<Stripable> aux;
 	name = string_compose ("%1 - FB", name);
 	list = session->new_audio_route (count, count, 0, 1, name, PresentationInfo::FoldbackBus, (uint32_t) -1);
 	aux = *(list.begin());
 	if (aux) {
-		boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route>(aux);
+		std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route>(aux);
 		if (dest_1.size()) {
-			PortSet& ports = r->output()->ports ();
+			std::shared_ptr<PortSet> ports = r->output()->ports ();
 			if (atoi( dest_1.c_str())) {
 				dest_1 = string_compose ("system:playback_%1", dest_1);
 			}
-			r->output ()->connect (*(ports.begin()), dest_1, this);
+			r->output ()->connect (*(ports->begin()), dest_1, this);
 			if (count == 2) {
 				if (atoi( dest_2.c_str())) {
 					dest_2 = string_compose ("system:playback_%1", dest_2);
 				}
-				PortSet::iterator i = ports.begin();
+				PortSet::iterator i = ports->begin();
 				++i;
 				r->output ()->connect (*(i), dest_2, this);
 			}
@@ -6447,15 +6413,15 @@ OSC::cue_new_send (string rt_name, lo_message msg)
 {
 	OSCSurface *sur = get_surface(get_address (msg), true);
 	if (sur->cue) {
-		boost::shared_ptr<Route> aux = boost::dynamic_pointer_cast<Route> (get_strip (sur->aux, get_address(msg)));
+		std::shared_ptr<Route> aux = std::dynamic_pointer_cast<Route> (get_strip (sur->aux, get_address(msg)));
 		if (aux) {
-			boost::shared_ptr<Route> rt_send = session->route_by_name (rt_name);
+			std::shared_ptr<Route> rt_send = session->route_by_name (rt_name);
 			if (rt_send && (aux != rt_send)) {
 				// make sure there isn't one already
 				if (!rt_send->feeds (aux)) {
 					// create send
 					rt_send->add_foldback_send (aux, false);
-					boost::shared_ptr<Send> snd = rt_send->internal_send_for (aux);
+					std::shared_ptr<Send> snd = rt_send->internal_send_for (aux);
 					session->dirty ();
 					return 0;
 				} else {
@@ -6479,15 +6445,15 @@ OSC::cue_connect_aux (std::string dest, lo_message msg)
 	OSCSurface *sur = get_surface(get_address (msg), true);
 	int ret = 1;
 	if (sur->cue) {
-		boost::shared_ptr<Route> rt = boost::dynamic_pointer_cast<Route> (get_strip (sur->aux, get_address(msg)));
+		std::shared_ptr<Route> rt = std::dynamic_pointer_cast<Route> (get_strip (sur->aux, get_address(msg)));
 		if (rt) {
 			if (dest.size()) {
 				rt->output()->disconnect (this);
 				if (atoi( dest.c_str())) {
 					dest = string_compose ("system:playback_%1", dest);
 				}
-				PortSet& ports = rt->output()->ports ();
-				rt->output ()->connect (*(ports.begin()), dest, this);
+				std::shared_ptr<PortSet> ports = rt->output()->ports ();
+				rt->output ()->connect (*(ports->begin()), dest, this);
 				session->set_dirty();
 				ret = 0;
 			}
@@ -6532,18 +6498,18 @@ OSC::cue_previous (lo_message msg)
 	return ret;
 }
 
-boost::shared_ptr<Send>
+std::shared_ptr<Send>
 OSC::cue_get_send (uint32_t id, lo_address addr)
 {
 	OSCSurface *s = get_surface(addr, true);
 	if (id && s->aux > 0 && id <= s->sends.size()) {
-		boost::shared_ptr<Route> r = boost::dynamic_pointer_cast<Route> (s->sends[id - 1]);
-		boost::shared_ptr<Stripable> aux = get_strip (s->aux, addr);
+		std::shared_ptr<Route> r = std::dynamic_pointer_cast<Route> (s->sends[id - 1]);
+		std::shared_ptr<Stripable> aux = get_strip (s->aux, addr);
 		if (r && aux) {
-			return r->internal_send_for (boost::dynamic_pointer_cast<Route> (aux));
+			return r->internal_send_for (std::dynamic_pointer_cast<Route> (aux));
 		}
 	}
-	return boost::shared_ptr<Send>();
+	return std::shared_ptr<Send>();
 
 }
 
@@ -6555,7 +6521,7 @@ OSC::cue_aux_fader (float position, lo_message msg)
 	OSCSurface *sur = get_surface(get_address (msg), true);
 	if (sur->cue) {
 		if (sur->aux) {
-			boost::shared_ptr<Stripable> s = get_strip (sur->aux, get_address (msg));
+			std::shared_ptr<Stripable> s = get_strip (sur->aux, get_address (msg));
 
 			if (s) {
 				if (s->gain_control()) {
@@ -6577,7 +6543,7 @@ OSC::cue_aux_mute (float state, lo_message msg)
 	OSCSurface *sur = get_surface(get_address (msg), true);
 	if (sur->cue) {
 		if (sur->aux) {
-			boost::shared_ptr<Stripable> s = get_strip (sur->aux, get_address (msg));
+			std::shared_ptr<Stripable> s = get_strip (sur->aux, get_address (msg));
 			if (s) {
 				if (s->mute_control()) {
 					s->mute_control()->set_value (state ? 1.0 : 0.0, PBD::Controllable::NoGroup);
@@ -6596,7 +6562,7 @@ OSC::cue_send_fader (uint32_t id, float val, lo_message msg)
 	if (!session) {
 		return -1;
 	}
-	boost::shared_ptr<Send> s = cue_get_send (id, get_address (msg));
+	std::shared_ptr<Send> s = cue_get_send (id, get_address (msg));
 	if (s) {
 		if (s->gain_control()) {
 			s->gain_control()->set_value (s->gain_control()->interface_to_internal(val), PBD::Controllable::NoGroup);
@@ -6612,7 +6578,7 @@ OSC::cue_send_enable (uint32_t id, float state, lo_message msg)
 {
 	if (!session)
 		return -1;
-	boost::shared_ptr<Send> s = cue_get_send (id, get_address (msg));
+	std::shared_ptr<Send> s = cue_get_send (id, get_address (msg));
 	if (s) {
 		if (state) {
 			s->activate ();
@@ -6738,14 +6704,14 @@ OSC::text_message_with_id (std::string path, uint32_t ssid, std::string val, boo
 // we have to have a sorted list of stripables that have sends pointed at our aux
 // we can use the one in osc.cc to get an aux list
 OSC::Sorted
-OSC::cue_get_sorted_stripables(boost::shared_ptr<Stripable> aux, uint32_t id, lo_address addr)
+OSC::cue_get_sorted_stripables(std::shared_ptr<Stripable> aux, uint32_t id, lo_address addr)
 {
 	Sorted sorted;
 
-	boost::shared_ptr<Route> aux_rt = boost::dynamic_pointer_cast<Route> (aux);
+	std::shared_ptr<Route> aux_rt = std::dynamic_pointer_cast<Route> (aux);
 	for (auto const& s : aux_rt->signal_sources (true)) {
 		sorted.push_back (s);
-		s->DropReferences.connect (*this, MISSING_INVALIDATOR, boost::bind (&OSC::_cue_set, this, id, addr), this);
+		s->DropReferences.connect (*this, MISSING_INVALIDATOR, std::bind (&OSC::_cue_set, this, id, addr), this);
 	}
 	sort (sorted.begin(), sorted.end(), StripableByPresentationOrder());
 

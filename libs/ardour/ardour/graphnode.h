@@ -18,16 +18,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_graphnode_h__
-#define __ardour_graphnode_h__
+#pragma once
 
+#include <atomic>
 #include <list>
 #include <map>
+#include <memory>
 #include <set>
 
-#include <boost/shared_ptr.hpp>
-
-#include "pbd/g_atomic_compat.h"
 #include "pbd/rcu.h"
 
 #include "ardour/libardour_visibility.h"
@@ -38,7 +36,7 @@ class Graph;
 class GraphNode;
 struct GraphChain;
 
-typedef boost::shared_ptr<GraphNode> node_ptr_t;
+typedef std::shared_ptr<GraphNode> node_ptr_t;
 typedef std::set<node_ptr_t>         node_set_t;
 typedef std::list<node_ptr_t>        node_list_t;
 
@@ -61,6 +59,7 @@ public:
 
 	node_set_t const& activation_set (GraphChain const* const g) const;
 	int               init_refcount (GraphChain const* const g) const;
+	void              flush_graph_activision_rcu ();
 
 protected:
 	friend struct GraphChain;
@@ -75,7 +74,7 @@ protected:
 class LIBARDOUR_API GraphNode : public ProcessNode, public GraphActivision
 {
 public:
-	GraphNode (boost::shared_ptr<Graph> Graph);
+	GraphNode (std::shared_ptr<Graph> Graph);
 
 	/* API used by Graph */
 	void prep (GraphChain const*);
@@ -84,20 +83,19 @@ public:
 	/* API used to sort Nodes and create GraphChain */
 	virtual std::string graph_node_name () const = 0;
 
-	virtual bool direct_feeds_according_to_reality (boost::shared_ptr<GraphNode>, bool* via_send_only = 0) = 0;
+	virtual bool direct_feeds_according_to_reality (std::shared_ptr<GraphNode>, bool* via_send_only = 0) = 0;
 
 protected:
 	void trigger ();
 	virtual void process () = 0;
 
-	boost::shared_ptr<Graph> _graph;
+	std::shared_ptr<Graph> _graph;
 
 private:
 	void finish (GraphChain const*);
 
-	GATOMIC_QUAL gint _refcount;
+	std::atomic<int> _refcount;
 };
 
 } // namespace ARDOUR
 
-#endif

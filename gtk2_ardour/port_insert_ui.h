@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtkardour_port_insert_ui_h__
-#define __gtkardour_port_insert_ui_h__
+#pragma once
 
 #include "widgets/ardour_button.h"
 #include "widgets/stateful_button.h"
@@ -31,13 +30,13 @@ namespace ARDOUR
 	class PortInsert;
 }
 
-class LatencyGUI;
+class TimeCtlGUI;
 class MTDM;
 
 class PortInsertUI : public Gtk::VBox
 {
 public:
-	PortInsertUI (Gtk::Window*, ARDOUR::Session*, boost::shared_ptr<ARDOUR::PortInsert>);
+	PortInsertUI (Gtk::Window*, ARDOUR::Session*, std::shared_ptr<ARDOUR::PortInsert>);
 	~PortInsertUI ();
 
 	void redisplay ();
@@ -59,7 +58,7 @@ private:
 	void edit_latency_button_clicked ();
 	void latency_button_toggled ();
 
-	boost::shared_ptr<ARDOUR::PortInsert> _pi;
+	std::shared_ptr<ARDOUR::PortInsert> _pi;
 
 	Gtk::Notebook                       _notebook;
 	ArdourWidgets::StatefulToggleButton _measure_latency_button;
@@ -78,7 +77,7 @@ private:
 	Gtk::HBox  _latency_hbox;
 
 	Gtk::Window*  _parent;
-	LatencyGUI*   _latency_gui;
+	TimeCtlGUI*   _latency_gui;
 	ArdourWindow* _latency_dialog;
 
 	sigc::connection _latency_timeout;
@@ -90,10 +89,10 @@ private:
 class PortInsertWindow : public ArdourWindow
 {
 public:
-	PortInsertWindow (Gtk::Window&, ARDOUR::Session*, boost::shared_ptr<ARDOUR::PortInsert>);
+	PortInsertWindow (Gtk::Window&, ARDOUR::Session*, std::shared_ptr<ARDOUR::PortInsert>);
+	PortInsertWindow (ARDOUR::Session*, std::shared_ptr<ARDOUR::PortInsert>);
 
 private:
 	PortInsertUI _portinsertui;
 };
 
-#endif /* __gtkardour_port_insert_ui_h__ */

@@ -18,7 +18,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <boost/bind.hpp>
 #include <glibmm/timer.h>
 
 #include "pbd/error.h"
@@ -41,7 +40,7 @@ using namespace ARDOUR;
 using namespace Glib;
 
 void
-Session::set_controls (boost::shared_ptr<ControlList> cl, double val, Controllable::GroupControlDisposition gcd)
+Session::set_controls (std::shared_ptr<AutomationControlList> cl, double val, Controllable::GroupControlDisposition gcd)
 {
 	if (cl->empty()) {
 		return;
@@ -71,28 +70,31 @@ Session::set_controls (boost::shared_ptr<ControlList> cl, double val, Controllab
 	}
 #endif
 
-	for (ControlList::iterator ci = cl->begin(); ci != cl->end(); ++ci) {
+	std::shared_ptr<WeakAutomationControlList> wcl (new WeakAutomationControlList);
+	for (AutomationControlList::iterator ci = cl->begin(); ci != cl->end(); ++ci) {
 		/* as of july 2017 this is a no-op for everything except record enable */
 		(*ci)->pre_realtime_queue_stuff (val, gcd);
+		/* fill in weak pointer ctrl list */
+		wcl->push_back (*ci);
 	}
 
-	queue_event (get_rt_event (cl, val, gcd));
+	queue_event (get_rt_event (wcl, val, gcd));
 }
 
 void
-Session::set_control (boost::shared_ptr<AutomationControl> ac, double val, Controllable::GroupControlDisposition gcd)
+Session::set_control (std::shared_ptr<AutomationControl> ac, double val, Controllable::GroupControlDisposition gcd)
 {
 	if (!ac) {
 		return;
 	}
 
-	boost::shared_ptr<ControlList> cl (new ControlList);
+	std::shared_ptr<AutomationControlList> cl (new AutomationControlList);
 	cl->push_back (ac);
 	set_controls (cl, val, gcd);
 }
 
 void
-Session::rt_set_controls (boost::shared_ptr<ControlList> cl, double val, Controllable::GroupControlDisposition gcd)
+Session::rt_set_controls (std::shared_ptr<WeakAutomationControlList> cl, double val, Controllable::GroupControlDisposition gcd)
 {
 	/* Note that we require that all controls in the ControlList are of the
 	   same type.
@@ -101,45 +103,47 @@ Session::rt_set_controls (boost::shared_ptr<ControlList> cl, double val, Control
 		return;
 	}
 
-	for (ControlList::iterator c = cl->begin(); c != cl->end(); ++c) {
-		(*c)->set_value (val, gcd);
+	bool update_solo_state = false;
+
+	for (auto const& c : *cl) {
+		std::shared_ptr<AutomationControl> ac = c.lock ();
+		if (ac) {
+			ac->set_value (val, gcd);
+			update_solo_state |= SoloAutomation == ac->desc().type;
+		}
 	}
 
 	/* some controls need global work to take place after they are set. Do
 	 * that here.
 	 */
 
-	switch (cl->front()->parameter().type()) {
-	case SoloAutomation:
+	if (update_solo_state) {
 		update_route_solo_state ();
-		break;
-	default:
-		break;
 	}
 }
 
 void
-Session::prepare_momentary_solo (SoloMuteRelease* smr, bool exclusive, boost::shared_ptr<Route> route)
+Session::prepare_momentary_solo (SoloMuteRelease* smr, bool exclusive, std::shared_ptr<Route> route)
 {
-	boost::shared_ptr<RouteList> routes_on (new RouteList);
-	boost::shared_ptr<RouteList> routes_off (new RouteList);
-	boost::shared_ptr<RouteList> routes = get_routes();
+	std::shared_ptr<StripableList> routes_on (new StripableList);
+	std::shared_ptr<StripableList> routes_off (new StripableList);
+	std::shared_ptr<RouteList const> routes = get_routes();
 
-	for (RouteList::const_iterator i = routes->begin(); i != routes->end(); ++i) {
+	for (auto const & r : *routes) {
 #ifdef MIXBUS
-		if (route && (0 == route->mixbus()) != (0 == (*i)->mixbus ())) {
+		if (route && (0 == route->mixbus()) != (0 == r->mixbus ())) {
 			continue;
 		}
 #endif
-		if ((*i)->soloed ()) {
-			routes_on->push_back (*i);
+		if (r->soloed ()) {
+			routes_on->push_back (r);
 		} else if (smr) {
-			routes_off->push_back (*i);
+			routes_off->push_back (r);
 		}
 	}
 
 	if (exclusive) {
-		set_controls (route_list_to_control_list (routes_on, &Stripable::solo_control), false, Controllable::UseGroup);
+		set_controls (stripable_list_to_control_list (routes_on, &Stripable::solo_control), false, Controllable::UseGroup);
 	}
 
 	if (smr) {
@@ -148,7 +152,7 @@ Session::prepare_momentary_solo (SoloMuteRelease* smr, bool exclusive, boost::sh
 
 	if (_monitor_out) {
 		if (smr) {
-			boost::shared_ptr<std::list<std::string> > pml (new std::list<std::string>);
+			std::shared_ptr<std::list<std::string> > pml (new std::list<std::string>);
 			_engine.monitor_port().active_monitors (*pml);
 			smr->set (pml);
 		}
@@ -160,19 +164,19 @@ Session::prepare_momentary_solo (SoloMuteRelease* smr, bool exclusive, boost::sh
 }
 
 void
-Session::clear_all_solo_state (boost::shared_ptr<RouteList> rl)
+Session::clear_all_solo_state (std::shared_ptr<RouteList const> rl)
 {
 	queue_event (get_rt_event (rl, false, rt_cleanup, Controllable::NoGroup, &Session::rt_clear_all_solo_state));
 }
 
 void
-Session::rt_clear_all_solo_state (boost::shared_ptr<RouteList> rl, bool /* yn */, Controllable::GroupControlDisposition /* group_override */)
+Session::rt_clear_all_solo_state (std::shared_ptr<RouteList const> rl, bool /* yn */, Controllable::GroupControlDisposition /* group_override */)
 {
-	for (RouteList::iterator i = rl->begin(); i != rl->end(); ++i) {
-		if ((*i)->is_auditioner()) {
+	for (auto const& i : *rl) {
+		if (i->is_auditioner()) {
 			continue;
 		}
-		(*i)->clear_all_solo_state();
+		i->clear_all_solo_state();
 	}
 
 	_vca_manager->clear_all_solo_state ();
@@ -186,9 +190,9 @@ Session::process_rtop (SessionEvent* ev)
 	ev->rt_slot ();
 
 	if (ev->event_loop) {
-		if (!ev->event_loop->call_slot (MISSING_INVALIDATOR, boost::bind (ev->rt_return, ev))) {
+		if (!ev->event_loop->call_slot (MISSING_INVALIDATOR, std::bind (ev->rt_return, ev))) {
 			/* The event must be deleted, otherwise the SessionEvent Pool may fill up */
-			if (!butler ()->delegate (boost::bind (ev->rt_return, ev))) {
+			if (!butler ()->delegate (std::bind (ev->rt_return, ev))) {
 				ev->rt_return (ev);
 			}
 		}

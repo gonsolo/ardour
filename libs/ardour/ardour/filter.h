@@ -17,37 +17,38 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_filter_h__
-#define __ardour_filter_h__
+#pragma once
 
 #include <vector>
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/types.h"
 
+namespace PBD {
+	class Progress;
+}
+
 namespace ARDOUR {
 
 class Region;
 class Session;
-class Progress;
 
 class LIBARDOUR_API Filter {
 
   public:
 	virtual ~Filter() {}
 
-	virtual int run (boost::shared_ptr<ARDOUR::Region>, Progress* progress = 0) = 0;
-	std::vector<boost::shared_ptr<ARDOUR::Region> > results;
+	virtual int run (std::shared_ptr<ARDOUR::Region>, PBD::Progress* progress = 0) = 0;
+	std::vector<std::shared_ptr<ARDOUR::Region> > results;
 
   protected:
 	Filter (ARDOUR::Session& s) : session(s) {}
 
-	int make_new_sources (boost::shared_ptr<ARDOUR::Region>, ARDOUR::SourceList&, std::string suffix = "", bool use_session_sample_rate = true);
-	int finish (boost::shared_ptr<ARDOUR::Region>, ARDOUR::SourceList&, std::string region_name = "");
+	int make_new_sources (std::shared_ptr<ARDOUR::Region>, ARDOUR::SourceList&, std::string suffix = "", bool use_session_sample_rate = true);
+	int finish (std::shared_ptr<ARDOUR::Region>, ARDOUR::SourceList&, std::string region_name = "");
 
 	ARDOUR::Session& session;
 };
 
 } /* namespace */
 
-#endif /* __ardour_filter_h__ */

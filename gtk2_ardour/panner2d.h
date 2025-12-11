@@ -28,12 +28,12 @@
 #include <vector>
 
 #include <glibmm/refptr.h>
-#include <gtkmm/drawingarea.h>
-#include <gtkmm/window.h>
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/adjustment.h>
+#include <ytkmm/drawingarea.h>
+#include <ytkmm/window.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/adjustment.h>
 
 #include "pbd/cartesian.h"
 
@@ -48,16 +48,12 @@ namespace Gtk {
 	class CheckMenuItem;
 }
 
-namespace Pango {
-	class Container;
-}
-
 class Panner2dWindow;
 
 class Panner2d : public Gtk::DrawingArea
 {
 	public:
-	Panner2d (boost::shared_ptr<ARDOUR::PannerShell>, int32_t height);
+	Panner2d (std::shared_ptr<ARDOUR::PannerShell>, int32_t height);
 	~Panner2d ();
 
 	void allow_target_motion (bool);
@@ -68,7 +64,7 @@ class Panner2d : public Gtk::DrawingArea
 	void reset (uint32_t n_inputs);
 	void set_send_drawing_mode (bool);
 
-	boost::shared_ptr<ARDOUR::PannerShell> get_panner_shell() const { return panner_shell; }
+	std::shared_ptr<ARDOUR::PannerShell> get_panner_shell() const { return panner_shell; }
 
 	void cart_to_gtk (PBD::CartesianVector&) const;
 	void gtk_to_cart (PBD::CartesianVector&) const;
@@ -125,7 +121,7 @@ class Panner2d : public Gtk::DrawingArea
 	static bool have_colors;
 	void color_handler ();
 
-	boost::shared_ptr<ARDOUR::PannerShell> panner_shell;
+	std::shared_ptr<ARDOUR::PannerShell> panner_shell;
 	Glib::RefPtr<Pango::Layout> layout;
 
 	typedef std::vector<Target*> Targets;
@@ -167,7 +163,7 @@ class Panner2d : public Gtk::DrawingArea
 class Panner2dWindow : public ArdourWindow
 {
 	public:
-	Panner2dWindow (boost::shared_ptr<ARDOUR::PannerShell>, int32_t height, uint32_t inputs);
+	Panner2dWindow (std::shared_ptr<ARDOUR::PannerShell>, int32_t height, uint32_t inputs);
 
 	void reset (uint32_t n_inputs);
 

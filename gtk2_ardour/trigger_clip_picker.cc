@@ -19,7 +19,7 @@
 #include <cassert>
 #include <vector>
 
-#include <gtkmm/stock.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/basename.h"
 #include "pbd/file_utils.h"
@@ -60,6 +60,8 @@
 using namespace Gtk;
 using namespace PBD;
 using namespace ARDOUR;
+
+#define PX_SCALE(px) std::max((float)px, rintf((float)px * UIConfiguration::instance().get_ui_scale()))
 
 TriggerClipPicker::TriggerClipPicker ()
 	: _fcd (_("Select clip folder"), FILE_CHOOSER_ACTION_SELECT_FOLDER)
@@ -108,6 +110,9 @@ TriggerClipPicker::TriggerClipPicker ()
 	_stop_btn.set_icon (ArdourWidgets::ArdourIcon::TransportStop);
 	_stop_btn.signal_clicked.connect (sigc::mem_fun (*this, &TriggerClipPicker::stop_audition));
 
+	_gain_control.set_name("monitor section knob");
+	_gain_control.set_size_request (PX_SCALE(24), PX_SCALE(24));
+
 	_open_library_btn.set_name ("generic button");
 	_open_library_btn.set_icon (ArdourWidgets::ArdourIcon::Folder);
 	_open_library_btn.signal_clicked.connect (sigc::mem_fun (*this, &TriggerClipPicker::open_library));
@@ -133,6 +138,7 @@ TriggerClipPicker::TriggerClipPicker ()
 
 	ArdourWidgets::set_tooltip (_play_btn, _("Audition selected clip"));
 	ArdourWidgets::set_tooltip (_stop_btn, _("Stop the audition"));
+	ArdourWidgets::set_tooltip (_gain_control, _("Audition Volume"));
 	ArdourWidgets::set_tooltip (_open_library_btn, _("Open clip library folder"));
 	ArdourWidgets::set_tooltip (_refresh_btn, _("Refresh clip list"));
 	ArdourWidgets::set_tooltip (_auditioner_combo, _("Select the Synth used for auditioning"));
@@ -153,9 +159,10 @@ TriggerClipPicker::TriggerClipPicker ()
 	_auditable.set_homogeneous(false);
 	_auditable.attach (_play_btn,         0, 1, r,r+1, SHRINK, SHRINK);
 	_auditable.attach (_stop_btn,         1, 2, r,r+1, SHRINK, SHRINK);
-	_auditable.attach (_autoplay_btn,     2, 3, r,r+1, EXPAND | FILL, SHRINK);  r++;
-	_auditable.attach (_seek_slider,      0, 4, r,r+1, EXPAND | FILL, SHRINK);  r++;
-	_auditable.attach (_midi_prop_table,  0, 4, r,r+1, EXPAND | FILL, SHRINK);
+	_auditable.attach (_gain_control,     2, 3, r,r+1, SHRINK, SHRINK);
+	_auditable.attach (_autoplay_btn,     3, 4, r,r+1, EXPAND | FILL, SHRINK); r++;
+	_auditable.attach (_seek_slider,      0, 5, r,r+1, EXPAND | FILL, SHRINK);  r++;
+	_auditable.attach (_midi_prop_table,  0, 5, r,r+1, EXPAND | FILL, SHRINK);
 	_auditable.set_border_width (4);
 	_auditable.set_spacings (4);
 
@@ -212,8 +219,8 @@ TriggerClipPicker::TriggerClipPicker ()
 
 	UIConfiguration::instance ().ColorsChanged.connect (sigc::mem_fun (*this, &TriggerClipPicker::on_theme_changed));
 	UIConfiguration::instance ().ParameterChanged.connect (sigc::mem_fun (*this, &TriggerClipPicker::parameter_changed));
-	Config->ParameterChanged.connect (_config_connection, invalidator (*this), boost::bind (&TriggerClipPicker::parameter_changed, this, _1), gui_context ());
-	LibraryClipAdded.connect (_clip_added_connection, invalidator (*this), boost::bind (&TriggerClipPicker::clip_added, this, _1, _2), gui_context ());
+	Config->ParameterChanged.connect (_config_connection, invalidator (*this), std::bind (&TriggerClipPicker::parameter_changed, this, _1), gui_context ());
+	LibraryClipAdded.connect (_clip_added_connection, invalidator (*this), std::bind (&TriggerClipPicker::clip_added, this, _1, _2), gui_context ());
 
 	/* cache value */
 	_clip_library_dir = clip_library_dir ();
@@ -312,7 +319,7 @@ TriggerClipPicker::refill_dropdown ()
 	/* Custom Paths */
 	assert (_clip_dir_menu.items ().size () > 0);
 	if (!Config->get_sample_lib_path ().empty ()) {
-		_clip_dir_menu.AddMenuElem (Menu_Helpers::SeparatorElem ());
+		_clip_dir_menu.add_menu_elem (Menu_Helpers::SeparatorElem ());
 		Searchpath cpath (Config->get_sample_lib_path ());
 		for (auto const& f : cpath) {
 			maybe_add_dir (f);
@@ -321,10 +328,10 @@ TriggerClipPicker::refill_dropdown ()
 
 	_clip_library_listed = maybe_add_dir (clip_library_dir (false));
 
-	_clip_dir_menu.AddMenuElem (Menu_Helpers::SeparatorElem ());
-	_clip_dir_menu.AddMenuElem (Menu_Helpers::MenuElem (_("Edit..."), sigc::mem_fun (*this, &TriggerClipPicker::edit_path)));
-	_clip_dir_menu.AddMenuElem (Menu_Helpers::MenuElem (_("Other..."), sigc::mem_fun (*this, &TriggerClipPicker::open_dir)));
-	_clip_dir_menu.AddMenuElem (Menu_Helpers::MenuElem (_("Download..."), sigc::mem_fun (*this, &TriggerClipPicker::open_downloader)));
+	_clip_dir_menu.add_menu_elem (Menu_Helpers::SeparatorElem ());
+	_clip_dir_menu.add_menu_elem (Menu_Helpers::MenuElem (_("Edit..."), sigc::mem_fun (*this, &TriggerClipPicker::edit_path)));
+	_clip_dir_menu.add_menu_elem (Menu_Helpers::MenuElem (_("Other..."), sigc::mem_fun (*this, &TriggerClipPicker::open_dir)));
+	_clip_dir_menu.add_menu_elem (Menu_Helpers::MenuElem (_("Download..."), sigc::mem_fun (*this, &TriggerClipPicker::open_downloader)));
 	return false;
 }
 
@@ -398,7 +405,7 @@ TriggerClipPicker::maybe_add_dir (std::string const& dir)
 		return false;
 	}
 
-	_clip_dir_menu.AddMenuElem (Gtkmm2ext::MenuElemNoMnemonic (display_name (dir), sigc::bind (sigc::mem_fun (*this, &TriggerClipPicker::list_dir), dir, (Gtk::TreeNodeChildren*)0)));
+	_clip_dir_menu.add_menu_elem (Gtkmm2ext::MenuElemNoMnemonic (display_name (dir), sigc::bind (sigc::mem_fun (*this, &TriggerClipPicker::list_dir), dir, (Gtk::TreeNodeChildren*)0)));
 
 	/* check if a parent path of the given dir already exists,
 	 * or if this new path is parent to any existing ones.
@@ -497,9 +504,9 @@ TriggerClipPicker::row_selected ()
 		std::string path = (*i)[_columns.path];
 		if (SMFSource::valid_midi_file (path)) {
 			/* TODO: if it's a really big file, we could skip this check */
-			boost::shared_ptr<SMFSource> ms;
+			std::shared_ptr<SMFSource> ms;
 			try {
-				ms = boost::dynamic_pointer_cast<SMFSource> (
+				ms = std::dynamic_pointer_cast<SMFSource> (
 					SourceFactory::createExternal (DataType::MIDI, *_session,
 												   path, 0, Source::Flag (0), false));
 			} catch (const std::exception& e) {
@@ -619,7 +626,7 @@ TriggerClipPicker::drag_data_received (Glib::RefPtr<Gdk::DragContext> const& con
 {
 	if (data.get_target () == "x-ardour/region.pbdid") {
 		PBD::ID rid (data.get_data_as_string ());
-		boost::shared_ptr<Region> region = RegionFactory::region_by_id (rid);
+		std::shared_ptr<Region> region = RegionFactory::region_by_id (rid);
 		if (export_to_clip_library (region, this)) {
 			context->drag_finish (true, false, time);
 		} else {
@@ -686,7 +693,9 @@ TriggerClipPicker::open_dir ()
 	Gtk::Window* tlw = dynamic_cast<Gtk::Window*> (get_toplevel ());
 	assert (tlw);
 #ifndef __APPLE__
-	_fcd.set_transient_for (*tlw);
+	if (tlw) {
+		_fcd.set_transient_for (*tlw);
+	}
 #endif
 
 	int result = _fcd.run ();
@@ -852,12 +861,16 @@ TriggerClipPicker::set_session (Session* s)
 		_auditioner_connections.drop_connections ();
 		_processor_connections.drop_connections ();
 		audition_processor_going_away ();
+		std::shared_ptr<Controllable> none;
+		_gain_control.set_controllable (none);
 	} else {
 		_auditioner_connections.drop_connections ();
-		_session->AuditionActive.connect (_auditioner_connections, invalidator (*this), boost::bind (&TriggerClipPicker::audition_active, this, _1), gui_context ());
-		_session->the_auditioner ()->AuditionProgress.connect (_auditioner_connections, invalidator (*this), boost::bind (&TriggerClipPicker::audition_progress, this, _1, _2), gui_context ());
-		_session->the_auditioner ()->processors_changed.connect (_auditioner_connections, invalidator (*this), boost::bind (&TriggerClipPicker::audition_processors_changed, this), gui_context ());
+		_session->AuditionActive.connect (_auditioner_connections, invalidator (*this), std::bind (&TriggerClipPicker::audition_active, this, _1), gui_context ());
+		_session->the_auditioner ()->AuditionProgress.connect (_auditioner_connections, invalidator (*this), std::bind (&TriggerClipPicker::audition_progress, this, _1, _2), gui_context ());
+		_session->the_auditioner ()->processors_changed.connect (_auditioner_connections, invalidator (*this), std::bind (&TriggerClipPicker::audition_processors_changed, this), gui_context ());
 		audition_processors_changed (); /* set sensitivity */
+
+		_gain_control.set_controllable (_session->the_auditioner ()->gain_control ());
 	}
 }
 
@@ -978,10 +991,10 @@ TriggerClipPicker::audition (std::string const& path)
 		return;
 	}
 
-	boost::shared_ptr<Region> r;
+	std::shared_ptr<Region> r;
 
 	if (SMFSource::valid_midi_file (path)) {
-		boost::shared_ptr<SMFSource> ms = boost::dynamic_pointer_cast<SMFSource> (SourceFactory::createExternal (DataType::MIDI, *_session, path, 0, Source::Flag (0), false));
+		std::shared_ptr<SMFSource> ms = std::dynamic_pointer_cast<SMFSource> (SourceFactory::createExternal (DataType::MIDI, *_session, path, 0, Source::Flag (0), false));
 
 		std::string rname = region_name_from_path (ms->path (), false);
 
@@ -991,12 +1004,12 @@ TriggerClipPicker::audition (std::string const& path)
 		plist.add (ARDOUR::Properties::name, rname);
 		plist.add (ARDOUR::Properties::layer, 0);
 
-		r = boost::dynamic_pointer_cast<MidiRegion> (RegionFactory::create (boost::dynamic_pointer_cast<Source> (ms), plist, false));
+		r = std::dynamic_pointer_cast<MidiRegion> (RegionFactory::create (std::dynamic_pointer_cast<Source> (ms), plist, false));
 		assert (r);
 
 	} else {
 		SourceList                         srclist;
-		boost::shared_ptr<AudioFileSource> afs;
+		std::shared_ptr<AudioFileSource> afs;
 		bool                               old_sbp = AudioSource::get_build_peakfiles ();
 
 		/* don't even think of building peakfiles for these files */
@@ -1012,9 +1025,9 @@ TriggerClipPicker::audition (std::string const& path)
 
 		for (uint16_t n = 0; n < info.channels; ++n) {
 			try {
-				afs = boost::dynamic_pointer_cast<AudioFileSource> (SourceFactory::createExternal (DataType::AUDIO, *_session, path, n, Source::Flag (ARDOUR::AudioFileSource::NoPeakFile), false));
+				afs = std::dynamic_pointer_cast<AudioFileSource> (SourceFactory::createExternal (DataType::AUDIO, *_session, path, n, Source::Flag (ARDOUR::AudioFileSource::NoPeakFile), false));
 				if (afs->sample_rate () != _session->nominal_sample_rate ()) {
-					boost::shared_ptr<SrcFileSource> sfs (new SrcFileSource (*_session, afs, ARDOUR::SrcGood));
+					std::shared_ptr<SrcFileSource> sfs (new SrcFileSource (*_session, afs, ARDOUR::SrcGood));
 					srclist.push_back (sfs);
 				} else {
 					srclist.push_back (afs);
@@ -1032,7 +1045,7 @@ TriggerClipPicker::audition (std::string const& path)
 			return;
 		}
 
-		afs               = boost::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
+		afs               = std::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
 		std::string rname = region_name_from_path (afs->path (), false);
 
 		PropertyList plist;
@@ -1041,7 +1054,7 @@ TriggerClipPicker::audition (std::string const& path)
 		plist.add (ARDOUR::Properties::name, rname);
 		plist.add (ARDOUR::Properties::layer, 0);
 
-		r = boost::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
+		r = std::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
 	}
 
 	r->set_position (timepos_t ());
@@ -1076,13 +1089,13 @@ void
 TriggerClipPicker::audition_show_plugin_ui ()
 {
 	if (!_audition_plugnui) {
-		boost::shared_ptr<PluginInsert> plugin_insert = boost::dynamic_pointer_cast<PluginInsert> (_session->the_auditioner ()->the_instrument ());
+		std::shared_ptr<PluginInsert> plugin_insert = std::dynamic_pointer_cast<PluginInsert> (_session->the_auditioner ()->the_instrument ());
 		if (plugin_insert) {
 			_audition_plugnui = new PluginUIWindow (plugin_insert);
 			_audition_plugnui->set_session (_session);
 			_audition_plugnui->show_all ();
 			_audition_plugnui->set_title (/* generate_processor_title (plugin_insert)*/ _("Audition Synth"));
-			plugin_insert->DropReferences.connect (_processor_connections, invalidator (*this), boost::bind (&TriggerClipPicker::audition_processor_going_away, this), gui_context());
+			plugin_insert->DropReferences.connect (_processor_connections, invalidator (*this), std::bind (&TriggerClipPicker::audition_processor_going_away, this), gui_context());
 
 			_audition_plugnui->signal_map_event ().connect (sigc::hide (sigc::bind (sigc::mem_fun (*this, &TriggerClipPicker::audition_processor_viz), true)));
 			_audition_plugnui->signal_unmap_event ().connect (sigc::hide (sigc::bind (sigc::mem_fun (*this, &TriggerClipPicker::audition_processor_viz), false)));
@@ -1113,7 +1126,7 @@ TriggerClipPicker::audition_processors_changed ()
 	}
 
 	if (_session && _session->the_auditioner ()->get_audition_synth_info()) {
-		boost::shared_ptr<PluginInsert> plugin_insert = boost::dynamic_pointer_cast<PluginInsert> (_session->the_auditioner ()->the_instrument ());
+		std::shared_ptr<PluginInsert> plugin_insert = std::dynamic_pointer_cast<PluginInsert> (_session->the_auditioner ()->the_instrument ());
 		if (plugin_insert) {
 			set_tooltip (_show_plugin_btn, "Show the selected audition-instrument's GUI");
 			_show_plugin_btn.set_sensitive (true);

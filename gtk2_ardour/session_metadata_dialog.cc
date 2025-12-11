@@ -21,9 +21,9 @@
  */
 
 #include <sstream>
-#include <gtkmm/filechooserdialog.h>
-#include <gtkmm/messagedialog.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/filechooserdialog.h>
+#include <ytkmm/messagedialog.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/xml++.h"
 #include "pbd/error.h"
@@ -662,7 +662,7 @@ SessionMetadataDialog<DataSet>::warn_user (string const & string)
 }
 
 template <typename DataSet>
-boost::shared_ptr<std::list<Gtk::Widget *> >
+std::shared_ptr<std::list<Gtk::Widget *> >
 SessionMetadataDialog<DataSet>::get_custom_widgets (WidgetFunc f)
 {
 	WidgetListPtr list (new WidgetList);

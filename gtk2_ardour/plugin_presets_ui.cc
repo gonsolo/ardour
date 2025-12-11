@@ -16,8 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/box.h>
-#include <gtkmm/frame.h>
+#include <ytkmm/box.h>
+#include <ytkmm/frame.h>
 
 #include "gtkmm2ext/utils.h"
 
@@ -31,7 +31,7 @@
 using namespace ARDOUR;
 using namespace Gtk;
 
-PluginPresetsUI::PluginPresetsUI (boost::shared_ptr<PluginInsert> insert)
+PluginPresetsUI::PluginPresetsUI (std::shared_ptr<PluginInsert> insert)
 	: _insert (insert)
 	, _load_button (_("Load"))
 {
@@ -97,13 +97,13 @@ PluginPresetsUI::PluginPresetsUI (boost::shared_ptr<PluginInsert> insert)
 	attach (*frame,           2, 3, 0, 1, EXPAND|FILL, EXPAND|FILL, 2, 4);
 	attach (_load_button,     2, 3, 1, 2, FILL, SHRINK, 2, 0);
 
-	boost::shared_ptr<Plugin> plugin (_insert->plugin ());
+	std::shared_ptr<Plugin> plugin (_insert->plugin ());
 
-	plugin->PresetAdded.connect (_preset_connections, invalidator (*this), boost::bind (&PluginPresetsUI::update_preset_list, this), gui_context ());
-	plugin->PresetRemoved.connect (_preset_connections, invalidator (*this), boost::bind (&PluginPresetsUI::update_preset_list, this), gui_context ());
+	plugin->PresetAdded.connect (_preset_connections, invalidator (*this), std::bind (&PluginPresetsUI::update_preset_list, this), gui_context ());
+	plugin->PresetRemoved.connect (_preset_connections, invalidator (*this), std::bind (&PluginPresetsUI::update_preset_list, this), gui_context ());
 
-	plugin->PresetLoaded.connect (_preset_connections, invalidator (*this), boost::bind (&PluginPresetsUI::filter_presets, this), gui_context ());
-	plugin->PresetDirty.connect (_preset_connections, invalidator (*this), boost::bind (&PluginPresetsUI::filter_presets, this), gui_context ());
+	plugin->PresetLoaded.connect (_preset_connections, invalidator (*this), std::bind (&PluginPresetsUI::filter_presets, this), gui_context ());
+	plugin->PresetDirty.connect (_preset_connections, invalidator (*this), std::bind (&PluginPresetsUI::filter_presets, this), gui_context ());
 
 	update_preset_list ();
 }
@@ -111,7 +111,7 @@ PluginPresetsUI::PluginPresetsUI (boost::shared_ptr<PluginInsert> insert)
 void
 PluginPresetsUI::update_preset_list ()
 {
-	boost::shared_ptr<Plugin> plugin (_insert->plugin ());
+	std::shared_ptr<Plugin> plugin (_insert->plugin ());
 	std::vector<Plugin::PresetRecord> presets = plugin->get_presets ();
 
 	_pps.clear ();
@@ -236,7 +236,7 @@ PluginPresetsUI::filter_presets ()
 		}
 	}
 
-	boost::shared_ptr<Plugin> plugin (_insert->plugin ());
+	std::shared_ptr<Plugin> plugin (_insert->plugin ());
 	Plugin::PresetRecord const& p = plugin->last_preset ();
 
 	std::string selected_uri = p.valid ? p.uri : "";

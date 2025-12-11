@@ -19,7 +19,7 @@
 #include <bitset>
 #include <map>
 
-#include <gtkmm/frame.h>
+#include <ytkmm/frame.h>
 
 #include "pbd/unwind.h"
 
@@ -87,7 +87,7 @@ flip_map (std::map<A, B> const& src)
 }
 
 void
-PatchBankList::refill (boost::shared_ptr<MIDI::Name::ChannelNameSet> cns, int const b)
+PatchBankList::refill (std::shared_ptr<MIDI::Name::ChannelNameSet> cns, int const b)
 {
 	using namespace Menu_Helpers;
 	using namespace Gtkmm2ext;
@@ -146,7 +146,7 @@ PatchBankList::refill (boost::shared_ptr<MIDI::Name::ChannelNameSet> cns, int co
 			}
 			generic_banks.erase ((*bank)->number ());
 			std::string n = (*bank)->name ();
-			_bank_select.AddMenuElem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), (*bank)->number ())));
+			_bank_select.add_menu_elem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), (*bank)->number ())));
 			if ((*bank)->number () == b) {
 				_current_patch_bank = *bank;
 				_bank_select.set_text (n);
@@ -170,7 +170,7 @@ PatchBankList::refill (boost::shared_ptr<MIDI::Name::ChannelNameSet> cns, int co
 				n += " (...)";
 			}
 #endif
-			_bank_select.AddMenuElem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), i->first)));
+			_bank_select.add_menu_elem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), i->first)));
 			if (i->first == b) {
 				_bank_select.set_text (n);
 				bank_set = true;
@@ -180,7 +180,7 @@ PatchBankList::refill (boost::shared_ptr<MIDI::Name::ChannelNameSet> cns, int co
 
 	if (!_current_patch_bank && !bank_set) {
 		std::string n = string_compose (_("Bank %1"), b + 1);
-		_bank_select.AddMenuElem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), b)));
+		_bank_select.add_menu_elem (MenuElemNoMnemonic (n, sigc::bind (sigc::mem_fun (*this, &PatchBankList::select_bank), b)));
 		_bank_select.set_text (n);
 	}
 
@@ -267,11 +267,11 @@ PatchChangeTab::PatchChangeTab (int channel)
 
 	_enable_btn.signal_clicked.connect (sigc::mem_fun (*this, &PatchChangeTab::enable_toggle));
 
-	reset (boost::shared_ptr<ARDOUR::Route> (), boost::shared_ptr<ARDOUR::MIDITrigger>());
+	reset (std::shared_ptr<ARDOUR::Route> (), std::shared_ptr<ARDOUR::MIDITrigger>());
 }
 
 void
-PatchChangeTab::reset (boost::shared_ptr<ARDOUR::Route> r, boost::shared_ptr<MIDITrigger> t)
+PatchChangeTab::reset (std::shared_ptr<ARDOUR::Route> r, std::shared_ptr<MIDITrigger> t)
 {
 	_route = r;
 	_trigger = t;
@@ -290,8 +290,8 @@ PatchChangeTab::reset (boost::shared_ptr<ARDOUR::Route> r, boost::shared_ptr<MID
 		_enable_btn.set_active (false);
 	}
 
-	_route->instrument_info().Changed.connect (_connections, invalidator (*this), boost::bind (&PatchChangeTab::instrument_info_changed, this), gui_context ());
-	_trigger->PropertyChanged.connect (_connections, invalidator (*this), boost::bind (&PatchChangeTab::trigger_property_changed, this, _1), gui_context ());
+	_route->instrument_info().Changed.connect (_connections, invalidator (*this), std::bind (&PatchChangeTab::instrument_info_changed, this), gui_context ());
+	_trigger->PropertyChanged.connect (_connections, invalidator (*this), std::bind (&PatchChangeTab::trigger_property_changed, this, _1), gui_context ());
 
 	refill_banks ();
 }
@@ -358,7 +358,7 @@ PatchChangeTab::refresh ()
 void
 PatchChangeTab::refill_banks ()
 {
-	boost::shared_ptr<MIDI::Name::ChannelNameSet> cns;
+	std::shared_ptr<MIDI::Name::ChannelNameSet> cns;
 	if (_route) {
 		cns = _route->instrument_info ().get_patches (_channel);
 	}
@@ -393,7 +393,7 @@ PatchChangeTab::instrument_info_changed ()
 
 /* ****************************************************************************/
 
-PatchChangeWidget::PatchChangeWidget (boost::shared_ptr<ARDOUR::Route> r)
+PatchChangeWidget::PatchChangeWidget (std::shared_ptr<ARDOUR::Route> r)
 	: _route (r)
 	, _info (r->instrument_info ())
 	, _channel (-1)
@@ -422,7 +422,7 @@ PatchChangeWidget::PatchChangeWidget (boost::shared_ptr<ARDOUR::Route> r)
 	_program_table.set_spacings (1);
 	pack_start (_program_table, true, true);
 
-	if (!boost::dynamic_pointer_cast<MidiTrack> (_route)) {
+	if (!std::dynamic_pointer_cast<MidiTrack> (_route)) {
 		pack_start (*manage (new Label (_("Note: Patch Selection is volatile (only Midi-Tracks retain bank/patch selection)."))), false, false);
 	}
 
@@ -446,7 +446,7 @@ PatchChangeWidget::PatchChangeWidget (boost::shared_ptr<ARDOUR::Route> r)
 		using namespace Gtkmm2ext;
 		char buf[8];
 		snprintf (buf, sizeof (buf), "%d", chn + 1);
-		_channel_select.AddMenuElem (MenuElemNoMnemonic (buf, sigc::bind (sigc::mem_fun (*this, &PatchChangeWidget::select_channel), chn)));
+		_channel_select.add_menu_elem (MenuElemNoMnemonic (buf, sigc::bind (sigc::mem_fun (*this, &PatchChangeWidget::select_channel), chn)));
 	}
 
 	_piano.set_monophonic (true);
@@ -466,14 +466,14 @@ PatchChangeWidget::PatchChangeWidget (boost::shared_ptr<ARDOUR::Route> r)
 	set_spacing (4);
 	show_all ();
 
-	if (!boost::dynamic_pointer_cast<MidiTrack> (_route)) {
+	if (!std::dynamic_pointer_cast<MidiTrack> (_route)) {
 		processors_changed ();
 		_route->processors_changed.connect (_route_connections, invalidator (*this),
-		                                    boost::bind (&PatchChangeWidget::processors_changed, this), gui_context ());
+		                                    std::bind (&PatchChangeWidget::processors_changed, this), gui_context ());
 	}
 
 	_info.Changed.connect (_route_connections, invalidator (*this),
-	                       boost::bind (&PatchChangeWidget::instrument_info_changed, this), gui_context ());
+	                       std::bind (&PatchChangeWidget::instrument_info_changed, this), gui_context ());
 }
 
 PatchChangeWidget::~PatchChangeWidget ()
@@ -485,7 +485,9 @@ void
 PatchChangeWidget::refresh ()
 {
 	if (get_visible ()) {
-		on_show ();
+		int chn = _channel;
+		_channel = -1;
+		select_channel (chn);
 	}
 }
 
@@ -493,7 +495,6 @@ void
 PatchChangeWidget::on_show ()
 {
 	Gtk::VBox::on_show ();
-	cancel_audition ();
 	_channel = -1;
 	select_channel (0);
 }
@@ -524,25 +525,23 @@ PatchChangeWidget::select_channel (uint8_t chn)
 
 	_ac_connections.drop_connections ();
 
-	if (boost::dynamic_pointer_cast<MidiTrack> (_route)) {
-		boost::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_MSB_BANK), true);
-		boost::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_LSB_BANK), true);
-		boost::shared_ptr<AutomationControl> program  = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, chn), true);
+	std::shared_ptr<PluginInsert> pi;
+	if ((pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) && pi->plugin ()->knows_bank_patch ()) {
+		pi->plugin ()->BankPatchChange.connect (_ac_connections, invalidator (*this),
+		                                        std::bind (&PatchChangeWidget::bankpatch_changed, this, _1), gui_context ());
+	} else if (std::dynamic_pointer_cast<MidiTrack> (_route)) {
+		std::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_MSB_BANK), true);
+		std::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_LSB_BANK), true);
+		std::shared_ptr<AutomationControl> program  = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, chn), true);
 
 		bank_msb->Changed.connect (_ac_connections, invalidator (*this),
-		                           boost::bind (&PatchChangeWidget::bank_changed, this), gui_context ());
+		                           std::bind (&PatchChangeWidget::bank_changed, this), gui_context ());
 		bank_lsb->Changed.connect (_ac_connections, invalidator (*this),
-		                           boost::bind (&PatchChangeWidget::bank_changed, this), gui_context ());
+		                           std::bind (&PatchChangeWidget::bank_changed, this), gui_context ());
 		program->Changed.connect (_ac_connections, invalidator (*this),
-		                          boost::bind (&PatchChangeWidget::program_changed, this), gui_context ());
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
-		if (pi->plugin ()->knows_bank_patch ()) {
-			pi->plugin ()->BankPatchChange.connect (_ac_connections, invalidator (*this),
-			                                        boost::bind (&PatchChangeWidget::bankpatch_changed, this, _1), gui_context ());
-		} else {
-			_no_notifications = true;
-			// TODO add note: instrument does not report changes.
-		}
+		                          std::bind (&PatchChangeWidget::program_changed, this), gui_context ());
+	} else {
+		_no_notifications = true;
 	}
 
 	refill_banks ();
@@ -553,7 +552,7 @@ PatchChangeWidget::refill_banks ()
 {
 	cancel_audition ();
 
-	boost::shared_ptr<MIDI::Name::ChannelNameSet> cns = _info.get_patches (_channel);
+	std::shared_ptr<MIDI::Name::ChannelNameSet> cns = _info.get_patches (_channel);
 	refill (cns, bank (_channel));
 	program_changed ();
 }
@@ -565,13 +564,13 @@ PatchChangeWidget::select_bank (uint32_t bank)
 {
 	cancel_audition ();
 
-	if (boost::dynamic_pointer_cast<MidiTrack> (_route)) {
-		boost::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, _channel, MIDI_CTL_MSB_BANK), true);
-		boost::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, _channel, MIDI_CTL_LSB_BANK), true);
+	if (std::dynamic_pointer_cast<MidiTrack> (_route)) {
+		std::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, _channel, MIDI_CTL_MSB_BANK), true);
+		std::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, _channel, MIDI_CTL_LSB_BANK), true);
 
 		bank_msb->set_value (bank >> 7, PBD::Controllable::NoGroup);
 		bank_lsb->set_value (bank & 127, PBD::Controllable::NoGroup);
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	} else if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		uint8_t event[3];
 		event[0] = (MIDI_CMD_CONTROL | _channel);
 		event[1] = 0x00;
@@ -598,10 +597,10 @@ PatchChangeWidget::select_program (uint8_t pgm)
 		return;
 	}
 
-	if (boost::dynamic_pointer_cast<MidiTrack> (_route)) {
-		boost::shared_ptr<AutomationControl> program = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, _channel), true);
+	if (std::dynamic_pointer_cast<MidiTrack> (_route)) {
+		std::shared_ptr<AutomationControl> program = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, _channel), true);
 		program->set_value (pgm, PBD::Controllable::NoGroup);
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	} else if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		uint8_t event[2];
 		event[0] = (MIDI_CMD_PGM_CHANGE | _channel);
 		event[1] = pgm;
@@ -643,7 +642,7 @@ PatchChangeWidget::instrument_info_changed ()
 void
 PatchChangeWidget::processors_changed ()
 {
-	assert (!boost::dynamic_pointer_cast<MidiTrack> (_route));
+	assert (!std::dynamic_pointer_cast<MidiTrack> (_route));
 	if (_route->the_instrument ()) {
 		set_sensitive (true);
 	} else {
@@ -696,7 +695,7 @@ PatchChangeWidget::cancel_audition ()
 void
 PatchChangeWidget::audition ()
 {
-	if (!boost::dynamic_pointer_cast<MidiTrack> (_route) && !boost::dynamic_pointer_cast<PluginInsert> (_route)) {
+	if (!std::dynamic_pointer_cast<MidiTrack> (_route) && !std::dynamic_pointer_cast<PluginInsert> (_route)) {
 		return;
 	}
 	if (_channel > 16) {
@@ -752,9 +751,9 @@ PatchChangeWidget::note_on_event_handler (int note, bool for_audition)
 	_audition_note_on  = true;
 	_audition_note_num = note;
 
-	if (boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (_route)) {
+	if (std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (_route)) {
 		mt->write_immediate_event (Evoral::MIDI_EVENT, 3, event);
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	} else if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		pi->write_immediate_event (Evoral::MIDI_EVENT, 3, event);
 	}
 }
@@ -769,9 +768,9 @@ PatchChangeWidget::note_off_event_handler (int note)
 
 	_audition_note_on = false;
 
-	if (boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (_route)) {
+	if (std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (_route)) {
 		mt->write_immediate_event (Evoral::MIDI_EVENT, 3, event);
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	} else if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		pi->write_immediate_event (Evoral::MIDI_EVENT, 3, event);
 	}
 }
@@ -781,16 +780,17 @@ PatchChangeWidget::note_off_event_handler (int note)
 int
 PatchChangeWidget::bank (uint8_t chn) const
 {
-	if (boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (_route)) {
-		boost::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_MSB_BANK), true);
-		boost::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_LSB_BANK), true);
-
-		return ((int)bank_msb->get_value () << 7) + (int)bank_lsb->get_value ();
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		uint32_t bankpatch = pi->plugin ()->bank_patch (chn);
 		if (bankpatch != UINT32_MAX) {
 			return bankpatch >> 7;
 		}
+	}
+	if (std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (_route)) {
+		std::shared_ptr<AutomationControl> bank_msb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_MSB_BANK), true);
+		std::shared_ptr<AutomationControl> bank_lsb = _route->automation_control (Evoral::Parameter (MidiCCAutomation, chn, MIDI_CTL_LSB_BANK), true);
+
+		return ((int)bank_msb->get_value () << 7) + (int)bank_lsb->get_value ();
 	}
 	return 0;
 }
@@ -798,14 +798,15 @@ PatchChangeWidget::bank (uint8_t chn) const
 uint8_t
 PatchChangeWidget::program (uint8_t chn) const
 {
-	if (boost::shared_ptr<MidiTrack> mt = boost::dynamic_pointer_cast<MidiTrack> (_route)) {
-		boost::shared_ptr<AutomationControl> program = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, chn), true);
-		return program->get_value ();
-	} else if (boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
+	if (std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (_route->the_instrument ())) {
 		uint32_t bankpatch = pi->plugin ()->bank_patch (chn);
 		if (bankpatch != UINT32_MAX) {
 			return bankpatch & 127;
 		}
+	}
+	if (std::shared_ptr<MidiTrack> mt = std::dynamic_pointer_cast<MidiTrack> (_route)) {
+		std::shared_ptr<AutomationControl> program = _route->automation_control (Evoral::Parameter (MidiPgmChangeAutomation, chn), true);
+		return program->get_value ();
 	}
 	return 255;
 }
@@ -835,12 +836,12 @@ PatchChangeTriggerWindow::clear ()
 	set_title (_("Trigger Patch Select"));
 
 	for (uint32_t chn = 0; chn < 16; ++chn) {
-		_w[chn]->reset (boost::shared_ptr<ARDOUR::Route> (), boost::shared_ptr<ARDOUR::MIDITrigger>());
+		_w[chn]->reset (std::shared_ptr<ARDOUR::Route> (), std::shared_ptr<ARDOUR::MIDITrigger>());
 	}
 }
 
 void
-PatchChangeTriggerWindow::reset (boost::shared_ptr<Route> r, boost::shared_ptr<MIDITrigger> t)
+PatchChangeTriggerWindow::reset (std::shared_ptr<Route> r, std::shared_ptr<MIDITrigger> t)
 {
 	if (!r || !t) {
 		clear ();
@@ -849,20 +850,31 @@ PatchChangeTriggerWindow::reset (boost::shared_ptr<Route> r, boost::shared_ptr<M
 
 	set_title (string_compose (_("Select Patch for \"%1\" - \"%2\""), r->name (), t->name ()));
 
-	r->DropReferences.connect (_route_connection, invalidator(*this), boost::bind (&PatchChangeTriggerWindow::clear, this), gui_context());
+	r->DropReferences.connect (_route_connection, invalidator(*this), std::bind (&PatchChangeTriggerWindow::clear, this), gui_context());
 
 	/* only show tabs for the chans that this region uses */
 	Evoral::SMF::UsedChannels used = t->used_channels();
 	uint32_t first_used_chan = 15;
+	uint32_t used_cnt = 0;
+
 	for (uint32_t chn = 0; chn < 16; ++chn) {
 		if (used.test(chn)) {
 			if (chn < first_used_chan) {
 				first_used_chan = chn;
 			}
 			_w[chn]->show();
+			used_cnt++;
 		} else {
 			_w[chn]->hide();
 		}
+	}
+
+	if (used_cnt == 0) {
+		/* no channels in use - empty. So make everything visible */
+		for (uint32_t chn = 0; chn < 16; ++chn) {
+			_w[chn]->show ();
+		}
+		first_used_chan = 0;
 	}
 
 	for (uint32_t chn = 0; chn < 16; ++chn) {
@@ -880,19 +892,19 @@ PatchChangeTriggerWindow::on_switch_page (GtkNotebookPage*, guint page_num)
 
 /* ***************************************************************************/
 
-PatchChangeGridDialog::PatchChangeGridDialog (boost::shared_ptr<ARDOUR::Route> r)
+PatchChangeGridDialog::PatchChangeGridDialog (std::shared_ptr<ARDOUR::Route> r)
 	: ArdourDialog (string_compose (_("Select Patch for \"%1\""), r->name ()), false, false)
 	, w (r)
 {
-	r->PropertyChanged.connect (_route_connection, invalidator (*this), boost::bind (&PatchChangeGridDialog::route_property_changed, this, _1, boost::weak_ptr<Route> (r)), gui_context ());
+	r->PropertyChanged.connect (_route_connection, invalidator (*this), std::bind (&PatchChangeGridDialog::route_property_changed, this, _1, std::weak_ptr<Route> (r)), gui_context ());
 	get_vbox ()->add (w);
 	w.show ();
 }
 
 void
-PatchChangeGridDialog::route_property_changed (const PBD::PropertyChange& what_changed, boost::weak_ptr<Route> wr)
+PatchChangeGridDialog::route_property_changed (const PBD::PropertyChange& what_changed, std::weak_ptr<Route> wr)
 {
-	boost::shared_ptr<ARDOUR::Route> r = wr.lock ();
+	std::shared_ptr<ARDOUR::Route> r = wr.lock ();
 	if (r && what_changed.contains (ARDOUR::Properties::name)) {
 		set_title (string_compose (_("Select Patch for \"%1\""), r->name ()));
 	}

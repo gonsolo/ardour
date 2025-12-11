@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_region_selection_h__
-#define __ardour_gtk_region_selection_h__
+#pragma once
 
 #include <set>
 #include <list>
@@ -52,7 +51,7 @@ public:
 	void sort_by_position_and_track ();
 
 	bool contains (RegionView*) const;
-	bool contains (boost::shared_ptr<ARDOUR::Region>) const;
+	bool contains (std::shared_ptr<ARDOUR::Region>) const;
 	bool involves (const TimeAxisView&) const;
 
 	void clear_all();
@@ -66,18 +65,14 @@ public:
 
 	size_t n_midi_regions() const;
 
-	std::set<boost::shared_ptr<ARDOUR::Playlist> > playlists () const;
+	ARDOUR::PlaylistSet playlists () const;
 	std::list<PBD::ID> pending;
 
 	ARDOUR::RegionList regionlist () const;
 
 private:
-	void remove_it (RegionView*);
-
 	void add_to_layer (RegionView *);
 
 	std::list<RegionView *> _bylayer; ///< list of regions sorted by layer
-	PBD::ScopedConnection death_connection;
 };
 
-#endif /* __ardour_gtk_region_selection_h__ */

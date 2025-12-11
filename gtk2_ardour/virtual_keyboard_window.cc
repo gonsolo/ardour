@@ -16,7 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/box.h>
+#include <ytkmm/box.h>
 
 
 #include "pbd/convert.h"
@@ -26,6 +26,8 @@
 #include "ardour/session.h"
 
 #include "gtkmm2ext/utils.h"
+
+#include "widgets/slider_controller.h"
 #include "widgets/tooltips.h"
 
 #include "ardour_ui.h"
@@ -74,6 +76,7 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 	_piano_velocity.append_text_item ("32");
 	_piano_velocity.append_text_item ("64");
 	_piano_velocity.append_text_item ("82");
+	_piano_velocity.append_text_item ("96");
 	_piano_velocity.append_text_item ("100");
 	_piano_velocity.append_text_item ("127");
 #endif
@@ -100,11 +103,11 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 	_piano_octave_range.set_active ("7");
 	_transpose_output.set_active ("0");
 
-	_pitchbend            = boost::shared_ptr<VKBDControl> (new VKBDControl ("PB", 8192, 16383));
+	_pitchbend            = std::shared_ptr<VKBDControl> (new VKBDControl ("PB", 8192, 16383));
 	_pitch_slider         = manage (new VSliderController (&_pitch_adjustment, _pitchbend, 0, PX_SCALE (15)));
 	_pitch_slider_tooltip = new Gtkmm2ext::PersistentTooltip (_pitch_slider);
 
-	_modwheel         = boost::shared_ptr<VKBDControl> (new VKBDControl ("MW", 0, 127));
+	_modwheel         = std::shared_ptr<VKBDControl> (new VKBDControl ("MW", 0, 127));
 	_modwheel_slider  = manage (new VSliderController (&_modwheel_adjustment, _modwheel, 0, PX_SCALE (15)));
 	_modwheel_tooltip = new Gtkmm2ext::PersistentTooltip (_modwheel_slider);
 
@@ -137,7 +140,7 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 
 	int col = 4;
 	for (size_t i = 0; i < VKBD_NCTRLS; ++i, ++col) {
-		_cc[i]      = boost::shared_ptr<VKBDControl> (new VKBDControl ("CC"));
+		_cc[i]      = std::shared_ptr<VKBDControl> (new VKBDControl ("CC"));
 		_cc_knob[i] = manage (new ArdourKnob (ArdourKnob::default_elements, ArdourKnob::Flags (0)));
 		_cc_knob[i]->set_controllable (_cc[i]);
 		_cc_knob[i]->set_size_request (PX_SCALE (21), PX_SCALE (21));
@@ -157,7 +160,7 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 
 		_cc_key[i].StateChanged.connect (sigc::bind (sigc::mem_fun (*this, &VirtualKeyboardWindow::cc_key_changed), i));
 		_cc[i]->ValueChanged.connect_same_thread (_cc_connections,
-		                                          boost::bind (&VirtualKeyboardWindow::control_change_knob_event_handler, this, i, _1));
+		                                          std::bind (&VirtualKeyboardWindow::control_change_knob_event_handler, this, i, _1));
 
 		update_cc (i, default_cc[i]);
 	}
@@ -200,11 +203,11 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 	/* GUI signals */
 
 	_pitch_adjustment.signal_value_changed ().connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::pitch_slider_adjusted));
-	_pitchbend->ValueChanged.connect_same_thread (_cc_connections, boost::bind (&VirtualKeyboardWindow::pitch_bend_event_handler, this, _1));
+	_pitchbend->ValueChanged.connect_same_thread (_cc_connections, std::bind (&VirtualKeyboardWindow::pitch_bend_event_handler, this, _1));
 	_pitch_slider->StopGesture.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::pitch_bend_release));
 
 	_modwheel_adjustment.signal_value_changed ().connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::modwheel_slider_adjusted));
-	_modwheel->ValueChanged.connect_same_thread (_cc_connections, boost::bind (&VirtualKeyboardWindow::control_change_event_handler, this, 1, _1));
+	_modwheel->ValueChanged.connect_same_thread (_cc_connections, std::bind (&VirtualKeyboardWindow::control_change_event_handler, this, 1, _1));
 
 	_piano_velocity.StateChanged.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::update_velocity_settings));
 	_piano_octave_key.StateChanged.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::update_octave_key));
@@ -221,6 +224,7 @@ VirtualKeyboardWindow::VirtualKeyboardWindow ()
 	_piano.NoteOff.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::note_off_event_handler));
 	_piano.SwitchOctave.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::octave_key_event_handler));
 	_piano.PitchBend.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::pitch_bend_key_event_handler));
+	_piano.SetVelocity.connect (sigc::mem_fun (*this, &VirtualKeyboardWindow::velocity_key_event_handler));
 
 	/* initialize GUI */
 
@@ -449,6 +453,17 @@ VirtualKeyboardWindow::update_cc (size_t i, int cc)
 }
 
 void
+VirtualKeyboardWindow::velocity_key_event_handler (int v)
+{
+	if (v < 1 || v > 127) {
+		return;
+	}
+	char buf[16];
+	sprintf (buf, "%d", v);
+	_piano_velocity.set_active (buf);
+}
+
+void
 VirtualKeyboardWindow::octave_key_event_handler (bool up)
 {
 	int k = PBD::atoi (_piano_octave_key.get_text ()) + (up ? 1 : -1);
@@ -602,7 +617,7 @@ VirtualKeyboardWindow::pitch_bend_event_handler (int val)
 }
 
 void
-VirtualKeyboardWindow::pitch_bend_release ()
+VirtualKeyboardWindow::pitch_bend_release (int)
 {
 	_pitch_adjustment.set_value (8192);
 }

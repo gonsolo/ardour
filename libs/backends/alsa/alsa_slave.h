@@ -19,10 +19,12 @@
 #ifndef __libbackend_alsa_slave_h__
 #define __libbackend_alsa_slave_h__
 
+#include <atomic>
+
 #include <pthread.h>
 
 #include "pbd/ringbuffer.h"
-#include "pbd/g_atomic_compat.h"
+#include "pbd/signals.h"
 
 #include "zita-resampler/vresampler.h"
 #include "zita-alsa-pcmi.h"
@@ -59,7 +61,7 @@ public:
 	uint32_t nplay (void) const { return _pcmi.nplay (); }
 	uint32_t ncapt (void) const { return _pcmi.ncapt (); }
 
-	PBD::Signal0<void> Halted;
+	PBD::Signal<void()> Halted;
 
 protected:
 	virtual void update_latencies (uint32_t, uint32_t) = 0;
@@ -84,7 +86,7 @@ private:
 
 	volatile double _slave_speed;
 
-	GATOMIC_QUAL gint _draining;
+	std::atomic<int> _draining;
 
 	PBD::RingBuffer<float> _rb_capture;
 	PBD::RingBuffer<float> _rb_playback;

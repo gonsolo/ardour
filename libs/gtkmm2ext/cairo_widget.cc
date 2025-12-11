@@ -23,7 +23,7 @@
 #include "gtkmm2ext/rgb_macros.h"
 
 #ifdef __APPLE__
-#include <gdk/gdk.h>
+#include <ydk/gdk.h>
 #include "gtkmm2ext/nsglview.h"
 #endif
 
@@ -63,7 +63,9 @@ CairoWidget::CairoWidget ()
 	, _current_parent (0)
 	, _canvas_widget (false)
 	, _nsglview (0)
-#ifdef USE_CAIRO_IMAGE_SURFACE
+#ifdef __APPLE__
+	, _use_image_surface (false)
+#elif defined USE_CAIRO_IMAGE_SURFACE
 	, _use_image_surface (true)
 #else
 	, _use_image_surface (NULL != getenv("ARDOUR_IMAGE_SURFACE"))
@@ -96,13 +98,13 @@ CairoWidget::set_canvas_widget ()
 }
 
 void
-CairoWidget::use_nsglview ()
+CairoWidget::use_nsglview (bool retina)
 {
 	assert (!_nsglview);
 	assert (!_canvas_widget);
 	assert (!get_realized());
 #ifdef ARDOUR_CANVAS_NSVIEW_TAG // patched gdkquartz.h
-	_nsglview = Gtkmm2ext::nsglview_create (this);
+	_nsglview = Gtkmm2ext::nsglview_create (this, retina);
 #endif
 }
 

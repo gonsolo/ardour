@@ -21,16 +21,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_profile_manager_h__
-#define __ardour_export_profile_manager_h__
+#pragma once
 
 #include <list>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/file_utils.h"
 #include "pbd/uuid.h"
@@ -79,7 +77,7 @@ public:
 	void            remove_preset ();
 
 private:
-	typedef boost::shared_ptr<ExportHandler> HandlerPtr;
+	typedef std::shared_ptr<ExportHandler> HandlerPtr;
 
 	typedef std::pair<PBD::UUID, std::string> FilePair;
 	typedef std::map<PBD::UUID, std::string>  FileMap;
@@ -113,7 +111,7 @@ private:
 	/* Timespans */
 public:
 	typedef std::list<ExportTimespanPtr>    TimespanList;
-	typedef boost::shared_ptr<TimespanList> TimespanListPtr;
+	typedef std::shared_ptr<TimespanList> TimespanListPtr;
 	typedef std::list<Location*>            LocationList;
 
 	enum TimeFormat {
@@ -127,11 +125,11 @@ public:
 		TimespanListPtr timespans;
 		TimeFormat      time_format;
 
-		boost::shared_ptr<Location>     selection_range;
-		boost::shared_ptr<LocationList> ranges;
+		std::shared_ptr<Location>     selection_range;
+		std::shared_ptr<LocationList> ranges;
 
-		TimespanState (boost::shared_ptr<Location>     selection_range,
-		               boost::shared_ptr<LocationList> ranges)
+		TimespanState (std::shared_ptr<Location>     selection_range,
+		               std::shared_ptr<LocationList> ranges)
 		    : timespans (new TimespanList ())
 		    , time_format (Timecode)
 		    , selection_range (selection_range)
@@ -140,7 +138,7 @@ public:
 		}
 	};
 
-	typedef boost::shared_ptr<TimespanState> TimespanStatePtr;
+	typedef std::shared_ptr<TimespanState> TimespanStatePtr;
 	typedef std::list<TimespanStatePtr>      TimespanStateList;
 
 	void        set_selection_range (samplepos_t start = 0, samplepos_t end = 0);
@@ -159,9 +157,9 @@ private:
 	/* Locations */
 	void update_ranges ();
 
-	boost::shared_ptr<Location>     selection_range;
-	boost::shared_ptr<LocationList> ranges;
-	boost::shared_ptr<Location>     single_range;
+	std::shared_ptr<Location>     selection_range;
+	std::shared_ptr<LocationList> ranges;
+	std::shared_ptr<Location>     single_range;
 
 	bool single_range_mode;
 
@@ -176,7 +174,7 @@ public:
 		}
 	};
 
-	typedef boost::shared_ptr<ChannelConfigState> ChannelConfigStatePtr;
+	typedef std::shared_ptr<ChannelConfigState> ChannelConfigStatePtr;
 	typedef std::list<ChannelConfigStatePtr>      ChannelConfigStateList;
 
 	ChannelConfigStateList const& get_channel_configs () { return check_list (channel_configs); }
@@ -195,17 +193,17 @@ public:
 	typedef std::list<ExportFormatSpecPtr> FormatList;
 
 	struct FormatState {
-		boost::shared_ptr<FormatList const> list;
+		std::shared_ptr<FormatList const> list;
 		ExportFormatSpecPtr                 format;
 
-		FormatState (boost::shared_ptr<FormatList const> list, ExportFormatSpecPtr format)
+		FormatState (std::shared_ptr<FormatList const> list, ExportFormatSpecPtr format)
 		    : list (list)
 		    , format (format)
 		{
 		}
 	};
 
-	typedef boost::shared_ptr<FormatState> FormatStatePtr;
+	typedef std::shared_ptr<FormatState> FormatStatePtr;
 	typedef std::list<FormatStatePtr>      FormatStateList;
 
 	FormatStateList const& get_formats () { return check_list (formats); }
@@ -219,7 +217,7 @@ public:
 
 	ExportFormatSpecPtr get_new_format (ExportFormatSpecPtr original);
 
-	PBD::Signal0<void> FormatListChanged;
+	PBD::Signal<void()> FormatListChanged;
 
 private:
 	FormatStateList formats;
@@ -233,7 +231,7 @@ private:
 	ExportFormatSpecPtr load_format (XMLNode& node);
 	void                load_format_from_disk (std::string const& path);
 
-	boost::shared_ptr<FormatList> format_list;
+	std::shared_ptr<FormatList> format_list;
 	FileMap                       format_file_map;
 
 	/* Filenames */
@@ -247,7 +245,7 @@ public:
 		}
 	};
 
-	typedef boost::shared_ptr<FilenameState> FilenameStatePtr;
+	typedef std::shared_ptr<FilenameState> FilenameStatePtr;
 	typedef std::list<FilenameStatePtr>      FilenameStateList;
 
 	FilenameStateList const& get_filenames () { return check_list (filenames); }
@@ -271,12 +269,12 @@ public:
 		std::list<std::string> conflicting_filenames;
 	};
 
-	boost::shared_ptr<Warnings> get_warnings ();
+	std::shared_ptr<Warnings> get_warnings ();
 
 private:
-	void check_config (boost::shared_ptr<Warnings> warnings,
+	void check_config (std::shared_ptr<Warnings> warnings,
 	                   TimespanStatePtr            timespan_state,
-	                   ChannelConfigStatePtr       channel_config_state,
+	                   ExportChannelConfigPtr      channel_config,
 	                   FormatStatePtr              format_state,
 	                   FilenameStatePtr            filename_state);
 
@@ -303,4 +301,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_profile_manager_h__ */

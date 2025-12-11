@@ -70,7 +70,7 @@ ArdourDisplay::on_scroll_event (GdkEventScroll* ev)
 		}
 	}
 
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 	if (c) {
 		float val = c->get_interface();
 
@@ -90,7 +90,7 @@ void
 ArdourDisplay::add_controllable_preset (const char *txt, float val)
 {
 	using namespace Menu_Helpers;
-	AddMenuElem(MenuElem (txt, sigc::bind (sigc::mem_fun(*this, &ArdourDisplay::handle_controllable_preset), val)));
+	add_menu_elem(MenuElem (txt, sigc::bind (sigc::mem_fun(*this, &ArdourDisplay::handle_controllable_preset), val)));
 }
 
 static inline float dB_to_coefficient (float dB) {
@@ -100,7 +100,7 @@ static inline float dB_to_coefficient (float dB) {
 void
 ArdourDisplay::handle_controllable_preset (float p)
 {
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 
 	if (!c) return;
 
@@ -115,7 +115,7 @@ ArdourDisplay::handle_controllable_preset (float p)
 
 
 void
-ArdourDisplay::set_controllable (boost::shared_ptr<Controllable> c)
+ArdourDisplay::set_controllable (std::shared_ptr<Controllable> c)
 {
     watch_connection.disconnect ();  //stop watching the old controllable
 
@@ -123,7 +123,7 @@ ArdourDisplay::set_controllable (boost::shared_ptr<Controllable> c)
 
 	binding_proxy.set_controllable (c);
 
-	c->Changed.connect (watch_connection, invalidator(*this), boost::bind (&ArdourDisplay::controllable_changed, this), gui_context());
+	c->Changed.connect (watch_connection, invalidator(*this), std::bind (&ArdourDisplay::controllable_changed, this), gui_context());
 
 	controllable_changed();
 }
@@ -131,7 +131,7 @@ ArdourDisplay::set_controllable (boost::shared_ptr<Controllable> c)
 void
 ArdourDisplay::controllable_changed ()
 {
-	boost::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
+	std::shared_ptr<PBD::Controllable> c = binding_proxy.get_controllable();
 
 	if (!c) return;
 

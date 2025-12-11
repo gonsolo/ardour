@@ -23,11 +23,11 @@
 #include <vector>
 #include <cmath>
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/drawingarea.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/separator.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/drawingarea.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/separator.h>
 
 #include "pbd/stateful.h"
 
@@ -49,22 +49,22 @@ namespace ARDOUR {
 class MeterStrip : public Gtk::VBox, public AxisView, public RouteUI
 {
 public:
-	MeterStrip (ARDOUR::Session*, boost::shared_ptr<ARDOUR::Route>);
+	MeterStrip (ARDOUR::Session*, std::shared_ptr<ARDOUR::Route>);
 	MeterStrip (int, ARDOUR::MeterType);
 	~MeterStrip ();
 
 	std::string name() const;
 	Gdk::Color color () const;
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
+	std::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
 
 	void set_session (ARDOUR::Session* s);
 	void fast_update ();
-	boost::shared_ptr<ARDOUR::Route> route() { return _route; }
+	std::shared_ptr<ARDOUR::Route> route() { return _route; }
 
-	static PBD::Signal1<void,MeterStrip*> CatchDeletion;
-	static PBD::Signal0<void> MetricChanged;
-	static PBD::Signal0<void> ConfigurationChanged;
+	static PBD::Signal<void(MeterStrip*)> CatchDeletion;
+	static PBD::Signal<void()> MetricChanged;
+	static PBD::Signal<void()> ConfigurationChanged;
 
 	void reset_peak_display ();
 	void reset_route_peak_display (ARDOUR::Route*);
@@ -83,7 +83,7 @@ public:
 	bool selected() const { return false; }
 
 protected:
-	boost::shared_ptr<ARDOUR::Route> _route;
+	std::shared_ptr<ARDOUR::Route> _route;
 	PBD::ScopedConnectionList meter_route_connections;
 	PBD::ScopedConnectionList level_meter_connection;
 	void self_delete ();
@@ -151,8 +151,8 @@ private:
 
 	bool peak_button_release (GdkEventButton*);
 
-	void gain_start_touch ();
-	void gain_end_touch ();
+	void gain_start_touch (int);
+	void gain_end_touch (int);
 
 	void parameter_changed (std::string const & p);
 	void redraw_metrics ();

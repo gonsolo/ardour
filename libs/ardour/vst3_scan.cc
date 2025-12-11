@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Robin Gareus <robin@gareus.org>
+ * Copyright (C) 2019-2023 Robin Gareus <robin@gareus.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,6 +47,8 @@
 using namespace std;
 using namespace Steinberg;
 
+#define ARDOUR_VST3_CACHE_FILE_VERSION 3
+
 static const char* fmt_media (Vst::MediaType m) {
 	switch (m) {
 		case Vst::kAudio: return "kAudio";
@@ -72,7 +74,7 @@ static const char* fmt_type (Vst::BusType t) {
 }
 
 static int32
-count_channels (Vst::IComponent* c, Vst::MediaType media, Vst::BusDirection dir, Vst::BusType type, bool verbose = false)
+count_channels (Vst::IComponent* c, Vst::MediaType media, Vst::BusDirection dir, Vst::BusType type, bool verbose = false, bool can_fail = true)
 {
 	/* see also libs/ardour/vst3_plugin.cc VST3PI::count_channels */
 	int32 n_busses = c->getBusCount (media, dir);
@@ -84,15 +86,6 @@ count_channels (Vst::IComponent* c, Vst::MediaType media, Vst::BusDirection dir,
 		Vst::BusInfo bus;
 		tresult rv = c->getBusInfo (media, dir, i, bus);
 		if (rv == kResultTrue && bus.busType == type) {
-#if 1
-			if ((type == Vst::kMain && i != 0) || (type == Vst::kAux && i != 1)) {
-				/* For now allow we only support one main bus, and one aux-bus.
-				 * Also an aux-bus by itself is currently N/A.
-				 */
-				PBD::info << "VST3: \\ ignored bus: " << i << " type: " << fmt_type (bus.busType) << " count: " << bus.channelCount << endmsg;
-				continue;
-			}
-#endif
 			if (verbose) {
 				PBD::info << "VST3: - bus: " << i << " count: " << bus.channelCount << endmsg;
 			}
@@ -107,17 +100,59 @@ count_channels (Vst::IComponent* c, Vst::MediaType media, Vst::BusDirection dir,
 			} else {
 				n_channels += bus.channelCount;
 			}
-		} else if (verbose && rv == kResultTrue) {
-			PBD::info << "VST3: \\ ignored bus: " << i << " mismatched type: " << fmt_type (bus.busType) << endmsg;
-		} else if (verbose) {
-			PBD::info << "VST3: \\ error getting busInfo for bus: " << i << " rv: " << rv << ", got type: " << fmt_type (bus.busType) << endmsg;
+		} else if (rv != kResultTrue) {
+			if (verbose) {
+				PBD::info << "VST3: \\ error getting busInfo for bus: " << i << " rv: " << rv << ", got type: " << fmt_type (bus.busType) << endmsg;
+			}
+			if (!can_fail) {
+				return -1;
+			}
 		}
 	}
 	return n_channels;
 }
 
 static bool
-discover_vst3 (boost::shared_ptr<ARDOUR::VST3PluginModule> m, std::vector<ARDOUR::VST3Info>& rv, bool verbose)
+count_all_count_channels (ARDOUR::VST3Info& nfo, Vst::IComponent* c, bool verbose, bool require_result)
+{
+	nfo.n_inputs       = count_channels (c, Vst::kAudio, Vst::kInput,  Vst::kMain, verbose, require_result);
+	nfo.n_aux_inputs   = count_channels (c, Vst::kAudio, Vst::kInput,  Vst::kAux, verbose);
+	nfo.n_outputs      = count_channels (c, Vst::kAudio, Vst::kOutput, Vst::kMain, verbose, require_result);
+	nfo.n_aux_outputs  = count_channels (c, Vst::kAudio, Vst::kOutput, Vst::kAux, verbose);
+	nfo.n_midi_inputs  = count_channels (c, Vst::kEvent, Vst::kInput,  Vst::kMain, verbose);
+	nfo.n_midi_outputs = count_channels (c, Vst::kEvent, Vst::kOutput, Vst::kMain, verbose);
+
+	return nfo.n_inputs < 0 || nfo.n_outputs < 0;
+}
+
+static void
+set_speaker_arrangement (Vst::IComponent* c, IPtr<Vst::IAudioProcessor> p)
+{
+	Vst::SpeakerArrangement null_arrangement = {};
+	typedef std::vector<Vst::SpeakerArrangement> VSTSpeakerArrangements;
+	VSTSpeakerArrangements sa_in;
+	VSTSpeakerArrangements sa_out;
+
+	/* assume stereo by default */
+	int n_bus_in  = c->getBusCount (Vst::kAudio, Vst::kInput);
+	int n_bus_out = c->getBusCount (Vst::kAudio, Vst::kOutput);
+
+	while (sa_in.size () < (VSTSpeakerArrangements::size_type) n_bus_in) {
+		Vst::SpeakerArrangement sa = Vst::SpeakerArr::kStereo;
+		sa_in.push_back (sa);
+	}
+	while (sa_out.size () < (VSTSpeakerArrangements::size_type) n_bus_out) {
+		Vst::SpeakerArrangement sa = Vst::SpeakerArr::kStereo;
+		sa_out.push_back (sa);
+	}
+
+	p->setBusArrangements (sa_in.size () > 0 ? &sa_in[0] : &null_arrangement, sa_in.size (),
+	                       sa_out.size () > 0 ? &sa_out[0] : &null_arrangement, sa_out.size ());
+
+}
+
+static bool
+discover_vst3 (std::shared_ptr<ARDOUR::VST3PluginModule> m, std::vector<ARDOUR::VST3Info>& rv, bool verbose)
 {
 	using namespace std;
 	using namespace ARDOUR;
@@ -218,12 +253,12 @@ discover_vst3 (boost::shared_ptr<ARDOUR::VST3PluginModule> m, std::vector<ARDOUR
 				continue;
 			}
 
-			nfo.n_inputs       = count_channels (component, Vst::kAudio, Vst::kInput,  Vst::kMain, verbose);
-			nfo.n_aux_inputs   = count_channels (component, Vst::kAudio, Vst::kInput,  Vst::kAux, verbose);
-			nfo.n_outputs      = count_channels (component, Vst::kAudio, Vst::kOutput, Vst::kMain, verbose);
-			nfo.n_aux_outputs  = count_channels (component, Vst::kAudio, Vst::kOutput, Vst::kAux, verbose);
-			nfo.n_midi_inputs  = count_channels (component, Vst::kEvent, Vst::kInput,  Vst::kMain, verbose);
-			nfo.n_midi_outputs = count_channels (component, Vst::kEvent, Vst::kOutput, Vst::kMain, verbose);
+			/* first try to get default layout ..*/
+			if (!count_all_count_channels (nfo, component, verbose, false)) {
+				/* some plugins e.g. Altiverb require a valid Bus/SpeakerArrangement */
+				set_speaker_arrangement (component, processor);
+				count_all_count_channels (nfo, component, verbose, true);
+			}
 
 			processor->setProcessing (false);
 			component->setActive (false);
@@ -316,7 +351,10 @@ ARDOUR::module_path_vst3 (string const& path)
 			/* Ignore *.vst3 dll if it resides inside a bundle with the same name.
 			 * Ardour will instead use the bundle.
 			 */
-			return "";
+#ifndef NDEBUG
+		cerr << "Ignore .vst3 file inside bundle '" << path << "'\n";
+#endif
+			return "-1";
 		}
 #endif
 		module_path = path;
@@ -331,9 +369,12 @@ ARDOUR::module_path_vst3 (string const& path)
 	 * (on macOS/X the binary name may differ from the bundle name)
 	 */
 	string plist = Glib::build_filename (path, "Contents", "Info.plist");
+	string macos = Glib::build_filename (path, "Contents", "MacOS");
 	if (Glib::file_test (Glib::path_get_dirname (module_path), Glib::FILE_TEST_IS_DIR) &&
 	    Glib::file_test (Glib::build_filename (path, "Contents", "Info.plist"), Glib::FILE_TEST_IS_REGULAR)) {
-		return plist;
+		return path;
+	} else if (Glib::file_test (macos, Glib::FILE_TEST_IS_DIR)){
+		return path;
 	} else {
 		cerr << "VST3 not a valid bundle: '" << path << "'\n";
 		return "";
@@ -403,7 +444,25 @@ ARDOUR::vst3_valid_cache_file (std::string const& module_path, bool verbose, boo
 		if (sb_vst.st_mtime < sb_v3i.st_mtime) {
 			/* plugin is older than cache file */
 			if (verbose) {
-				PBD::info << "Cache file is up-to-date." << endmsg;
+				PBD::info << "Cache file timestamp is valid." << endmsg;
+			}
+			/* check file format version */
+			XMLTree tree;
+			if (!tree.read (cache_file)) {
+				if (verbose) {
+					PBD::info << "Cache file is not valid XML." << endmsg;
+				}
+				return "";
+			}
+			int cf_version = 0;
+			if (!tree.root()->get_property ("version", cf_version) || cf_version < ARDOUR_VST3_CACHE_FILE_VERSION) {
+				if (verbose) {
+					PBD::info << "Cache file version is too old." << endmsg;
+				}
+				return "";
+			}
+			if (verbose) {
+				PBD::info << "Cache file is valid and up-to-date." << endmsg;
 			}
 			return cache_file;
 		} else if  (verbose) {
@@ -462,15 +521,15 @@ vst3_save_cache_file (std::string const& module_path, XMLNode* root, bool verbos
 }
 
 bool
-ARDOUR::vst3_scan_and_cache (std::string const& module_path, std::string const& bundle_path, boost::function<void (std::string const&, std::string const&, VST3Info const&)> cb, bool verbose)
+ARDOUR::vst3_scan_and_cache (std::string const& module_path, std::string const& bundle_path, std::function<void (std::string const&, std::string const&, VST3Info const&)> cb, bool verbose)
 {
 	XMLNode* root = new XMLNode ("VST3Cache");
-	root->set_property ("version", 1);
+	root->set_property ("version", ARDOUR_VST3_CACHE_FILE_VERSION);
 	root->set_property ("bundle", bundle_path);
 	root->set_property ("module", module_path);
 
 	try {
-		boost::shared_ptr<VST3PluginModule> m = VST3PluginModule::load (module_path);
+		std::shared_ptr<VST3PluginModule> m = VST3PluginModule::load (module_path);
 		std::vector<VST3Info> nfo;
 		if (!discover_vst3 (m, nfo, verbose)) {
 			delete root;

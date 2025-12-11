@@ -19,14 +19,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_channel_configuration_h__
-#define __ardour_export_channel_configuration_h__
+#pragma once
 
 #include <algorithm>
 #include <list>
 #include <string>
-
-#include <boost/enable_shared_from_this.hpp>
 
 #include "ardour/export_channel.h"
 #include "ardour/export_pointers.h"
@@ -37,7 +34,7 @@ namespace ARDOUR {
 
 class Session;
 
-class LIBARDOUR_API ExportChannelConfiguration : public boost::enable_shared_from_this<ExportChannelConfiguration>
+class LIBARDOUR_API ExportChannelConfiguration : public std::enable_shared_from_this<ExportChannelConfiguration>
 {
 private:
 	friend class ExportElementFactory;
@@ -80,7 +77,7 @@ public:
 
 	/** Returns a list of channel configurations that match the files created.
 	  * I.e. many configurations if splitting is enabled, one if not. */
-	void configurations_for_files (std::list<boost::shared_ptr<ExportChannelConfiguration>>& configs);
+	void configurations_for_files (std::list<std::shared_ptr<ExportChannelConfiguration>>& configs);
 
 private:
 	Session& session;
@@ -93,4 +90,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_channel_configuration_h__ */

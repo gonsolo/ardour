@@ -19,13 +19,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_meter_h__
-#define __ardour_meter_h__
+#pragma once
 
+#include <atomic>
 #include <vector>
 
 #include "pbd/fastlog.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/processor.h"
@@ -86,7 +85,7 @@ public:
 	void      set_meter_type (MeterType t);
 	MeterType meter_type () const { return _meter_type; }
 
-	PBD::Signal1<void, MeterType> MeterTypeChanged;
+	PBD::Signal<void(MeterType)> MeterTypeChanged;
 
 protected:
 	XMLNode& state () const;
@@ -101,8 +100,8 @@ private:
 	ChanCount current_meters;
 	ChanCount _max_n_meters;
 
-	GATOMIC_QUAL gint _reset_dpm;
-	GATOMIC_QUAL gint _reset_max;
+	std::atomic<int> _reset_dpm;
+	std::atomic<int> _reset_max;
 
 	uint32_t           _bufcnt;
 	std::vector<float> _peak_buffer;     // internal, integrate
@@ -119,4 +118,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif // __ardour_meter_h__

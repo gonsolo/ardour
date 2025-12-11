@@ -19,17 +19,12 @@
 #ifndef _libardour_mixer_scene_h_
 #define _libardour_mixer_scene_h_
 
-#include <boost/shared_ptr.hpp>
-
+#include "pbd/controllable.h"
 #include "pbd/stateful.h"
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/session_handle.h"
 #include "ardour/types.h"
-
-namespace PBD {
-	class Controllable;
-}
 
 namespace ARDOUR {
 
@@ -51,12 +46,12 @@ public:
 	XMLNode& get_state () const;
 	int set_state (XMLNode const&, int version);
 
-	static PBD::Signal0<void> Change;
+	static PBD::Signal<void()> Change;
 
 private:
 	typedef std::map<PBD::ID, double> ControllableValueMap;
 
-	bool recurse_to_master (boost::shared_ptr<PBD::Controllable>, std::set <PBD::ID>&, AutomationTypeSet const&) const;
+	bool recurse_to_master (std::shared_ptr<PBD::Controllable>, std::set <PBD::ID>&, AutomationTypeSet const&) const;
 
 	ControllableValueMap       _ctrl_map;
 	std::string                _name;

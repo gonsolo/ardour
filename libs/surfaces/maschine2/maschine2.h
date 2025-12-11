@@ -64,7 +64,7 @@ class Maschine2: public ARDOUR::ControlProtocol, public AbstractUI<Maschine2Requ
 		Maschine2 (ARDOUR::Session&);
 		~Maschine2 ();
 
-		static void* request_factory (uint32_t);
+		static bool available ();
 
 #if 0
 		bool has_editor () const { return false; }
@@ -128,7 +128,7 @@ class Maschine2: public ARDOUR::ControlProtocol, public AbstractUI<Maschine2Requ
 		void notify_master_change ();
 
 		/* PAD Port */
-		boost::shared_ptr<ARDOUR::Port> _midi_out;
+		std::shared_ptr<ARDOUR::Port> _midi_out;
 		MIDI::Port* _output_port;
 
 		/* callbacks */

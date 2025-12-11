@@ -20,15 +20,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_butler_h__
-#define __ardour_butler_h__
+#pragma once
+
+#include <atomic>
 
 #include <pthread.h>
 
 #include <glibmm/threads.h>
 
 #include "pbd/crossthread.h"
-#include "pbd/g_atomic_compat.h"
 #include "pbd/pool.h"
 #include "pbd/ringbuffer.h"
 #include "pbd/mpmc_queue.h"
@@ -81,7 +81,7 @@ public:
 		return _midi_buffer_size;
 	}
 
-	mutable GATOMIC_QUAL gint should_do_transport_work;
+	mutable std::atomic<int> should_do_transport_work;
 
 private:
 	struct Request {
@@ -100,7 +100,7 @@ private:
 	void empty_pool_trash ();
 	void process_delegated_work ();
 	void config_changed (std::string);
-	bool flush_tracks_to_disk_normal (boost::shared_ptr<RouteList>, uint32_t& errors);
+	bool flush_tracks_to_disk_normal (std::shared_ptr<RouteList const>, uint32_t& errors);
 	void queue_request (Request::Type r);
 
 	pthread_t thread;
@@ -121,4 +121,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif // __ardour_butler_h__

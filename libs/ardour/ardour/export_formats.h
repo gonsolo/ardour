@@ -19,11 +19,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_formats_h__
-#define __ardour_export_formats_h__
+#pragma once
 
-#include <boost/weak_ptr.hpp>
 #include <list>
+#include <memory>
 
 #include "pbd/failed_constructor.h"
 #include "pbd/signals.h"
@@ -137,7 +136,7 @@ public:
 		int         quality;
 	};
 
-	typedef boost::shared_ptr<CodecQuality> CodecQualityPtr;
+	typedef std::shared_ptr<CodecQuality> CodecQualityPtr;
 	typedef std::list<CodecQualityPtr>      CodecQualityList;
 
 	virtual ~HasCodecQuality () {}
@@ -187,12 +186,12 @@ public:
 		ExportFormatBase::DitherType type;
 	};
 
-	typedef boost::shared_ptr<SampleFormatState> SampleFormatPtr;
-	typedef boost::weak_ptr<SampleFormatState>   WeakSampleFormatPtr;
+	typedef std::shared_ptr<SampleFormatState> SampleFormatPtr;
+	typedef std::weak_ptr<SampleFormatState>   WeakSampleFormatPtr;
 	typedef std::list<SampleFormatPtr>           SampleFormatList;
 
-	typedef boost::shared_ptr<DitherTypeState> DitherTypePtr;
-	typedef boost::weak_ptr<DitherTypeState>   WeakDitherTypePtr;
+	typedef std::shared_ptr<DitherTypeState> DitherTypePtr;
+	typedef std::weak_ptr<DitherTypeState>   WeakDitherTypePtr;
 	typedef std::list<DitherTypePtr>           DitherTypeList;
 
 public:
@@ -215,11 +214,11 @@ public:
 	DitherTypePtr   get_selected_dither_type ();
 
 	/* Proxies for signals from sample formats and dither types */
-	PBD::Signal2<void, bool, WeakSampleFormatPtr> SampleFormatSelectChanged;
-	PBD::Signal2<void, bool, WeakSampleFormatPtr> SampleFormatCompatibleChanged;
+	PBD::Signal<void(bool, WeakSampleFormatPtr)> SampleFormatSelectChanged;
+	PBD::Signal<void(bool, WeakSampleFormatPtr)> SampleFormatCompatibleChanged;
 
-	PBD::Signal2<void, bool, WeakDitherTypePtr> DitherTypeSelectChanged;
-	PBD::Signal2<void, bool, WeakDitherTypePtr> DitherTypeCompatibleChanged;
+	PBD::Signal<void(bool, WeakDitherTypePtr)> DitherTypeSelectChanged;
+	PBD::Signal<void(bool, WeakDitherTypePtr)> DitherTypeCompatibleChanged;
 
 	static std::string get_sample_format_name (ExportFormatBase::SampleFormat format);
 
@@ -435,4 +434,3 @@ public:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_formats__ */

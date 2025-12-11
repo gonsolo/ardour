@@ -25,8 +25,8 @@
 #include <map>
 #include <sigc++/bind.h>
 
-#include <gtkmm/accelmap.h>
-#include <gtkmm/comboboxtext.h>
+#include <ytkmm/accelmap.h>
+#include <ytkmm/comboboxtext.h>
 
 #include <glibmm/threads.h>
 
@@ -93,10 +93,11 @@ Meterbridge::Meterbridge ()
 
 	m_width = default_width;
 	m_height = default_height;
-	m_root_x = 1;
-	m_root_y = 1;
+	m_root_x = -1;
+	m_root_y = -1;
 
 	update_title ();
+	set_position (UIConfiguration::instance().get_default_window_position());
 
 	set_wmclass (X_("ardour_mixer"), PROGRAM_NAME);
 
@@ -134,10 +135,10 @@ Meterbridge::Meterbridge ()
 
 	signal_delete_event().connect (sigc::mem_fun (*this, &Meterbridge::hide_window));
 	signal_configure_event().connect (sigc::mem_fun (*ARDOUR_UI::instance(), &ARDOUR_UI::configure_handler));
-	MeterStrip::CatchDeletion.connect (*this, invalidator (*this), boost::bind (&Meterbridge::remove_strip, this, _1), gui_context());
-	MeterStrip::MetricChanged.connect (*this, invalidator (*this), boost::bind(&Meterbridge::sync_order_keys, this), gui_context());
-	MeterStrip::ConfigurationChanged.connect (*this, invalidator (*this), boost::bind(&Meterbridge::queue_resize, this), gui_context());
-	PresentationInfo::Change.connect (*this, invalidator (*this), boost::bind (&Meterbridge::resync_order, this, _1), gui_context());
+	MeterStrip::CatchDeletion.connect (*this, invalidator (*this), std::bind (&Meterbridge::remove_strip, this, _1), gui_context());
+	MeterStrip::MetricChanged.connect (*this, invalidator (*this), std::bind(&Meterbridge::sync_order_keys, this), gui_context());
+	MeterStrip::ConfigurationChanged.connect (*this, invalidator (*this), std::bind(&Meterbridge::queue_resize, this), gui_context());
+	PresentationInfo::Change.connect (*this, invalidator (*this), std::bind (&Meterbridge::resync_order, this, _1), gui_context());
 
 	/* work around ScrolledWindowViewport alignment mess Part one */
 	Gtk::HBox * yspc = manage (new Gtk::HBox());
@@ -427,9 +428,9 @@ Meterbridge::set_session (Session* s)
 	copy.sort (Stripable::Sorter (true));
 	add_strips (copy);
 
-	_session->RouteAdded.connect (_session_connections, invalidator (*this), boost::bind (&Meterbridge::add_strips, this, _1), gui_context());
-	_session->DirtyChanged.connect (_session_connections, invalidator (*this), boost::bind (&Meterbridge::update_title, this), gui_context());
-	_session->StateSaved.connect (_session_connections, invalidator (*this), boost::bind (&Meterbridge::update_title, this), gui_context());
+	_session->RouteAdded.connect (_session_connections, invalidator (*this), std::bind (&Meterbridge::add_strips, this, _1), gui_context());
+	_session->DirtyChanged.connect (_session_connections, invalidator (*this), std::bind (&Meterbridge::update_title, this), gui_context());
+	_session->StateSaved.connect (_session_connections, invalidator (*this), std::bind (&Meterbridge::update_title, this), gui_context());
 	_session->config.ParameterChanged.connect (*this, invalidator (*this), ui_bind (&Meterbridge::parameter_changed, this, _1), gui_context());
 	Config->ParameterChanged.connect (*this, invalidator (*this), ui_bind (&Meterbridge::parameter_changed, this, _1), gui_context());
 
@@ -465,8 +466,8 @@ Meterbridge::set_state (const XMLNode& node)
 
 	m_width = default_width;
 	m_height = default_height;
-	m_root_x = 1;
-	m_root_y = 1;
+	m_root_x = -1;
+	m_root_y = -1;
 
 	if ((geometry = find_named_node (node, "geometry")) != 0) {
 		geometry->get_property ("x-size", m_width);
@@ -529,17 +530,20 @@ Meterbridge::add_strips (RouteList& routes)
 {
 	MeterStrip* strip;
 	for (RouteList::iterator x = routes.begin(); x != routes.end(); ++x) {
-		boost::shared_ptr<Route> route = (*x);
+		std::shared_ptr<Route> route = (*x);
 		if (route->is_auditioner()) {
 			continue;
 		}
 		if (route->is_monitor()) {
 			continue;
 		}
+		if (route->is_surround_master()) {
+			continue;
+		}
 
 		strip = new MeterStrip (_session, route);
 		strips.push_back (MeterBridgeStrip(strip));
-		route->active_changed.connect (*this, invalidator (*this), boost::bind (&Meterbridge::sync_order_keys, this), gui_context ());
+		route->active_changed.connect (*this, invalidator (*this), std::bind (&Meterbridge::sync_order_keys, this), gui_context ());
 
 		meterarea.pack_start (*strip, false, false);
 		strip->show();
@@ -599,8 +603,8 @@ Meterbridge::sync_order_keys ()
 				(*i).visible = false;
 			}
 		}
-		else if (boost::dynamic_pointer_cast<AudioTrack>((*i).s->route()) == 0
-				&& boost::dynamic_pointer_cast<MidiTrack>((*i).s->route()) == 0
+		else if (std::dynamic_pointer_cast<AudioTrack>((*i).s->route()) == 0
+				&& std::dynamic_pointer_cast<MidiTrack>((*i).s->route()) == 0
 				) {
 			/* non-master bus */
 			if (_show_busses) {
@@ -612,7 +616,7 @@ Meterbridge::sync_order_keys ()
 				(*i).visible = false;
 			}
 		}
-		else if (boost::dynamic_pointer_cast<MidiTrack>((*i).s->route())) {
+		else if (std::dynamic_pointer_cast<MidiTrack>((*i).s->route())) {
 			if (_show_midi) {
 				(*i).s->show();
 				(*i).visible = true;

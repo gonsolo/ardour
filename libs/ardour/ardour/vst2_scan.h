@@ -19,9 +19,9 @@
 #ifndef _ardour_vst2_scan_h_
 #define _ardour_vst2_scan_h_
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/xml++.h"
 
@@ -74,7 +74,7 @@ LIBARDOUR_API extern std::string
 vst2_valid_cache_file (std::string const& path, bool verbose = false, bool* is_new = NULL);
 
 LIBARDOUR_API extern bool
-vst2_scan_and_cache (std::string const& path, ARDOUR::PluginType, boost::function<void (std::string const&, PluginType, VST2Info const&)> cb, bool verbose = false);
+vst2_scan_and_cache (std::string const& path, ARDOUR::PluginType, std::function<void (std::string const&, PluginType, VST2Info const&)> cb, bool verbose = false);
 
 } // namespace ARDOUR
 

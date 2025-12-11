@@ -16,13 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtkardour_patch_change_widget_h__
-#define __gtkardour_patch_change_widget_h__
+#pragma once
 
-#include <gtkmm/box.h>
-#include <gtkmm/notebook.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/table.h>
+#include <ytkmm/box.h>
+#include <ytkmm/notebook.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/table.h>
 
 #include "midi++/midnam_patch.h"
 #include "pbd/signals.h"
@@ -47,7 +46,7 @@ public:
 	virtual ~PatchBankList ();
 
 protected:
-	void refill (boost::shared_ptr<MIDI::Name::ChannelNameSet>, int const bank);
+	void refill (std::shared_ptr<MIDI::Name::ChannelNameSet>, int const bank);
 	void set_active_pgm (uint8_t);
 
 	virtual void select_bank (uint32_t)     = 0;
@@ -63,7 +62,7 @@ private:
 	void select_bank_spin ();
 
 	ArdourWidgets::ArdourButton              _program_btn[128];
-	boost::shared_ptr<MIDI::Name::PatchBank> _current_patch_bank;
+	std::shared_ptr<MIDI::Name::PatchBank> _current_patch_bank;
 	bool                                     _ignore_spin_btn_signals;
 
 };
@@ -74,7 +73,7 @@ public:
 	PatchChangeTab (int channel);
 
 	void refresh ();
-	void reset (boost::shared_ptr<ARDOUR::Route>, boost::shared_ptr<ARDOUR::MIDITrigger>);
+	void reset (std::shared_ptr<ARDOUR::Route>, std::shared_ptr<ARDOUR::MIDITrigger>);
 
 protected:
 	int     bank () const;
@@ -97,15 +96,15 @@ private:
 	int  _bank;
 	bool _ignore_callback;
 
-	boost::shared_ptr<ARDOUR::Route>       _route;
-	boost::shared_ptr<ARDOUR::MIDITrigger> _trigger;
+	std::shared_ptr<ARDOUR::Route>       _route;
+	std::shared_ptr<ARDOUR::MIDITrigger> _trigger;
 	PBD::ScopedConnectionList              _connections;
 };
 
 class PatchChangeWidget : public Gtk::VBox, public PatchBankList
 {
 public:
-	PatchChangeWidget (boost::shared_ptr<ARDOUR::Route>);
+	PatchChangeWidget (std::shared_ptr<ARDOUR::Route>);
 	~PatchChangeWidget ();
 
 	void refresh ();
@@ -142,7 +141,7 @@ private:
 	void cancel_audition ();
 	bool audition_next ();
 
-	boost::shared_ptr<ARDOUR::Route> _route;
+	std::shared_ptr<ARDOUR::Route> _route;
 	ARDOUR::InstrumentInfo&          _info;
 
 	uint8_t _channel;
@@ -172,7 +171,7 @@ class PatchChangeTriggerWindow : public ArdourWindow
 public:
 	PatchChangeTriggerWindow ();
 
-	void reset (boost::shared_ptr<ARDOUR::Route>, boost::shared_ptr<ARDOUR::MIDITrigger>);
+	void reset (std::shared_ptr<ARDOUR::Route>, std::shared_ptr<ARDOUR::MIDITrigger>);
 	void clear ();
 
 private:
@@ -187,7 +186,7 @@ private:
 class PatchChangeGridDialog : public ArdourDialog
 {
 public:
-	PatchChangeGridDialog (boost::shared_ptr<ARDOUR::Route>);
+	PatchChangeGridDialog (std::shared_ptr<ARDOUR::Route>);
 
 	void on_hide ()
 	{
@@ -207,9 +206,8 @@ public:
 	}
 
 private:
-	void                  route_property_changed (const PBD::PropertyChange&, boost::weak_ptr<ARDOUR::Route>);
+	void                  route_property_changed (const PBD::PropertyChange&, std::weak_ptr<ARDOUR::Route>);
 	PBD::ScopedConnection _route_connection;
 	PatchChangeWidget     w;
 };
 
-#endif

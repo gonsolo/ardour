@@ -16,15 +16,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_analysis_h__
-#define __ardour_export_analysis_h__
+#pragma once
 
 #include <cstring>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/types.h"
 
@@ -53,7 +52,7 @@ public:
 		width = std::max<size_t> (800, width);
 
 		peaks.resize (2);
-		peaks[0].resize (w);
+		peaks[0].resize (width);
 		peaks[1].resize (width);
 		spectrum.resize (width);
 
@@ -61,9 +60,9 @@ public:
 			spectrum[i].resize (b);
 		}
 
-		lgraph_i   = new float[width]();
-		lgraph_s   = new float[width]();
-		lgraph_m   = new float[width]();
+		lgraph_i   = new float[width];
+		lgraph_s   = new float[width];
+		lgraph_m   = new float[width];
 		limiter_pk = new float[width]();
 
 		for (size_t i = 0; i < width; ++i) {
@@ -96,7 +95,7 @@ public:
 		lgraph_i   = new float[width];
 		lgraph_s   = new float[width];
 		lgraph_m   = new float[width];
-		limiter_pk = new float[width]();
+		limiter_pk = new float[width];
 
 		truepeakpos[0] = other.truepeakpos[0];
 		truepeakpos[1] = other.truepeakpos[1];
@@ -147,8 +146,7 @@ public:
 	std::set<samplecnt_t> truepeakpos[2]; // bins with >= -1dBTB
 };
 
-typedef boost::shared_ptr<ExportAnalysis>        ExportAnalysisPtr;
+typedef std::shared_ptr<ExportAnalysis>        ExportAnalysisPtr;
 typedef std::map<std::string, ExportAnalysisPtr> AnalysisResults;
 
 } // namespace ARDOUR
-#endif

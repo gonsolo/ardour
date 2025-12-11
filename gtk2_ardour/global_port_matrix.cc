@@ -19,8 +19,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/image.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/image.h>
+#include <ytkmm/stock.h>
 
 #include "global_port_matrix.h"
 #include "utils.h"
@@ -68,8 +68,8 @@ GlobalPortMatrix::set_state (BundleChannel c[2], bool s)
 	for (Bundle::PortList::const_iterator i = in_ports.begin(); i != in_ports.end(); ++i) {
 		for (Bundle::PortList::const_iterator j = out_ports.begin(); j != out_ports.end(); ++j) {
 
-			boost::shared_ptr<Port> p = _session->engine().get_port_by_name (*i);
-			boost::shared_ptr<Port> q = _session->engine().get_port_by_name (*j);
+			std::shared_ptr<Port> p = _session->engine().get_port_by_name (*i);
+			std::shared_ptr<Port> q = _session->engine().get_port_by_name (*j);
 
 			if (p) {
 				if (s) {
@@ -102,7 +102,7 @@ GlobalPortMatrix::get_state (BundleChannel c[2]) const
 		return PortMatrixNode::NOT_ASSOCIATED;
 	}
 
-	if (c[0].bundle->nchannels() == ChanCount::ZERO || c[1].bundle->nchannels() == ChanCount::ZERO) {
+	if (c[0].nchannels() == ChanCount::ZERO || c[1].nchannels() == ChanCount::ZERO) {
 		return PortMatrixNode::NOT_ASSOCIATED;
 	}
 
@@ -117,8 +117,8 @@ GlobalPortMatrix::get_state (BundleChannel c[2]) const
 	for (Bundle::PortList::const_iterator i = in_ports.begin(); i != in_ports.end(); ++i) {
 		for (Bundle::PortList::const_iterator j = out_ports.begin(); j != out_ports.end(); ++j) {
 
-			boost::shared_ptr<Port> p = AudioEngine::instance()->get_port_by_name (*i);
-			boost::shared_ptr<Port> q = AudioEngine::instance()->get_port_by_name (*j);
+			std::shared_ptr<Port> p = AudioEngine::instance()->get_port_by_name (*i);
+			std::shared_ptr<Port> q = AudioEngine::instance()->get_port_by_name (*j);
 
 			if (!p && !q) {
 				/* two non-Ardour ports; things are slightly more involved */

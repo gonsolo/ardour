@@ -20,7 +20,7 @@
 #ifndef _gtk_ardour_trigger_master_h_
 #define _gtk_ardour_trigger_master_h_
 
-#include <gtkmm/colorselection.h>
+#include <ytkmm/colorselection.h>
 
 #include "pbd/properties.h"
 
@@ -65,7 +65,7 @@ public:
 	TriggerMaster (ArdourCanvas::Item* canvas);
 	~TriggerMaster ();
 
-	void set_triggerbox (boost::shared_ptr<ARDOUR::TriggerBox>);
+	void set_triggerbox (std::shared_ptr<ARDOUR::TriggerBox>);
 
 	void render (ArdourCanvas::Rect const&, Cairo::RefPtr<Cairo::Context>) const;
 
@@ -79,7 +79,7 @@ public:
 	void selection_change ();
 
 private:
-	void context_menu ();
+	void context_menu (GdkEventButton*);
 
 	void clear_all_triggers();
 	void set_all_colors();
@@ -93,7 +93,7 @@ private:
 	void set_default_colors ();
 	void shape_stop_button ();
 
-	boost::shared_ptr<ARDOUR::TriggerBox> _triggerbox;
+	std::shared_ptr<ARDOUR::TriggerBox> _triggerbox;
 
 	Loopster* _loopster;
 
@@ -109,7 +109,7 @@ private:
 	sigc::connection      _update_connection;
 };
 
-typedef std::list<boost::shared_ptr<ARDOUR::TriggerBox> > TriggerBoxList;
+typedef std::list<std::shared_ptr<ARDOUR::TriggerBox> > TriggerBoxList;
 
 class CueMaster : public ArdourCanvas::Rectangle, public ARDOUR::SessionHandlePtr
 {
@@ -127,7 +127,7 @@ public:
 	bool event_handler (GdkEvent*);
 
 private:
-	void context_menu ();
+	void context_menu (GdkEventButton*);
 
 	void get_boxen (TriggerBoxList &boxlist);
 	void clear_all_triggers();

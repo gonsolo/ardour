@@ -20,18 +20,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_ui_midi_channel_selector_h__
-#define __ardour_ui_midi_channel_selector_h__
+#pragma once
 
 #include <set>
-#include "boost/shared_ptr.hpp"
 #include "sigc++/trackable.h"
 
-#include "gtkmm/table.h"
-#include "gtkmm/box.h"
-#include "gtkmm/button.h"
-#include "gtkmm/radiobutton.h"
-#include "gtkmm/label.h"
+#include "ytkmm/table.h"
+#include "ytkmm/box.h"
+#include "ytkmm/button.h"
+#include "ytkmm/radiobutton.h"
+#include "ytkmm/label.h"
 
 #include "widgets/stateful_button.h"
 
@@ -123,14 +121,14 @@ protected:
 class MidiChannelSelectorWindow : public ArdourWindow, public PBD::ScopedConnectionList
 {
 public:
-	MidiChannelSelectorWindow (boost::shared_ptr<ARDOUR::MidiTrack>);
+	MidiChannelSelectorWindow (std::shared_ptr<ARDOUR::MidiTrack>);
 	~MidiChannelSelectorWindow ();
 
 	void set_channel_colors (const uint32_t new_channel_colors[16]);
 	void set_default_channel_color();
 
 private:
-	boost::shared_ptr<ARDOUR::MidiTrack> track;
+	std::shared_ptr<ARDOUR::MidiTrack> track;
 	std::vector<Gtk::ToggleButton*> playback_buttons;
 	std::vector<Gtk::ToggleButton*> capture_buttons;
 
@@ -183,4 +181,3 @@ private:
 	void playback_mode_toggled (ARDOUR::ChannelMode);
 };
 
-#endif /*__ardour_ui_midi_channel_selector_h__*/

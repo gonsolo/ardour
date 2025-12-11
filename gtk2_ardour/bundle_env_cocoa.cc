@@ -17,8 +17,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <unistd.h>
-
 #include <string>
 #include <vector>
 #include <cerrno>
@@ -54,11 +52,14 @@ using namespace std;
 
 extern void set_language_preference (); // cocoacarbon.mm
 extern void no_app_nap (); // cocoacarbon.mm
-extern int query_darwin_version (); // cocoacarbon.mm
 
 static void
 setup_logging (void)
 {
+	if (g_getenv ("ARDOUR_NOLOG_STD")) {
+		return;
+	}
+
 	char path[PATH_MAX+1];
 	snprintf (path, sizeof (path), "%s/stderr.log", user_config_directory().c_str());
 
@@ -97,13 +98,6 @@ fixup_bundle_environment (int argc, char* argv[], string & localedir)
 
 	if (g_getenv ("ARDOUR_BUNDLED") || g_getenv ("ARDOUR_LOGGING")) {
 		setup_logging ();
-	}
-
-	if (query_darwin_version () >= 19) {
-		/* on Catalina, do not use NSGLView */
-		g_setenv ("ARDOUR_NSGL", "0", 0);
-	} else {
-		g_setenv ("ARDOUR_NSGL", "1", 0);
 	}
 
 	no_app_nap ();

@@ -20,9 +20,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_controllable_h__
-#define __pbd_controllable_h__
+#pragma once
 
+#include <memory>
 #include <string>
 #include <set>
 
@@ -30,7 +30,6 @@
 #include "pbd/signals.h"
 #include <glibmm/threads.h>
 
-#include <boost/enable_shared_from_this.hpp>
 
 #include "pbd/statefuldestructible.h"
 
@@ -39,7 +38,7 @@ class XMLNode;
 namespace PBD {
 
 class Controllable;
-typedef std::set<boost::shared_ptr<Controllable>> ControllableSet;
+typedef std::set<std::shared_ptr<Controllable>> ControllableSet;
 
 /** This is a pure virtual class to represent a scalar control.
  *
@@ -69,7 +68,7 @@ typedef std::set<boost::shared_ptr<Controllable>> ControllableSet;
  * e.g. gain, which is presented to the user in log terms (dB)
  * but passed to the processor as a linear quantity.
  */
-class LIBPBD_API Controllable : public PBD::StatefulDestructible, public boost::enable_shared_from_this<Controllable>
+class LIBPBD_API Controllable : public PBD::StatefulDestructible, public std::enable_shared_from_this<Controllable>
 {
 public:
 	enum Flag {
@@ -79,6 +78,7 @@ public:
 		NotAutomatable = 0x08,
 		InlineControl  = 0x10,
 		HiddenControl  = 0x20,
+		MonitorControl = 0x40,
 	};
 
 	Controllable (const std::string& name, Flag f = Flag (0));
@@ -138,15 +138,15 @@ public:
 
 	virtual std::string get_user_string() const { return std::string(); }
 
-	PBD::Signal0<void> LearningFinished;
+	PBD::Signal<void()> LearningFinished;
 
-	static PBD::Signal1<bool, boost::weak_ptr<PBD::Controllable> > StartLearning;
-	static PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > StopLearning;
+	static PBD::Signal<bool(std::weak_ptr<PBD::Controllable> )> StartLearning;
+	static PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> StopLearning;
 
-	static PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > GUIFocusChanged;
-	static PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > ControlTouched;
+	static PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> GUIFocusChanged;
+	static PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> ControlTouched;
 
-	PBD::Signal2<void,bool,PBD::Controllable::GroupControlDisposition> Changed;
+	PBD::Signal<void(bool,PBD::Controllable::GroupControlDisposition)> Changed;
 
 	int set_state (const XMLNode&, int version);
 	virtual XMLNode& get_state () const;
@@ -154,7 +154,7 @@ public:
 	std::string name() const { return _name; }
 
 	bool touching () const { return _touching; }
-	PBD::Signal0<void> TouchChanged;
+	PBD::Signal<void()> TouchChanged;
 
 	bool is_toggle() const { return _flags & Toggle; }
 	bool is_gain_like() const { return _flags & GainLike; }
@@ -169,7 +169,7 @@ public:
 	void set_flag (Flag f); ///< _flags |= f;
 	void clear_flag (Flag f); ///< _flags &= ~f;
 
-	static boost::shared_ptr<Controllable> by_id (const PBD::ID&);
+	static std::shared_ptr<Controllable> by_id (const PBD::ID&);
 	static void dump_registry ();
 	static ControllableSet registered_controllables ();
 
@@ -200,4 +200,3 @@ private:
 
 }
 
-#endif /* __pbd_controllable_h__ */

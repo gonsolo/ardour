@@ -42,7 +42,7 @@ using namespace std;
 using namespace ARDOUR;
 using namespace PBD;
 
-PlaylistSource::PlaylistSource (Session& s, const ID& orig, const std::string& name, boost::shared_ptr<Playlist> p, DataType type,
+PlaylistSource::PlaylistSource (Session& s, const ID& orig, const std::string& name, std::shared_ptr<Playlist> p, DataType type,
                                 timepos_t const & begin, timepos_t const & len, Source::Flag /*flags*/)
 	: Source (s, type, name)
 	, _playlist (p)
@@ -119,9 +119,13 @@ PlaylistSource::set_state (const XMLNode& node, int /*version*/)
 
 	nlist = node.children();
 
+	if (_playlist) {
+		_playlist->release ();
+	}
+
 	for (niter = nlist.begin(); niter != nlist.end(); ++niter) {
 		if ((*niter)->name() == "Playlist") {
-			_playlist = PlaylistFactory::create (_session, **niter, true, false);
+			_playlist = PlaylistFactory::create (_session, **niter, true);
 			break;
 		}
 	}
@@ -129,6 +133,8 @@ PlaylistSource::set_state (const XMLNode& node, int /*version*/)
 	if (!_playlist) {
 		error << _("Could not construct playlist for PlaylistSource from session data!") << endmsg;
 		throw failed_constructor ();
+	} else {
+		_playlist->use ();
 	}
 
 	/* other properties */

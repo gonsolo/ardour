@@ -35,15 +35,15 @@
 #undef NO
 #endif
 
-#include <gtkmm/widget.h>
-#include <gtkmm/eventbox.h>
+#include <ytkmm/widget.h>
+#include <ytkmm/eventbox.h>
 
 #include "vst3_plugin_ui.h"
 
 class VST3NSViewPluginUI : public VST3PluginUI
 {
 public:
-	VST3NSViewPluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase>, boost::shared_ptr<ARDOUR::VST3Plugin>);
+	VST3NSViewPluginUI (std::shared_ptr<ARDOUR::PlugInsertBase>, std::shared_ptr<ARDOUR::VST3Plugin>);
 	~VST3NSViewPluginUI ();
 
 	bool on_window_show(const std::string&);

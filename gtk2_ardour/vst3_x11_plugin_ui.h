@@ -21,15 +21,15 @@
 
 #ifdef VST3_SUPPORT
 
-#include <gtkmm/widget.h>
-#include <gtkmm/socket.h>
+#include <ytkmm/widget.h>
+#include <ytkmm/socket.h>
 
 #include "vst3_plugin_ui.h"
 
 class VST3X11PluginUI : public VST3PluginUI
 {
 public:
-	VST3X11PluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase>, boost::shared_ptr<ARDOUR::VST3Plugin>);
+	VST3X11PluginUI (std::shared_ptr<ARDOUR::PlugInsertBase>, std::shared_ptr<ARDOUR::VST3Plugin>);
 	~VST3X11PluginUI ();
 
 	bool on_window_show(const std::string&);

@@ -16,10 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_muteable_h__
-#define __ardour_muteable_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 
 #include "pbd/signals.h"
 
@@ -37,16 +36,15 @@ public:
 	virtual void act_on_mute () {}
 	virtual bool muted_by_others_soloing () const = 0;
 
-	boost::shared_ptr<MuteMaster> mute_master() const {
+	std::shared_ptr<MuteMaster> mute_master() const {
 		return _mute_master;
 	}
 
-	PBD::Signal0<void> mute_points_changed;
+	PBD::Signal<void()> mute_points_changed;
 
 protected:
-	boost::shared_ptr<MuteMaster> _mute_master;
+	std::shared_ptr<MuteMaster> _mute_master;
 };
 
 } /* namespace */
 
-#endif /* __ardour_muteable_h__ */

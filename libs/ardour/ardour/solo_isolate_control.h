@@ -16,12 +16,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_solo_isolate_control_h__
-#define __ardour_solo_isolate_control_h__
+#pragma once
 
+#include <memory>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/slavable_automation_control.h"
 #include "ardour/libardour_visibility.h"
@@ -37,7 +35,7 @@ class Muteable;
 class LIBARDOUR_API SoloIsolateControl : public SlavableAutomationControl
 {
   public:
-	SoloIsolateControl (Session& session, std::string const & name, Soloable& soloable, Temporal::TimeDomain);
+	SoloIsolateControl (Session& session, std::string const & name, Soloable& soloable, Temporal::TimeDomainProvider const &);
 
 	double get_value () const;
 
@@ -73,7 +71,7 @@ class LIBARDOUR_API SoloIsolateControl : public SlavableAutomationControl
 	XMLNode& get_state () const;
 
   protected:
-	void master_changed (bool from_self, PBD::Controllable::GroupControlDisposition gcd, boost::weak_ptr<AutomationControl>);
+	void master_changed (bool from_self, PBD::Controllable::GroupControlDisposition gcd, std::weak_ptr<AutomationControl>);
 	void actually_set_value (double, PBD::Controllable::GroupControlDisposition group_override);
 
   private:
@@ -87,4 +85,3 @@ class LIBARDOUR_API SoloIsolateControl : public SlavableAutomationControl
 
 } /* namespace */
 
-#endif /* __libardour_solo_isolate_control_h__ */

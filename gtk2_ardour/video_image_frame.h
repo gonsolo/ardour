@@ -16,8 +16,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#ifndef __ardour_video_image_frame_h__
-#define __ardour_video_image_frame_h__
+#pragma once
 
 #include <string>
 #include <glib.h>
@@ -60,14 +59,14 @@ class VideoImageFrame : public sigc::trackable
 	std::string get_video_filename ()   {return video_filename;}
 
 	void http_download_done (char *);
-	PBD::Signal0<void> ImgChanged;
+	PBD::Signal<void()> ImgChanged;
 
 	protected:
 
 	PublicEditor& editor;
 	ArdourCanvas::Container *_parent;
 	ArdourCanvas::Image *image;
-	boost::shared_ptr<ArdourCanvas::Image::Data> img;
+	std::shared_ptr<ArdourCanvas::Image::Data> img;
 
 	int clip_width;
 	int clip_height;
@@ -104,4 +103,3 @@ class VideoImageFrame : public sigc::trackable
 
 };
 
-#endif /* __ardour_video_image_frame_h__ */

@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_port_insert_h__
-#define __ardour_port_insert_h__
+#pragma once
 
 #include <vector>
 #include <string>
@@ -51,16 +50,14 @@ class Pannable;
 class LIBARDOUR_API PortInsert : public IOProcessor
 {
 public:
-	PortInsert (Session&, boost::shared_ptr<Pannable>, boost::shared_ptr<MuteMaster> mm);
+	PortInsert (Session&, std::shared_ptr<Pannable>, std::shared_ptr<MuteMaster> mm);
 	~PortInsert ();
 
 	int set_state (const XMLNode&, int version);
 
 	void run (BufferSet& bufs, samplepos_t start_sample, samplepos_t end_sample, double speed, pframes_t nframes, bool);
 
-	void flush_buffers (samplecnt_t nframes) {
-		_out->flush_buffers (nframes);
-	}
+	void flush_buffers (samplecnt_t nframes);
 
 	samplecnt_t signal_latency () const;
 
@@ -86,31 +83,31 @@ public:
 
 	static std::string name_and_id_new_insert (Session&, uint32_t&);
 
-	boost::shared_ptr<AutomationControl> send_polarity_control () const {
+	std::shared_ptr<AutomationControl> send_polarity_control () const {
 		return _out->polarity_control ();
 	}
 
-	boost::shared_ptr<GainControl> send_gain_control () const {
+	std::shared_ptr<GainControl> send_gain_control () const {
 		return _out->gain_control ();
 	}
 
-	boost::shared_ptr<Amp> send_amp() const {
+	std::shared_ptr<Amp> send_amp() const {
 		return _out->amp ();
 	}
 
-	boost::shared_ptr<Amp> return_amp() const {
+	std::shared_ptr<Amp> return_amp() const {
 		return _amp;
 	}
 
-	boost::shared_ptr<GainControl> return_gain_control () const {
+	std::shared_ptr<GainControl> return_gain_control () const {
 		return _gain_control;
 	}
 
-	boost::shared_ptr<PeakMeter> send_meter() const {
+	std::shared_ptr<PeakMeter> send_meter() const {
 		return _send_meter;
 	}
 
-	boost::shared_ptr<PeakMeter> return_meter() const {
+	std::shared_ptr<PeakMeter> return_meter() const {
 		return _return_meter;
 	}
 
@@ -131,11 +128,11 @@ private:
 	void io_changed (IOChange change, void*);
 	void latency_changed ();
 
-	boost::shared_ptr<Delivery>    _out;
-	boost::shared_ptr<Amp>         _amp;
-	boost::shared_ptr<GainControl> _gain_control;
-	boost::shared_ptr<PeakMeter>   _send_meter;
-	boost::shared_ptr<PeakMeter>   _return_meter;
+	std::shared_ptr<Delivery>    _out;
+	std::shared_ptr<Amp>         _amp;
+	std::shared_ptr<GainControl> _gain_control;
+	std::shared_ptr<PeakMeter>   _send_meter;
+	std::shared_ptr<PeakMeter>   _return_meter;
 	bool                           _metering;
 	uint32_t                       _io_latency;
 	uint32_t                       _signal_latency;
@@ -148,4 +145,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_port_insert_h__ */

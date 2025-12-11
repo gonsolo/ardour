@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/stock.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/compose.h"
 
@@ -33,7 +33,7 @@
 
 using namespace ARDOUR;
 
-MidiExportDialog::MidiExportDialog (PublicEditor&, boost::shared_ptr<MidiRegion> region)
+MidiExportDialog::MidiExportDialog (PublicEditor&, std::shared_ptr<MidiRegion> region)
 	: ArdourDialog (string_compose (_("Export MIDI: %1"), region->name()))
 	, file_chooser (Gtk::FILE_CHOOSER_ACTION_SAVE)
 {

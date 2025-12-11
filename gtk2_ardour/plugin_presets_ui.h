@@ -19,14 +19,14 @@
 #ifndef _gtkardour_plugin_presets_ui_h_
 #define _gtkardour_plugin_presets_ui_h_
 
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/table.h>
-#include <gtkmm/textview.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/table.h>
+#include <ytkmm/textview.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
 
 #include "widgets/ardour_button.h"
 
@@ -35,7 +35,7 @@
 class PluginPresetsUI : public Gtk::Table
 {
 public:
-	PluginPresetsUI (boost::shared_ptr<ARDOUR::PluginInsert>);
+	PluginPresetsUI (std::shared_ptr<ARDOUR::PluginInsert>);
 
 private:
 	void update_preset_list ();
@@ -44,7 +44,7 @@ private:
 	void preset_row_activated (Gtk::TreeModel::Path, Gtk::TreeViewColumn*);
 	void load_preset ();
 
-	boost::shared_ptr<ARDOUR::PluginInsert> _insert;
+	std::shared_ptr<ARDOUR::PluginInsert> _insert;
 	PBD::ScopedConnectionList _preset_connections;
 
 	struct PluginPreset {

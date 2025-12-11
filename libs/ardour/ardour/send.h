@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_send_h__
-#define __ardour_send_h__
+#pragma once
 
 #include <string>
 
@@ -55,8 +54,8 @@ public:
 	virtual void set_delay_out (samplecnt_t, size_t bus = 0) = 0;
 	virtual void update_delaylines (bool rt_ok) = 0;
 
-	static PBD::Signal0<void> ChangedLatency;
-	static PBD::Signal0<void> QueueUpdate;
+	static PBD::Signal<void()> ChangedLatency;
+	static PBD::Signal<void()> QueueUpdate;
 
 protected:
 	samplecnt_t _delay_in;
@@ -66,20 +65,20 @@ protected:
 class LIBARDOUR_API Send : public Delivery, public LatentSend
 {
 public:
-	Send (Session&, boost::shared_ptr<Pannable> pannable, boost::shared_ptr<MuteMaster>, Delivery::Role r = Delivery::Send, bool ignore_bitslot = false);
+	Send (Session&, std::shared_ptr<Pannable> pannable, std::shared_ptr<MuteMaster>, Delivery::Role r = Delivery::Send, bool ignore_bitslot = false);
 	virtual ~Send ();
 
 	bool display_to_user() const;
 	bool is_foldback () const { return _role == Foldback; }
 
-	boost::shared_ptr<PeakMeter> meter() const { return _meter; }
+	std::shared_ptr<PeakMeter> meter() const { return _meter; }
 
 	bool metering() const { return _metering; }
 	void set_metering (bool yn) { _metering = yn; }
 
 	int set_state(const XMLNode&, int version);
 
-	PBD::Signal0<void> SelfDestruct;
+	PBD::Signal<void()> SelfDestruct;
 	void set_remove_on_disconnect (bool b) { _remove_on_disconnect = b; }
 	bool remove_on_disconnect () const { return _remove_on_disconnect; }
 
@@ -114,9 +113,9 @@ protected:
 	XMLNode& state () const;
 
 	bool _metering;
-	boost::shared_ptr<PeakMeter> _meter;
-	boost::shared_ptr<DelayLine> _send_delay;
-	boost::shared_ptr<DelayLine> _thru_delay;
+	std::shared_ptr<PeakMeter> _meter;
+	std::shared_ptr<DelayLine> _send_delay;
+	std::shared_ptr<DelayLine> _thru_delay;
 
 private:
 	/* disallow copy construction */
@@ -133,4 +132,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif /* __ardour_send_h__ */

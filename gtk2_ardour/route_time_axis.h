@@ -22,20 +22,19 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_route_time_axis_h__
-#define __ardour_route_time_axis_h__
+#pragma once
 
 #include <list>
 #include <set>
 
-#include <gtkmm/table.h>
-#include <gtkmm/button.h>
-#include <gtkmm/box.h>
-#include <gtkmm/menu.h>
-#include <gtkmm/menuitem.h>
-#include <gtkmm/radiomenuitem.h>
-#include <gtkmm/checkmenuitem.h>
-#include <gtkmm/adjustment.h>
+#include <ytkmm/table.h>
+#include <ytkmm/button.h>
+#include <ytkmm/box.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/menuitem.h>
+#include <ytkmm/radiomenuitem.h>
+#include <ytkmm/checkmenuitem.h>
+#include <ytkmm/adjustment.h>
 
 #include "widgets/ardour_button.h"
 
@@ -69,7 +68,7 @@ class Selection;
 class RegionSelection;
 class Selectable;
 class AutomationTimeAxisView;
-class AutomationLine;
+class EditorAutomationLine;
 class TimeSelection;
 class RouteGroupMenu;
 class ItemCounts;
@@ -85,9 +84,9 @@ public:
 	bool marked_for_display () const;
 	bool set_marked_for_display (bool);
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
+	std::shared_ptr<ARDOUR::Stripable> stripable() const { return RouteUI::stripable(); }
 
-	void set_route (boost::shared_ptr<ARDOUR::Route>);
+	void set_route (std::shared_ptr<ARDOUR::Route>);
 
 	void show_selection (TimeSelection&);
 	void set_button_names ();
@@ -99,7 +98,7 @@ public:
 	void selection_click (GdkEventButton*);
 	void set_selected_points (PointSelection&);
 	void set_selected_regionviews (RegionSelection&);
-	void get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double top, double bot, std::list<Selectable *>&, bool within = false);
+	void _get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double top, double bot, std::list<Selectable *>&, bool within);
 	void get_inverted_selectables (Selection&, std::list<Selectable*>&);
 	void get_regionviews_at_or_after (Temporal::timepos_t const &, RegionSelection&);
 
@@ -107,7 +106,7 @@ public:
 	void toggle_layer_display ();
 	LayerDisplay layer_display () const;
 
-	boost::shared_ptr<ARDOUR::Region> find_next_region (ARDOUR::timepos_t const & pos, ARDOUR::RegionPoint, int32_t dir);
+	std::shared_ptr<ARDOUR::Region> find_next_region (ARDOUR::timepos_t const & pos, ARDOUR::RegionPoint, int32_t dir);
 	ARDOUR::timepos_t find_next_region_boundary (ARDOUR::timepos_t const & pos, int32_t dir);
 
 	/* Editing operations */
@@ -119,18 +118,14 @@ public:
 	void toggle_automation_track (const Evoral::Parameter& param);
 	void fade_range (TimeSelection&);
 
-	void add_underlay (StreamView*, bool update_xml = true);
-	void remove_underlay (StreamView*);
-	void build_underlay_menu(Gtk::Menu*);
-
 	int set_state (const XMLNode&, int version);
 
 	virtual Gtk::CheckMenuItem* automation_child_menu_item (Evoral::Parameter);
-	virtual boost::shared_ptr<AutomationTimeAxisView> automation_child(Evoral::Parameter param, PBD::ID ctrl_id = PBD::ID(0));
+	virtual std::shared_ptr<AutomationTimeAxisView> automation_child(Evoral::Parameter param, PBD::ID ctrl_id = PBD::ID(0));
 
 	StreamView*         view() const { return _view; }
 	ARDOUR::RouteGroup* route_group() const;
-	boost::shared_ptr<ARDOUR::Playlist> playlist() const;
+	std::shared_ptr<ARDOUR::Playlist> playlist() const;
 
 	void fast_update ();
 	void hide_meter ();
@@ -156,7 +151,7 @@ protected:
 	struct ProcessorAutomationNode {
 		Evoral::Parameter                         what;
 		Gtk::CheckMenuItem*                       menu_item;
-		boost::shared_ptr<AutomationTimeAxisView> view;
+		std::shared_ptr<AutomationTimeAxisView> view;
 		RouteTimeAxisView&                        parent;
 
 		ProcessorAutomationNode (Evoral::Parameter w, Gtk::CheckMenuItem* mitem, RouteTimeAxisView& p)
@@ -166,12 +161,12 @@ protected:
 	};
 
 	struct ProcessorAutomationInfo {
-		boost::shared_ptr<ARDOUR::Processor> processor;
+		std::shared_ptr<ARDOUR::Processor> processor;
 		bool                                  valid;
 		Gtk::Menu*                            menu;
 		std::vector<ProcessorAutomationNode*> lines;
 
-		ProcessorAutomationInfo (boost::shared_ptr<ARDOUR::Processor> i)
+		ProcessorAutomationInfo (std::shared_ptr<ARDOUR::Processor> i)
 		    : processor (i), valid (true), menu (0) {}
 
 		~ProcessorAutomationInfo ();
@@ -184,34 +179,34 @@ protected:
 
 	virtual void processors_changed (ARDOUR::RouteProcessorChange);
 
-	virtual void add_processor_to_subplugin_menu (boost::weak_ptr<ARDOUR::Processor>);
+	virtual void add_processor_to_subplugin_menu (std::weak_ptr<ARDOUR::Processor>);
 	void remove_processor_automation_node (ProcessorAutomationNode* pan);
 
 	void processor_menu_item_toggled (RouteTimeAxisView::ProcessorAutomationInfo*,
 	                                 RouteTimeAxisView::ProcessorAutomationNode*);
 
 	void processor_automation_track_hidden (ProcessorAutomationNode*,
-	                                       boost::shared_ptr<ARDOUR::Processor>);
+	                                       std::shared_ptr<ARDOUR::Processor>);
 
 
 	ProcessorAutomationNode*
-	find_processor_automation_node (boost::shared_ptr<ARDOUR::Processor> i, Evoral::Parameter);
+	find_processor_automation_node (std::shared_ptr<ARDOUR::Processor> i, Evoral::Parameter);
 
 	/* O(log(N)) lookup of menu-item by AC */
 	Gtk::CheckMenuItem*
-	find_menu_item_by_ctrl (boost::shared_ptr<ARDOUR::AutomationControl>);
+	find_menu_item_by_ctrl (std::shared_ptr<ARDOUR::AutomationControl>);
 
 	/* O(1) IFF route_owned_only == true, O(N) otherwise */
-	boost::shared_ptr<AutomationTimeAxisView>
-	find_atav_by_ctrl (boost::shared_ptr<ARDOUR::AutomationControl>, bool route_owned_only = true);
+	std::shared_ptr<AutomationTimeAxisView>
+	find_atav_by_ctrl (std::shared_ptr<ARDOUR::AutomationControl>, bool route_owned_only = true);
 
-	boost::shared_ptr<AutomationLine>
-	find_processor_automation_curve (boost::shared_ptr<ARDOUR::Processor> i, Evoral::Parameter);
+	std::shared_ptr<EditorAutomationLine>
+	find_processor_automation_curve (std::shared_ptr<ARDOUR::Processor> i, Evoral::Parameter);
 
-	void add_processor_automation_curve (boost::shared_ptr<ARDOUR::Processor> r, Evoral::Parameter);
-	void add_existing_processor_automation_curves (boost::weak_ptr<ARDOUR::Processor>);
+	void add_processor_automation_curve (std::shared_ptr<ARDOUR::Processor> r, Evoral::Parameter);
+	void add_existing_processor_automation_curves (std::weak_ptr<ARDOUR::Processor>);
 
-	boost::shared_ptr<AutomationLine> automation_child_by_alist_id (PBD::ID);
+	std::shared_ptr<AutomationLine> automation_child_by_alist_id (PBD::ID);
 
 	void reset_processor_automation_curves ();
 
@@ -272,9 +267,9 @@ protected:
 	 */
 	std::list<ProcessorAutomationInfo*> processor_automation;
 
-	std::map<boost::shared_ptr<PBD::Controllable>, Gtk::CheckMenuItem*> ctrl_item_map;
+	std::map<std::shared_ptr<PBD::Controllable>, Gtk::CheckMenuItem*> ctrl_item_map;
 
-	typedef std::vector<boost::shared_ptr<AutomationLine> > ProcessorAutomationCurves;
+	typedef std::vector<std::shared_ptr<EditorAutomationLine> > ProcessorAutomationCurves;
 	ProcessorAutomationCurves processor_automation_curves;
 	/** parameter -> menu item map for the plugin automation menu */
 	ParameterMenuMap _subplugin_menu_map;
@@ -282,14 +277,6 @@ protected:
 	void post_construct ();
 
 	GainMeterBase gm;
-
-	XMLNode* underlay_xml_node;
-	bool set_underlay_state();
-
-	typedef std::list<StreamView*> UnderlayList;
-	UnderlayList _underlay_streams;
-	typedef std::list<RouteTimeAxisView*> UnderlayMirrorList;
-	UnderlayMirrorList _underlay_mirrors;
 
 	bool _ignore_set_layer_display;
 	void layer_display_menu_change (Gtk::MenuItem* item);
@@ -303,17 +290,17 @@ protected:
 	 */
 	void ensure_pan_views (bool show = true);
 
-	std::list<boost::shared_ptr<AutomationTimeAxisView> > pan_tracks;
+	std::list<std::shared_ptr<AutomationTimeAxisView> > pan_tracks;
 	Gtk::CheckMenuItem* pan_automation_item;
 
 private:
 
-	void remove_child (boost::shared_ptr<TimeAxisView>);
+	void remove_child (std::shared_ptr<TimeAxisView>);
 	void update_playlist_tip ();
 	void parameter_changed (std::string const & p);
 	void update_track_number_visibility();
-	void show_touched_automation (boost::weak_ptr<PBD::Controllable>);
-	void maybe_hide_automation (bool, boost::weak_ptr<PBD::Controllable>);
+	void show_touched_automation (std::weak_ptr<PBD::Controllable>);
+	void maybe_hide_automation (bool, ARDOUR::WeakAutomationControlList);
 
 	void drop_instrument_ref ();
 	void reread_midnam ();
@@ -323,4 +310,3 @@ private:
 	sigc::connection      ctrl_autohide_connection;
 };
 
-#endif /* __ardour_route_time_axis_h__ */

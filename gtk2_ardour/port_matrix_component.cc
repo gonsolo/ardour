@@ -126,7 +126,7 @@ PortMatrixComponent::background_colour ()
  *  @return Visible size of the group in grid units, taking visibility and show_only_bundles into account.
  */
 uint32_t
-PortMatrixComponent::group_size (boost::shared_ptr<const PortGroup> g) const
+PortMatrixComponent::group_size (std::shared_ptr<const PortGroup> g) const
 {
 	uint32_t s = 0;
 
@@ -147,7 +147,7 @@ PortMatrixComponent::group_size (boost::shared_ptr<const PortGroup> g) const
  *  @return Position of bc in groups in grid units, taking show_only_bundles into account.
  */
 uint32_t
-PortMatrixComponent::channel_to_position (ARDOUR::BundleChannel bc, boost::shared_ptr<const PortGroup> group) const
+PortMatrixComponent::channel_to_position (ARDOUR::BundleChannel bc, std::shared_ptr<const PortGroup> group) const
 {
 	uint32_t p = 0;
 
@@ -181,7 +181,7 @@ PortMatrixComponent::channel_to_position (ARDOUR::BundleChannel bc, boost::share
 
 
 ARDOUR::BundleChannel
-PortMatrixComponent::position_to_channel (double p, double, boost::shared_ptr<const PortGroup> group) const
+PortMatrixComponent::position_to_channel (double p, double, std::shared_ptr<const PortGroup> group) const
 {
 	p /= grid_spacing ();
 
@@ -201,11 +201,14 @@ PortMatrixComponent::position_to_channel (double p, double, boost::shared_ptr<co
 			ARDOUR::ChanCount const N = (*j)->bundle->nchannels ();
 
 			uint32_t const s = _matrix->count_of_our_type_min_1 (N);
-			if (p < s) {
+
+			if (p < 0) {
+				break;
+			} else if (p < s) {
 				if (p < _matrix->count_of_our_type (N)) {
 					return ARDOUR::BundleChannel ((*j)->bundle, (*j)->bundle->type_channel_to_overall (_matrix->type (), p));
 				} else {
-					return ARDOUR::BundleChannel (boost::shared_ptr<ARDOUR::Bundle> (), -1);
+					return ARDOUR::BundleChannel (std::shared_ptr<ARDOUR::Bundle> (), -1);
 				}
 			} else {
 				p -= s;
@@ -215,7 +218,7 @@ PortMatrixComponent::position_to_channel (double p, double, boost::shared_ptr<co
 
 	}
 
-	return ARDOUR::BundleChannel (boost::shared_ptr<ARDOUR::Bundle> (), -1);
+	return ARDOUR::BundleChannel (std::shared_ptr<ARDOUR::Bundle> (), -1);
 }
 
 uint32_t

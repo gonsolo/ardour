@@ -2,7 +2,7 @@
  * Copyright (C) 2006-2016 David Robillard <d@drobilla.net>
  * Copyright (C) 2007-2017 Paul Davis <paul@linuxaudiosystems.com>
  * Copyright (C) 2010 Carl Hetherington <carl@carlh.net>
- * Copyright (C) 2013-2019 Robin Gareus <robin@gareus.org>
+ * Copyright (C) 2013-2023 Robin Gareus <robin@gareus.org>
  * Copyright (C) 2014-2017 Tim Mayberry <mojofunk@gmail.com>
  * Copyright (C) 2015-2016 Nick Mainsbridge <mainsbridge@gmail.com>
  * Copyright (C) 2018 Julien "_FrnchFrgg_" RIVAUD <frnchfrgg@free.fr>
@@ -66,16 +66,6 @@
 #include <AudioToolbox/AudioUnitUtilities.h>
 #ifdef WITH_CARBON
 #include <Carbon/Carbon.h>
-#endif
-
-#ifdef COREAUDIO105
-#define ArdourComponent Component
-#define ArdourDescription ComponentDescription
-#define ArdourFindNext FindNextComponent
-#else
-#define ArdourComponent AudioComponent
-#define ArdourDescription AudioComponentDescription
-#define ArdourFindNext AudioComponentFindNext
 #endif
 
 #include "pbd/i18n.h"
@@ -279,8 +269,7 @@ get_preset_name_in_plist (CFPropertyListRef plist)
 //--------------------------------------------------------------------------
 // general implementation for ComponentDescriptionsMatch() and ComponentDescriptionsMatch_Loosely()
 // if inIgnoreType is true, then the type code is ignored in the ComponentDescriptions
-Boolean ComponentDescriptionsMatch_General(const ArdourDescription * inComponentDescription1, const ArdourDescription * inComponentDescription2, Boolean inIgnoreType);
-Boolean ComponentDescriptionsMatch_General(const ArdourDescription * inComponentDescription1, const ArdourDescription * inComponentDescription2, Boolean inIgnoreType)
+Boolean ComponentDescriptionsMatch_General(const AudioComponentDescription * inComponentDescription1, const AudioComponentDescription * inComponentDescription2, Boolean inIgnoreType)
 {
 	if ( (inComponentDescription1 == NULL) || (inComponentDescription2 == NULL) )
 		return FALSE;
@@ -302,21 +291,16 @@ Boolean ComponentDescriptionsMatch_General(const ArdourDescription * inComponent
 //--------------------------------------------------------------------------
 // general implementation for ComponentAndDescriptionMatch() and ComponentAndDescriptionMatch_Loosely()
 // if inIgnoreType is true, then the type code is ignored in the ComponentDescriptions
-Boolean ComponentAndDescriptionMatch_General(ArdourComponent inComponent, const ArdourDescription * inComponentDescription, Boolean inIgnoreType);
-Boolean ComponentAndDescriptionMatch_General(ArdourComponent inComponent, const ArdourDescription * inComponentDescription, Boolean inIgnoreType)
+Boolean ComponentAndDescriptionMatch_General(AudioComponent inComponent, const AudioComponentDescription * inComponentDescription, Boolean inIgnoreType)
 {
 	OSErr status;
-	ArdourDescription desc;
+	AudioComponentDescription desc;
 
 	if ( (inComponent == NULL) || (inComponentDescription == NULL) )
 		return FALSE;
 
 	// get the ComponentDescription of the input Component
-#ifdef COREAUDIO105
-	status = GetComponentInfo(inComponent, &desc, NULL, NULL, NULL);
-#else
 	status = AudioComponentGetDescription (inComponent, &desc);
-#endif
 	if (status != noErr)
 		return FALSE;
 
@@ -328,38 +312,39 @@ Boolean ComponentAndDescriptionMatch_General(ArdourComponent inComponent, const 
 // determine if 2 ComponentDescriptions are basically equal
 // (by that, I mean that the important identifying values are compared,
 // but not the ComponentDescription flags)
-Boolean ComponentDescriptionsMatch(const ArdourDescription * inComponentDescription1, const ArdourDescription * inComponentDescription2)
+Boolean ComponentDescriptionsMatch(const AudioComponentDescription * inComponentDescription1, const AudioComponentDescription * inComponentDescription2)
 {
 	return ComponentDescriptionsMatch_General(inComponentDescription1, inComponentDescription2, FALSE);
 }
 
 //--------------------------------------------------------------------------
 // determine if 2 ComponentDescriptions have matching sub-type and manufacturer codes
-Boolean ComponentDescriptionsMatch_Loose(const ArdourDescription * inComponentDescription1, const ArdourDescription * inComponentDescription2)
+Boolean ComponentDescriptionsMatch_Loose(const AudioComponentDescription * inComponentDescription1, const AudioComponentDescription * inComponentDescription2)
 {
 	return ComponentDescriptionsMatch_General(inComponentDescription1, inComponentDescription2, TRUE);
 }
 
 //--------------------------------------------------------------------------
 // determine if a ComponentDescription basically matches that of a particular Component
-Boolean ComponentAndDescriptionMatch(ArdourComponent inComponent, const ArdourDescription * inComponentDescription)
+Boolean ComponentAndDescriptionMatch(AudioComponent inComponent, const AudioComponentDescription * inComponentDescription)
 {
 	return ComponentAndDescriptionMatch_General(inComponent, inComponentDescription, FALSE);
 }
 
 //--------------------------------------------------------------------------
 // determine if a ComponentDescription matches only the sub-type and manufacturer codes of a particular Component
-Boolean ComponentAndDescriptionMatch_Loosely(ArdourComponent inComponent, const ArdourDescription * inComponentDescription)
+Boolean ComponentAndDescriptionMatch_Loosely(AudioComponent inComponent, const AudioComponentDescription * inComponentDescription)
 {
 	return ComponentAndDescriptionMatch_General(inComponent, inComponentDescription, TRUE);
 }
 
 
-AUPlugin::AUPlugin (AudioEngine& engine, Session& session, boost::shared_ptr<CAComponent> _comp)
+AUPlugin::AUPlugin (AudioEngine& engine, Session& session, std::shared_ptr<CAComponent> _comp)
 	: Plugin (engine, session)
 	, comp (_comp)
 	, unit (new CAAudioUnit)
 	, initialized (false)
+	, process_offline (false)
 	, _last_nframes (0)
 	, _requires_fixed_size_buffers (false)
 	, buffers (0)
@@ -401,6 +386,7 @@ AUPlugin::AUPlugin (const AUPlugin& other)
 	, comp (other.get_comp())
 	, unit (new CAAudioUnit)
 	, initialized (false)
+	, process_offline (false)
 	, _last_nframes (0)
 	, _requires_fixed_size_buffers (false)
 	, buffers (0)
@@ -495,7 +481,7 @@ AUPlugin::discover_factory_presets ()
 void
 AUPlugin::init ()
 {
-	g_atomic_int_set (&_current_latency, UINT_MAX);
+	_current_latency.store (UINT_MAX);
 
 	OSErr err;
 
@@ -760,10 +746,10 @@ AUPlugin::default_value (uint32_t port)
 samplecnt_t
 AUPlugin::plugin_latency () const
 {
-	guint lat = g_atomic_int_get (&_current_latency);;
+	guint lat = _current_latency.load ();;
 	if (lat == UINT_MAX) {
 		lat = unit->Latency() * _session.sample_rate();
-		g_atomic_int_set (&_current_latency, lat);
+		_current_latency.store (lat);
 	}
 	return lat;
 }
@@ -869,6 +855,33 @@ AUPlugin::requires_fixed_size_buffers() const
 	return _requires_fixed_size_buffers;
 }
 
+void
+AUPlugin::set_non_realtime (bool yn)
+{
+	if (process_offline == yn) {
+		return;
+	}
+	process_offline = yn;
+
+	bool was_initialized = initialized;
+	if (initialized) {
+		deactivate ();
+	}
+
+	OSErr err;
+	UInt32 isOffline = yn ? 1 : 0;
+	if ((err = unit->SetProperty (/*kAudioUnitProperty_OfflineRender*/ 37, kAudioUnitScope_Global, 0, &isOffline, sizeof (isOffline))) != noErr) {
+		info << string_compose (_("AU: cannot set offline rendering(err = %1)"), err) << endmsg;
+	}
+	if (yn) {
+		UInt32 numSamples = _session.get_block_size();
+		unit->SetProperty (/*kAudioUnitOfflineProperty_InputSize*/ 3020, kAudioUnitScope_Global, 0, &numSamples, sizeof(numSamples));
+	}
+
+	if (was_initialized) {
+		activate ();
+	}
+}
 
 int
 AUPlugin::set_block_size (pframes_t nframes)
@@ -886,6 +899,10 @@ AUPlugin::set_block_size (pframes_t nframes)
 				      0, &numSamples, sizeof (numSamples))) != noErr) {
 		error << string_compose (_("AU: cannot set max samples (err = %1)"), err) << endmsg;
 		return -1;
+	}
+
+	if (process_offline) {
+		unit->SetProperty (/*kAudioUnitOfflineProperty_InputSize*/ 3020, kAudioUnitScope_Global, 0, &numSamples, sizeof(numSamples));
 	}
 
 	if (was_initialized) {
@@ -1124,7 +1141,7 @@ AUPlugin::match_variable_io (ChanCount& in, ChanCount& aux_in, ChanCount& out)
 	/* preferred setting (provided by plugin_insert) */
 	const int32_t preferred_out = out.n_audio ();
 
-	AUPluginInfoPtr pinfo = boost::dynamic_pointer_cast<AUPluginInfo>(get_info());
+	AUPluginInfoPtr pinfo = std::dynamic_pointer_cast<AUPluginInfo>(get_info());
 	vector<pair<int,int> > io_configs = pinfo->io_configs;
 
 #ifndef NDEBUG
@@ -1417,7 +1434,7 @@ AUPlugin::render_callback(AudioUnitRenderActionFlags*,
 		if (valid) {
 			ioData->mBuffers[i].mData = input_buffers->get_audio (idx).data (cb_offsets[bus] + input_offset);
 		} else {
-			ioData->mBuffers[i].mData = silent_bufs.get_audio(0).data (cb_offsets[bus] + input_offset);
+			ioData->mBuffers[i].mData = silent_bufs.get_audio(0).data (0);
 		}
 	}
 	cb_offsets[bus] += inNumberSamples;
@@ -1489,10 +1506,10 @@ AUPlugin::connect_and_run (BufferSet& bufs,
 			MidiBuffer& m = bufs.get_midi (i);
 			for (MidiBuffer::iterator i = m.begin(); i != m.end(); ++i) {
 				Evoral::Event<samplepos_t> ev (*i);
-				if (ev.is_channel_event()) {
+				if (ev.is_channel_event () && ev.time() >= offset && ev.time() < offset + nframes) {
 					const uint8_t* b = ev.buffer();
 					DEBUG_TRACE (DEBUG::AudioUnitProcess, string_compose ("%1: MIDI event %2\n", name(), ev));
-					unit->MIDIEvent (b[0], b[1], b[2], ev.time());
+					unit->MIDIEvent (b[0], b[1], b[2], ev.time() - offset);
 				}
 				/* XXX need to handle sysex and other message types */
 			}
@@ -1536,7 +1553,7 @@ AUPlugin::connect_and_run (BufferSet& bufs,
 				if (valid) {
 					buffers->mBuffers[i].mData = bufs.get_audio (idx).data (offset);
 				} else {
-					buffers->mBuffers[i].mData = scratch_bufs.get_audio(0).data(offset);
+					buffers->mBuffers[i].mData = scratch_bufs.get_audio(0).data(0);
 				}
 			}
 		}
@@ -1638,7 +1655,7 @@ AUPlugin::get_musical_time_location_callback (UInt32*   outDeltaSampleOffsetToNe
 	DEBUG_TRACE (DEBUG::AudioUnitProcess, "AU calls ardour music time location callback\n");
 
 	TempoMetric metric = tmap->metric_at (timepos_t (transport_sample + input_offset));
-	BBT_Time bbt = tmap->bbt_at (timepos_t (transport_sample));
+	BBT_Argument bbt = tmap->bbt_at (timepos_t (transport_sample));
 
 	if (outDeltaSampleOffsetToNextBeat) {
 		if (bbt.ticks == 0) {
@@ -1776,6 +1793,7 @@ AUPlugin::describe_io_port (ARDOUR::DataType dt, bool input, uint32_t id) const
 	}
 
 	std::string busname;
+	uint32_t    bus_number = 0;
 	bool is_sidechain = false;
 
 	if (dt == DataType::AUDIO) {
@@ -1788,7 +1806,8 @@ AUPlugin::describe_io_port (ARDOUR::DataType dt, bool input, uint32_t id) const
 					ss << " / Bus " << (1 + bus);
 					busname = _bus_name_in[bus];
 					is_sidechain = bus > 0;
-					busname = _bus_name_in[bus];
+					busname      = _bus_name_in[bus];
+					bus_number   = bus;
 					break;
 				}
 				pid -= bus_inused[bus];
@@ -1801,7 +1820,8 @@ AUPlugin::describe_io_port (ARDOUR::DataType dt, bool input, uint32_t id) const
 					id = pid;
 					ss << _bus_name_out[bus];
 					ss << " / Bus " << (1 + bus);
-					busname = _bus_name_out[bus];
+					busname    = _bus_name_out[bus];
+					bus_number = bus;
 					break;
 				}
 				pid -= bus_outputs[bus];
@@ -1810,9 +1830,9 @@ AUPlugin::describe_io_port (ARDOUR::DataType dt, bool input, uint32_t id) const
 	}
 
 	if (input) {
-		ss << " " << _("In") << " ";
+		ss << " " << S_("IO|In") << " ";
 	} else {
-		ss << " " << _("Out") << " ";
+		ss << " " << S_("IO|Out") << " ";
 	}
 
 	ss << (id + 1);
@@ -1820,8 +1840,9 @@ AUPlugin::describe_io_port (ARDOUR::DataType dt, bool input, uint32_t id) const
 	Plugin::IOPortDescription iod (ss.str());
 	iod.is_sidechain = is_sidechain;
 	if (!busname.empty()) {
-		iod.group_name = busname;
+		iod.group_name    = busname;
 		iod.group_channel = id;
+		iod.bus_number    = bus_number;
 	}
 	return iod;
 }
@@ -2137,10 +2158,10 @@ GetDictionarySInt32Value(CFDictionaryRef inAUStateDictionary, CFStringRef inDict
 }
 
 static OSStatus
-GetAUComponentDescriptionFromStateData(CFPropertyListRef inAUStateData, ArdourDescription * outComponentDescription)
+GetAUComponentDescriptionFromStateData(CFPropertyListRef inAUStateData, AudioComponentDescription * outComponentDescription)
 {
 	CFDictionaryRef auStateDictionary;
-	ArdourDescription tempDesc = {0,0,0,0,0};
+	AudioComponentDescription tempDesc = {0,0,0,0,0};
 	SInt32 versionValue;
 	Boolean gotValue;
 
@@ -2218,11 +2239,11 @@ static bool au_preset_filter (const string& str, void* arg)
 }
 
 static bool
-check_and_get_preset_name (ArdourComponent component, const string& pathstr, string& preset_name)
+check_and_get_preset_name (AudioComponent component, const string& pathstr, string& preset_name)
 {
 	OSStatus status;
 	CFPropertyListRef plist;
-	ArdourDescription presetDesc;
+	AudioComponentDescription presetDesc;
 	bool ret = false;
 
 	plist = load_property_list (pathstr);
@@ -2290,7 +2311,7 @@ AUPlugin::find_presets ()
 
 	PluginInfoPtr nfo = get_info();
 	find_files_matching_filter (preset_files, preset_search_path, au_preset_filter,
-			boost::dynamic_pointer_cast<AUPluginInfo> (nfo).get(),
+			std::dynamic_pointer_cast<AUPluginInfo> (nfo).get(),
 			true, true, true);
 
 	if (preset_files.empty()) {
@@ -2347,7 +2368,7 @@ AUPlugin::has_editor () const
 
 /* ****************************************************************************/
 
-AUPluginInfo::AUPluginInfo (boost::shared_ptr<CAComponentDescription> d)
+AUPluginInfo::AUPluginInfo (std::shared_ptr<CAComponentDescription> d)
 	: version (0)
 	, max_outputs (0)
 	, descriptor (d)
@@ -2362,7 +2383,7 @@ AUPluginInfo::load (Session& session)
 		PluginPtr plugin;
 
 		DEBUG_TRACE (DEBUG::AudioUnitConfig, "load AU as a component\n");
-		boost::shared_ptr<CAComponent> comp (new CAComponent(*descriptor));
+		std::shared_ptr<CAComponent> comp (new CAComponent(*descriptor));
 
 		if (!comp->IsValid()) {
 			error << ("AudioUnit: not a valid Component") << endmsg;
@@ -2374,7 +2395,7 @@ AUPluginInfo::load (Session& session)
 		AUPluginInfo *aup = new AUPluginInfo (*this);
 		DEBUG_TRACE (DEBUG::AudioUnitConfig, string_compose ("plugin info for %1 = %2\n", this, aup));
 		plugin->set_info (PluginInfoPtr (aup));
-		boost::dynamic_pointer_cast<AUPlugin> (plugin)->set_fixed_size_buffers (aup->creator == "Universal Audio");
+		std::dynamic_pointer_cast<AUPlugin> (plugin)->set_fixed_size_buffers (aup->creator == "Universal Audio");
 		return plugin;
 	}
 
@@ -2388,10 +2409,10 @@ std::vector<Plugin::PresetRecord>
 AUPluginInfo::get_presets (bool user_only) const
 {
 	std::vector<Plugin::PresetRecord> p;
-	boost::shared_ptr<CAComponent> comp;
+	std::shared_ptr<CAComponent> comp;
 
 	try {
-		comp = boost::shared_ptr<CAComponent>(new CAComponent(*descriptor));
+		comp = std::shared_ptr<CAComponent>(new CAComponent(*descriptor));
 		if (!comp->IsValid()) {
 			throw failed_constructor();
 		}
@@ -2424,6 +2445,7 @@ AUPluginInfo::get_presets (bool user_only) const
 	}
 
 	if (user_only) {
+		std::sort (p.begin (), p.end());
 		return p;
 	}
 
@@ -2433,7 +2455,7 @@ AUPluginInfo::get_presets (bool user_only) const
 	UInt32 dataSize;
 	Boolean isWritable;
 
-	boost::shared_ptr<CAAudioUnit> unit (new CAAudioUnit);
+	std::shared_ptr<CAAudioUnit> unit (new CAAudioUnit);
 	if (noErr != CAAudioUnit::Open (*(comp.get()), *unit)) {
 		return p;
 	}
@@ -2460,6 +2482,7 @@ AUPluginInfo::get_presets (bool user_only) const
 	CFRelease (presets);
 	unit->Uninitialize ();
 
+	std::sort (p.begin (), p.end ());
 	return p;
 }
 
@@ -2520,7 +2543,7 @@ AUPlugin::set_info (PluginInfoPtr info)
 {
 	Plugin::set_info (info);
 
-	AUPluginInfoPtr pinfo = boost::dynamic_pointer_cast<AUPluginInfo>(get_info());
+	AUPluginInfoPtr pinfo = std::dynamic_pointer_cast<AUPluginInfo>(get_info());
 	_has_midi_input = pinfo->needs_midi_input ();
 	_has_midi_output = false;
 }
@@ -2654,7 +2677,7 @@ AUPlugin::parameter_change_listener (void* /*arg*/, void* src, const AudioUnitEv
 		if (event->mArgument.mProperty.mPropertyID == kAudioUnitProperty_Latency) {
 			DEBUG_TRACE (DEBUG::AudioUnitConfig, string_compose("AU Latency Change Event %1 <> %2\n", new_value, unit->Latency()));
 			guint lat = unit->Latency() * _session.sample_rate();
-			g_atomic_int_set (&_current_latency, lat);
+			_current_latency.store (lat);
 		}
 		return;
 	}

@@ -19,16 +19,16 @@
 #ifndef _gtkardour_plugin_manager_h_
 #define _gtkardour_plugin_manager_h_
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/table.h>
-#include <gtkmm/textview.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treerowreference.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/table.h>
+#include <ytkmm/textview.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treerowreference.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
 
 #include "widgets/ardour_button.h"
 #include "widgets/pane.h"
@@ -64,7 +64,7 @@ private:
 
 	void search_entry_changed ();
 	void search_clear_button_clicked ();
-	bool show_this_plugin (boost::shared_ptr<ARDOUR::PluginScanLogEntry>, ARDOUR::PluginInfoPtr, const std::string&);
+	bool show_this_plugin (std::shared_ptr<ARDOUR::PluginScanLogEntry>, ARDOUR::PluginInfoPtr, const std::string&);
 
 	void plugin_status_changed (ARDOUR::PluginType, std::string, ARDOUR::PluginManager::PluginStatusType);
 
@@ -110,7 +110,7 @@ private:
 		Gtk::TreeModelColumn<std::string>                                    creator;
 		Gtk::TreeModelColumn<std::string>                                    tags;
 		Gtk::TreeModelColumn<std::string>                                    path;
-		Gtk::TreeModelColumn<boost::shared_ptr<ARDOUR::PluginScanLogEntry> > psle;
+		Gtk::TreeModelColumn<std::shared_ptr<ARDOUR::PluginScanLogEntry> > psle;
 		Gtk::TreeModelColumn<ARDOUR::PluginInfoPtr>                          plugin;
 		Gtk::TreeModelColumn<bool>                                           can_blacklist;
 		Gtk::TreeModelColumn<bool>                                           can_fav_hide;

@@ -19,10 +19,10 @@
 #ifndef ardour_contourdesign_button_config_widget_h
 #define ardour_contourdesign_button_config_widget_h
 
-#include <gtkmm/box.h>
-#include <gtkmm/radiobutton.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/treestore.h>
+#include <ytkmm/box.h>
+#include <ytkmm/radiobutton.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/treestore.h>
 
 #include "contourdesign.h"
 #include "jump_distance_widget.h"
@@ -40,8 +40,8 @@ public:
 	ButtonConfigWidget ();
 	~ButtonConfigWidget () {};
 
-	void set_current_config (boost::shared_ptr<ButtonBase> btn_cnf);
-	boost::shared_ptr<ButtonBase> get_current_config (ContourDesignControlProtocol& ccp) const;
+	void set_current_config (std::shared_ptr<ButtonBase> btn_cnf);
+	std::shared_ptr<ButtonBase> get_current_config (ContourDesignControlProtocol& ccp) const;
 
 	sigc::signal<void> Changed;
 

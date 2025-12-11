@@ -20,10 +20,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_automation_event_h__
-#define __ardour_automation_event_h__
+#pragma once
 
-#include <stdint.h>
+#include <atomic>
+#include <cstdint>
 #include <cstdlib>
 #include <list>
 #include <cmath>
@@ -37,24 +37,22 @@
 #include "pbd/xml++.h"
 #include "pbd/statefuldestructible.h"
 #include "pbd/properties.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "ardour/ardour.h"
 
 namespace ARDOUR {
 
 class AutomationList;
-class BeatsSamplesConverter;
 
 /** A SharedStatefulProperty for AutomationLists */
 class LIBARDOUR_API AutomationListProperty : public PBD::SharedStatefulProperty<AutomationList>
 {
 public:
-	AutomationListProperty (PBD::PropertyDescriptor<boost::shared_ptr<AutomationList> > d, Ptr p)
+	AutomationListProperty (PBD::PropertyDescriptor<std::shared_ptr<AutomationList> > d, Ptr p)
 		: PBD::SharedStatefulProperty<AutomationList> (d.property_id, p)
 	{}
 
-	AutomationListProperty (PBD::PropertyDescriptor<boost::shared_ptr<AutomationList> > d, Ptr o, Ptr c)
+	AutomationListProperty (PBD::PropertyDescriptor<std::shared_ptr<AutomationList> > d, Ptr o, Ptr c)
 		: PBD::SharedStatefulProperty<AutomationList> (d.property_id, o, c)
 	{}
 
@@ -73,16 +71,16 @@ private:
 class LIBARDOUR_API AutomationList : public Evoral::ControlList, public PBD::StatefulDestructible
 {
 public:
-	AutomationList (const Evoral::Parameter& id, const Evoral::ParameterDescriptor& desc, Temporal::TimeDomain);
-	AutomationList (const Evoral::Parameter& id, Temporal::TimeDomain);
+	AutomationList (const Evoral::Parameter& id, const Evoral::ParameterDescriptor& desc, Temporal::TimeDomainProvider const &);
+	AutomationList (const Evoral::Parameter& id, Temporal::TimeDomainProvider const &);
 	AutomationList (const XMLNode&, Evoral::Parameter id);
 	AutomationList (const AutomationList&);
 	AutomationList (const AutomationList&, timepos_t const & start, timepos_t const & end);
 	~AutomationList();
 
-	virtual boost::shared_ptr<ControlList> create(const Evoral::Parameter&           id,
+	virtual std::shared_ptr<ControlList> create(const Evoral::Parameter&           id,
 	                                              const Evoral::ParameterDescriptor& desc,
-	                                              Temporal::TimeDomain);
+	                                              Temporal::TimeDomainProvider const &);
 
 	AutomationList& operator= (const AutomationList&);
 
@@ -90,7 +88,7 @@ public:
 
 	void set_automation_state (AutoState);
 	AutoState automation_state() const;
-	PBD::Signal1<void, AutoState> automation_state_changed;
+	PBD::Signal<void(AutoState)> automation_state_changed;
 
 	bool automation_playback() const {
 		return (_state & Play) || ((_state & (Touch | Latch)) && !touching());
@@ -99,9 +97,9 @@ public:
 		return ((_state & Write) || ((_state & (Touch | Latch)) && touching()));
 	}
 
-	PBD::Signal0<void> StateChanged;
+	PBD::Signal<void()> StateChanged;
 
-	static PBD::Signal1<void,AutomationList*> AutomationListCreated;
+	static PBD::Signal<void(AutomationList*)> AutomationListCreated;
 
 	void start_write_pass (timepos_t const & when);
 	void write_pass_finished (timepos_t const & when, double thinning_factor=0.0);
@@ -109,14 +107,14 @@ public:
 	void start_touch (timepos_t const & when);
 	void stop_touch (timepos_t const &  when);
 
-	bool touching () const { return g_atomic_int_get (const_cast<GATOMIC_QUAL gint*>(&_touching)) != 0; }
+	bool touching () const { return _touching.load() != 0; }
 	bool writing () const { return _state == Write; }
 	bool touch_enabled () const { return _state & (Touch | Latch); }
 
 	XMLNode& get_state () const;
 	int set_state (const XMLNode &, int version);
 
-	Command* memento_command (XMLNode* before, XMLNode* after);
+	PBD::Command* memento_command (XMLNode* before, XMLNode* after);
 
 	bool operator!= (const AutomationList &) const;
 
@@ -136,7 +134,7 @@ private:
 	void maybe_signal_changed ();
 
 	AutoState         _state;
-	GATOMIC_QUAL gint _touching;
+	std::atomic<int> _touching;
 
 	PBD::ScopedConnection _writepass_connection;
 
@@ -147,4 +145,3 @@ private:
 
 } // namespace
 
-#endif /* __ardour_automation_event_h__ */

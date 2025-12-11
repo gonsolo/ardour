@@ -20,16 +20,16 @@
 #ifndef __gtk2_ardour_beatbox_gui_h__
 #define __gtk2_ardour_beatbox_gui_h__
 
+#include <memory>
 #include <string>
-#include <boost/shared_ptr.hpp>
 
-#include <gtkmm/radiobutton.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/button.h>
-#include <gtkmm/scrollbar.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/box.h>
-#include <gtkmm/notebook.h>
+#include <ytkmm/radiobutton.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/button.h>
+#include <ytkmm/scrollbar.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/box.h>
+#include <ytkmm/notebook.h>
 
 #include "gtkmm2ext/colors.h"
 
@@ -252,7 +252,7 @@ class SequencerStepIndicator : public ArdourCanvas::Rectangle, public sigc::trac
 
 class BBGUI : public ArdourDialog {
   public:
-	BBGUI (boost::shared_ptr<ARDOUR::BeatBox> bb);
+	BBGUI (std::shared_ptr<ARDOUR::BeatBox> bb);
 	~BBGUI ();
 
 	double width() const { return _width; }
@@ -263,7 +263,7 @@ class BBGUI : public ArdourDialog {
 	void on_unmap ();
 
   private:
-	boost::shared_ptr<ARDOUR::BeatBox> bbox;
+	std::shared_ptr<ARDOUR::BeatBox> bbox;
 	double _width;
 	double _height;
 

@@ -24,7 +24,6 @@
  */
 
 #include <algorithm>
-#include <unistd.h>
 #include <sys/types.h>
 #include <cstdio>
 #include <ctime>
@@ -140,6 +139,7 @@ static const char* authors[] = {
 	N_("Sakari Bergen"),
 	N_("Christian Borss"),
 	N_("Thomas Brand"),
+	N_("Franke Burgarino"),
 	N_("Chris Cannam"),
 	N_("Jeremy Carter"),
 	N_("Enrico Castella"),
@@ -186,6 +186,7 @@ static const char* authors[] = {
 	N_("Nick Mainsbridge"),
 	N_("Tim Mayberry"),
 	N_("Doug Mclain"),
+	N_("Alexander Mitchell"),
 	N_("Johannes Mueller"),
 	N_("Edward Tomasz Napierała"),
 	N_("Todd Naugle"),
@@ -250,12 +251,15 @@ static const char* translators[] = {
 \n\tRobin Gloster <robin@loc-com.de>\n"),
 	N_("Italian:\n\tVincenzo Reale <smart2128@baslug.org>\
 \n\tFilippo Pappalardo <filippo@email.it>\
-\n\tRaffaele Morelli <raffaele.morelli@gmail.com>\n"),
+\n\tRaffaele Morelli <raffaele.morelli@gmail.com>\
+\n\tGuido Pietrella\
+\n\tDaniele Tombolini\n"),
 	N_("Portuguese:\n\tRui Nuno Capela <rncbc@rncbc.org>\n"),
 	N_("Brazilian Portuguese:\n\tAlexander da Franca Fernandes <alexander@nautae.eti.br>\
 \n\tChris Ross <chris@tebibyte.org>\n"),
 	N_("Spanish:\n\t Alex Krohn <alexkrohn@fastmail.fm>\
-\n\tPablo Fernández <pablo.fbus@gmail.com>\n"),
+\n\tPablo Fernández <pablo.fbus@gmail.com>\
+\n\tJuan Cruz Vardy Sabaté <juanvardy@zohomail.com>\n"),
 	N_("Russian:\n\t Igor Blinov <pitstop@nm.ru>\
 \n\tAleksandr Koltsov <ag1455@mail.ru>\
 \n\tPetr Semiletov <tea@list.ru>\
@@ -263,7 +267,7 @@ static const char* translators[] = {
 	N_("Greek:\n\t Klearchos Gourgourinis <muadib@in.gr>\n"),
 	N_("Swedish:\n\t Petter Sundlöf <petter.sundlof@gmail.com>\n"),
 	N_("Polish:\n\t Piotr Zaryk <pzaryk@gmail.com>\n"),
-	N_("Czech:\n\t Pavel Fric <pavelfric@seznam.cz>\n"),
+	N_("Czech:\n\t Pavel Fric <pavelfric@seznam.cz>\n\t Martin Vlk <martin@vlkk.cz>\n"),
 	N_("Norwegian:\n\t Eivind Ødegård\n"),
 	N_("Chinese:\n\t Rui-huai Zhang <zrhzrh@mail.ustc.edu.cn>\n"),
 	N_("Japanese:\n\t Hiroki Inagaki <hiroki.ingk@gmail.com>\n"),
@@ -271,9 +275,31 @@ static const char* translators[] = {
 	0
 };
 
-static const char* gpl = X_("\n\
+static char const* gpl = X_("\n\
 Ardour comes with NO WARRANTY. It is free software, and you are welcome to redistribute it\n\
-under the terms of the GNU General Public License, shown below.\n\
+under the terms of the GNU General Public License (GPL) v2.0 or any later version, shown below.\n\
+\n\
+			    Plugin Clarification\n\
+\n\
+The following states the Ardour developers understanding of the\n\
+relationship between Ardour's license (GPL v2.0 or later) and plugins.\n\
+\n\
+For the purposes of this understanding, \"plugins\" refer to software\n\
+dynamically loaded by another program, where the interaction between the\n\
+plugin and the loading program (typically called \"the host\") is defined by\n\
+a 3rd party API. Such APIs include (but are not limited to) VST,\n\
+AudioUnits, LV2, LADSPA and CLAP.\n\
+\n\
+Since (a) any such plugin may be loaded by any host that supports the API\n\
+and (b) any host may load any plugin that supports the API, we consider it\n\
+self-evident that there can be no \"derivative\" relationship (in the sense\n\
+of the GPL's use of this term) between the host and plugin.\n\
+\n\
+Consequently, Ardour may load arbitrarily licensed plugins, so as to cause\n\
+interactions between Ardour and the plugin via a 3rd party API, without any\n\
+implications for either Ardour or the plugin. In our understanding, Using\n\
+such plugins with Ardour is not impacted in any way by Ardour's GPL licensing.\n\
+\n\
 \n\
 		    GNU GENERAL PUBLIC LICENSE\n\
 		       Version 2, June 1991\n\
@@ -618,7 +644,7 @@ About::About ()
 #endif
 
 	set_translator_credits (t);
-	set_copyright (_("Copyright (C) 1999-2022 Paul Davis\n"));
+	set_copyright (_("Copyright (C) 1999-2025 Paul Davis\n"));
 	set_license (gpl);
 	set_name (X_("Ardour"));
 	set_website (X_("https://ardour.org/"));

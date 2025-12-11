@@ -24,6 +24,10 @@
 
 #include <vector>
 
+#include <glib.h>
+#include "pbd/gstdio_compat.h"
+
+#include <glibmm/convert.h>
 #include <glibmm/miscutils.h>
 #include <glibmm/timer.h>
 
@@ -66,11 +70,94 @@
 using namespace AudioGrapher;
 using std::string;
 
+/*
+ * The Export Graph is evaluated for each Timespan.
+ *
+ *  - The Graph has at least one ChannelConfig
+ *  - Each ChannnelConfig has at least one SilenceHandler.
+ *  - Each SilenceHandler feeds at least one SRC.
+ *  - Each SRC feeds at least one Intermediate or one SFC
+ *    Intermediates and SFC children are processed sequentally.
+ *  - Each Intermediate (tmp-file) runs SFC children in parallel.
+ *  - Each SFC feeds at least one Encoder.
+ *
+ *
+ * [process callback]
+ *      |
+ *      v
+ * {   ChannelConfig
+ * |    |
+ * |    \-> Interleaver -> Chunker
+ * }                          |
+ *                            v
+ *      /---------------------/
+ *      |
+ *      v
+ * {   SilenceHandler
+ * |    |
+ * |    \-> Silence Trimmer (trim and/or add)
+ * }                      |
+ *                        v
+ *      /-----------------/
+ *      |
+ *      v
+ * {   SRC
+ * |    \-> Sample Rate Conversion
+ * }                |
+ *                  v
+ *      /-----------+-------------------------------------\
+ *      |                                                 |
+ *      v                                                 |
+ * {   Intermediate (normalize or realtime)               |
+ * |    |                                                 |
+ * |    \---+------or-------+-------or-------\            |
+ * |        v               v                v            |
+ * |     Peak Reader -> Loudness Reader -> TMP File       |
+ * |                                         |            |
+ * |                                         v            |
+ * |               Threader (run SFC childs in parallel)  |
+ * }                                         |            |
+ *                                           v            |
+ *      /------------------------------------/            |
+ *      |                                                 |
+ *      v                    /----------------------------/
+ * {   SFC                   |
+ * |    |                    v
+ * |    \-> Normalizer -> Limiter
+ * |                         |
+ * |                         v
+ * |          /------or------+-or-\
+ * |         v                    |
+ * |      Chunker -> Analyzer -> -+
+ * |                              |
+ * |                    /---or----+
+ * |                    |         |
+ * |                    |         v
+ * |                    |     Demo Noise
+ * |                    |         |
+ * |                    +----<----/
+ * |                    |
+ * |                    v
+ * |      Int/Short/Float Converter & Dither
+ * }                    |
+ *      /---------------/
+ *      |
+ *      v
+ * {   Encoder
+ * |    |
+ * |    \---+------or-------+-------or------\
+ * |        v               v                v
+ * |     Int Writer    Float Writer      Pipe Writer
+ * |      (sndfile)     (sndfile)         (ffmpeg)
+ * }
+ *
+ */
+
 namespace ARDOUR {
 
 ExportGraphBuilder::ExportGraphBuilder (Session const & session)
 	: session (session)
-	, thread_pool (hardware_concurrency())
+	, thread_pool (PBD::hardware_concurrency())
 {
 	process_buffer_samples = session.engine().samples_per_cycle();
 }
@@ -165,7 +252,7 @@ ExportGraphBuilder::cleanup (bool remove_out_files/*=false*/)
 }
 
 void
-ExportGraphBuilder::set_current_timespan (boost::shared_ptr<ExportTimespan> span)
+ExportGraphBuilder::set_current_timespan (std::shared_ptr<ExportTimespan> span)
 {
 	timespan = span;
 }
@@ -189,6 +276,11 @@ ExportGraphBuilder::add_config (FileSpec const & config, bool rt)
 
 	_realtime = rt;
 
+	if (!timespan->vapor().empty()) {
+		/* plugin export needs no actual channels */
+		return;
+	}
+
 	/* If the sample rate is "session rate", change it to the real value.
 	 * However, we need to copy it to not change the config which is saved...
 	 */
@@ -207,7 +299,7 @@ ExportGraphBuilder::add_config (FileSpec const & config, bool rt)
 	/* Split channel configurations are split into several channel configurations,
 	 * each corresponding to a file, at this stage
 	 */
-	typedef std::list<boost::shared_ptr<ExportChannelConfiguration> > ConfigList;
+	typedef std::list<std::shared_ptr<ExportChannelConfiguration> > ConfigList;
 	ConfigList file_configs;
 	new_config.channel_config->configurations_for_files (file_configs);
 
@@ -251,7 +343,7 @@ ExportGraphBuilder::add_split_config (FileSpec const & config)
 /* Encoder */
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<Sample> >
+std::shared_ptr<AudioGrapher::Sink<Sample> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -265,7 +357,7 @@ ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 }
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<int> >
+std::shared_ptr<AudioGrapher::Sink<int> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -274,7 +366,7 @@ ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 }
 
 template <>
-boost::shared_ptr<AudioGrapher::Sink<short> >
+std::shared_ptr<AudioGrapher::Sink<short> >
 ExportGraphBuilder::Encoder::init (FileSpec const & new_config)
 {
 	config = new_config;
@@ -286,6 +378,13 @@ void
 ExportGraphBuilder::Encoder::add_child (FileSpec const & new_config)
 {
 	filenames.push_back (new_config.filename);
+}
+
+ExportGraphBuilder::Encoder::~Encoder ()
+{
+	if (pipe_writer) {
+		pipe_writer->flush ();
+	}
 }
 
 void
@@ -323,7 +422,9 @@ ExportGraphBuilder::Encoder::destroy_writer (bool delete_out_file)
 bool
 ExportGraphBuilder::Encoder::operator== (FileSpec const & other_config) const
 {
-	return get_real_format (config) == get_real_format (other_config);
+	ExportFormatSpecification const& a = *config.format;
+	ExportFormatSpecification const& b = *other_config.format;
+	return a == b;
 }
 
 int
@@ -335,7 +436,7 @@ ExportGraphBuilder::Encoder::get_real_format (FileSpec const & config)
 
 template<typename T>
 void
-ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::SndfileWriter<T> > & writer)
+ExportGraphBuilder::Encoder::init_writer (std::shared_ptr<AudioGrapher::SndfileWriter<T> > & writer)
 {
 	unsigned channels = config.channel_config->get_n_chans();
 	int format = get_real_format (config);
@@ -343,7 +444,7 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::Sndfil
 	writer_filename = config.filename->get_path (config.format);
 
 	writer.reset (new AudioGrapher::SndfileWriter<T> (writer_filename, format, channels, config.format->sample_rate(), config.broadcast_info));
-	writer->FileWritten.connect_same_thread (copy_files_connection, boost::bind (&ExportGraphBuilder::Encoder::copy_files, this, _1));
+	writer->FileWritten.connect_same_thread (copy_files_connection, std::bind (&ExportGraphBuilder::Encoder::copy_files, this, _1));
 	if ((format & SF_FORMAT_SUBMASK) == ExportFormatBase::SF_Vorbis ||
 	    (format & SF_FORMAT_TYPEMASK) == ExportFormatBase::F_MPEG ||
 	    (format & SF_FORMAT_SUBMASK) == ExportFormatBase::SF_Opus) {
@@ -360,7 +461,7 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::Sndfil
 
 template<typename T>
 void
-ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPipeWriter<T> > & writer)
+ExportGraphBuilder::Encoder::init_writer (std::shared_ptr<AudioGrapher::CmdPipeWriter<T> > & writer)
 {
 	unsigned channels = config.channel_config->get_n_chans();
 	config.filename->set_channel_config(config.channel_config);
@@ -374,6 +475,20 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPip
 	}
 
 	int quality = config.format->codec_quality ();
+
+	gchar* tmpfile_name = NULL;
+#if 1 // directly pipe to ffmpeg
+	gint fd = -1;
+#else // write to tmp-file, do not pipe to ffmpeg
+	gint fd = g_file_open_tmp ("ardour-export.XXXXXX", &tmpfile_name, NULL);
+	if (fd < 0) {
+		tmpfile_name = NULL;
+	}
+#endif
+
+	/* Note mp3 encoding adds silence at start and end
+	 * https://lame.sourceforge.io/tech-FAQ.txt
+	 */
 
 	int a=0;
 	char **argp = (char**) calloc (100, sizeof(char*));
@@ -396,9 +511,17 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPip
 	snprintf (tmp, sizeof(tmp), "%d", config.format->sample_rate());
 	argp[a++] = strdup (tmp);
 	argp[a++] = strdup ("-i");
-	argp[a++] = strdup ("pipe:0");
+	if (fd >= 0) {
+		argp[a++] = strdup (tmpfile_name);
+	} else {
+		argp[a++] = strdup ("pipe:0");
+	}
 
-	argp[a++] = strdup ("-y");
+	argp[a++] = strdup ("-f");
+	argp[a++] = strdup ("mp3");
+	argp[a++] = strdup ("-acodec");
+	argp[a++] = strdup ("mp3");
+
 	if (quality <= 0) {
 		/* variable rate, lower is better */
 		snprintf (tmp, sizeof(tmp), "%d", -quality);
@@ -422,18 +545,26 @@ ExportGraphBuilder::Encoder::init_writer (boost::shared_ptr<AudioGrapher::CmdPip
 		argp[a++] = SystemExec::format_key_value_parameter (it->first.c_str(), it->second.c_str());
 	}
 
+	argp[a++] = strdup ("-y");
+#ifdef PLATFORM_WINDOWS
+	try {
+		argp[a] = strdup (Glib::locale_from_utf8 (writer_filename).c_str());
+	} catch (Glib::ConvertError&) {
+		argp[a] = strdup (Glib::convert_with_fallback (writer_filename, "UTF-8", "ASCII", "_").c_str()); // or "CP1252"
+	}
+	++a;
+#else
 	argp[a++] = strdup (writer_filename.c_str());
+#endif
 	argp[a] = (char *)0;
 
 	/* argp is free()d in ~SystemExec,
 	 * SystemExec is deleted when writer is destroyed */
 	ARDOUR::SystemExec* exec = new ARDOUR::SystemExec (ffmpeg_exe, argp, true);
+
 	PBD::info << "Encode command: { " << exec->to_s () << "}" << endmsg;
-	if (exec->start (SystemExec::MergeWithStdin)) {
-		throw ExportFailed ("External encoder (ffmpeg) cannot be started.");
-	}
-	writer.reset (new AudioGrapher::CmdPipeWriter<T> (exec, writer_filename));
-	writer->FileWritten.connect_same_thread (copy_files_connection, boost::bind (&ExportGraphBuilder::Encoder::copy_files, this, _1));
+	writer.reset (new AudioGrapher::CmdPipeWriter<T> (exec, writer_filename, fd, tmpfile_name));
+	writer->FileWritten.connect_same_thread (copy_files_connection, std::bind (&ExportGraphBuilder::Encoder::copy_files, this, _1));
 }
 
 void
@@ -462,7 +593,7 @@ ExportGraphBuilder::SFC::SFC (ExportGraphBuilder &parent, FileSpec const & new_c
 
 	normalizer->add_output (limiter);
 
-	boost::shared_ptr<AudioGrapher::ListedSource<float> > intermediate = limiter;
+	std::shared_ptr<AudioGrapher::ListedSource<float> > intermediate = limiter;
 
 	config.filename->set_channel_config (config.channel_config);
 	parent.add_export_fn (config.filename->get_path (config.format));
@@ -490,7 +621,7 @@ ExportGraphBuilder::SFC::SFC (ExportGraphBuilder &parent, FileSpec const & new_c
 
 	if (config.format->format_id() == ExportFormatBase::F_None) {
 		/* do not encode result, stop after chunker/analyzer */
-		assert (_analyse);
+		assert (_analyse || !parent.timespan->vapor().empty());
 		return;
 	}
 
@@ -576,14 +707,14 @@ ExportGraphBuilder::SFC::sink ()
 void
 ExportGraphBuilder::SFC::add_child (FileSpec const & new_config)
 {
-	for (boost::ptr_list<Encoder>::iterator it = children.begin(); it != children.end(); ++it) {
+	for (std::list<Encoder>::iterator it = children.begin(); it != children.end(); ++it) {
 		if (*it == new_config) {
 			it->add_child (new_config);
 			return;
 		}
 	}
 
-	children.push_back (new Encoder());
+	children.push_back (Encoder());
 	Encoder & encoder = children.back();
 
 	if (data_width == 8 || data_width == 16) {
@@ -598,7 +729,7 @@ ExportGraphBuilder::SFC::add_child (FileSpec const & new_config)
 void
 ExportGraphBuilder::SFC::remove_children (bool remove_out_files)
 {
-	boost::ptr_list<Encoder>::iterator iter = children.begin ();
+	std::list<Encoder>::iterator iter = children.begin ();
 
 	while (iter != children.end() ) {
 
@@ -615,7 +746,18 @@ ExportGraphBuilder::SFC::operator== (FileSpec const& other_config) const
 	ExportFormatSpecification const& a = *config.format;
 	ExportFormatSpecification const& b = *other_config.format;
 
-	bool id = a.sample_format() == b.sample_format();
+	bool id;
+	if (a.analyse () || b.analyse ()) {
+		/* Show dedicated analysis result for files with different
+		 * quality or wav/bwav. This adds a dedicated SFC for each
+		 * format, rater than only running dedicated Encoders as
+		 * childs of of the same SFC.
+		 */
+		id = a == b;
+	} else {
+		/* delegate disambiguation to Encoder::operator== */
+		id = a.sample_format() == b.sample_format();
+	}
 
 	if (a.normalize_loudness () == b.normalize_loudness ()) {
 		id &= a.normalize_lufs () == b.normalize_lufs ();
@@ -661,15 +803,15 @@ ExportGraphBuilder::Intermediate::Intermediate (ExportGraphBuilder & parent, Fil
 	int format = ExportFormatBase::F_RAW | ExportFormatBase::SF_Float;
 
 	if (parent._realtime) {
-		tmp_file.reset (new TmpFileRt<float> (&tmpfile_path_buf[0], format, channels, config.format->sample_rate()));
+		tmp_file.reset (new TmpFileRt<float> (tmpfile_path_buf.data (), format, channels, config.format->sample_rate()));
 	} else {
-		tmp_file.reset (new TmpFileSync<float> (&tmpfile_path_buf[0], format, channels, config.format->sample_rate()));
+		tmp_file.reset (new TmpFileSync<float> (tmpfile_path_buf.data (), format, channels, config.format->sample_rate()));
 	}
 
 	tmp_file->FileWritten.connect_same_thread (post_processing_connection,
-	                                           boost::bind (&Intermediate::prepare_post_processing, this));
+	                                           std::bind (&Intermediate::prepare_post_processing, this));
 	tmp_file->FileFlushed.connect_same_thread (post_processing_connection,
-	                                           boost::bind (&Intermediate::start_post_processing, this));
+	                                           std::bind (&Intermediate::start_post_processing, this));
 
 	add_child (new_config);
 
@@ -695,21 +837,21 @@ ExportGraphBuilder::Intermediate::add_child (FileSpec const & new_config)
 	use_peak     |= new_config.format->normalize ();
 	use_loudness |= new_config.format->normalize_loudness ();
 
-	for (boost::ptr_list<SFC>::iterator it = children.begin(); it != children.end(); ++it) {
+	for (std::list<SFC>::iterator it = children.begin(); it != children.end(); ++it) {
 		if (*it == new_config) {
 			it->add_child (new_config);
 			return;
 		}
 	}
 
-	children.push_back (new SFC (parent, new_config, max_samples_out));
+	children.push_back (SFC (parent, new_config, max_samples_out));
 	threader->add_output (children.back().sink());
 }
 
 void
 ExportGraphBuilder::Intermediate::remove_children (bool remove_out_files)
 {
-	boost::ptr_list<SFC>::iterator iter = children.begin ();
+	std::list<SFC>::iterator iter = children.begin ();
 
 	while (iter != children.end() ) {
 		iter->remove_children (remove_out_files);
@@ -740,7 +882,7 @@ ExportGraphBuilder::Intermediate::process()
 void
 ExportGraphBuilder::Intermediate::prepare_post_processing()
 {
-	for (boost::ptr_list<SFC>::iterator i = children.begin(); i != children.end(); ++i) {
+	for (std::list<SFC>::iterator i = children.begin(); i != children.end(); ++i) {
 		if (use_peak) {
 			(*i).set_peak_dbfs (peak_reader->get_peak());
 		}
@@ -756,7 +898,7 @@ ExportGraphBuilder::Intermediate::prepare_post_processing()
 void
 ExportGraphBuilder::Intermediate::start_post_processing()
 {
-	for (boost::ptr_list<SFC>::iterator i = children.begin(); i != children.end(); ++i) {
+	for (std::list<SFC>::iterator i = children.begin(); i != children.end(); ++i) {
 		(*i).set_duration (tmp_file->get_samples_written() / config.channel_config->get_n_chans());
 	}
 

@@ -22,17 +22,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_dialog_h__
-#define __export_dialog_h__
+#pragma once
 
 #include <string>
-#include <boost/scoped_ptr.hpp>
-
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/label.h>
-#include <gtkmm/notebook.h>
-#include <gtkmm/progressbar.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/label.h>
+#include <ytkmm/notebook.h>
+#include <ytkmm/progressbar.h>
 
 #include "ardour/export_profile_manager.h"
 
@@ -76,8 +73,8 @@ protected:
 		Gtk::Dialog::on_response (response_id);
 	}
 
-	typedef boost::shared_ptr<ARDOUR::ExportHandler> HandlerPtr;
-	typedef boost::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportHandler> HandlerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
 
 	ARDOUR::ExportProfileManager::ExportType type;
 	HandlerPtr      handler;
@@ -89,12 +86,12 @@ protected:
 	// Must initialize all the shared_ptrs below
 	virtual void init_components ();
 
-	boost::scoped_ptr<ExportPresetSelector>   preset_selector;
-	boost::scoped_ptr<ExportTimespanSelector> timespan_selector;
-	boost::scoped_ptr<ExportChannelSelector>  channel_selector;
-	boost::scoped_ptr<ExportFileNotebook>     file_notebook;
+	std::unique_ptr<ExportPresetSelector>   preset_selector;
+	std::unique_ptr<ExportTimespanSelector> timespan_selector;
+	std::unique_ptr<ExportChannelSelector>  channel_selector;
+	std::unique_ptr<ExportFileNotebook>     file_notebook;
 
-	boost::shared_ptr<SoundcloudExportSelector> soundcloud_selector;
+	std::shared_ptr<SoundcloudExportSelector> soundcloud_selector;
 
 	Gtk::VBox                                 warning_widget;
 	Gtk::VBox                                 progress_widget;
@@ -123,7 +120,7 @@ private:
 	void show_progress ();
 	gint progress_timeout ();
 
-	typedef boost::shared_ptr<ARDOUR::ExportStatus> StatusPtr;
+	typedef std::shared_ptr<ARDOUR::ExportStatus> StatusPtr;
 
 	PublicEditor &  editor;
 	StatusPtr       status;
@@ -207,4 +204,3 @@ class StemExportDialog : public ExportDialog
 	void init_components ();
 };
 
-#endif /* __ardour_export_dialog_h__ */

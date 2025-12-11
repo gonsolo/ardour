@@ -20,9 +20,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_stateful_h__
-#define __pbd_stateful_h__
+#pragma once
 
+#include <atomic>
 #include <string>
 #include <list>
 #include <cassert>
@@ -32,7 +32,6 @@
 #include "pbd/xml++.h"
 #include "pbd/property_basics.h"
 #include "pbd/signals.h"
-#include "pbd/g_atomic_compat.h"
 
 class XMLNode;
 
@@ -89,15 +88,15 @@ class LIBPBD_API Stateful {
 
 	void clear_changes ();
 	virtual void clear_owned_changes ();
-	PropertyList* get_changes_as_properties (Command *) const;
-	virtual void rdiff (std::vector<Command*> &) const;
+	PropertyList* get_changes_as_properties (PBD::Command *) const;
+	virtual void rdiff (std::vector<PBD::Command*> &) const;
 	bool changed() const;
 
 	/* create a property list from an XMLNode */
 	virtual PropertyList* property_factory (const XMLNode&) const;
 
 	/* How stateful's notify of changes to their properties */
-	PBD::Signal1<void,const PropertyChange&> PropertyChanged;
+	PBD::Signal<void(const PropertyChange&)> PropertyChanged;
 
 	static int current_state_version;
 	static int loading_state_version;
@@ -105,7 +104,7 @@ class LIBPBD_API Stateful {
 	virtual void suspend_property_changes ();
 	virtual void resume_property_changes ();
 
-	bool property_changes_suspended() const { return g_atomic_int_get (const_cast<GATOMIC_QUAL gint*> (&_stateful_frozen)) > 0; }
+	bool property_changes_suspended() const { return _stateful_frozen.load() > 0; }
 
   protected:
 
@@ -142,11 +141,10 @@ class LIBPBD_API Stateful {
 	static Glib::Threads::Private<bool> _regenerate_xml_or_string_ids;
 
 	PBD::ID           _id;
-	GATOMIC_QUAL gint _stateful_frozen;
+	std::atomic<int> _stateful_frozen;
 
 	static void set_regenerate_xml_and_string_ids_in_this_thread (bool yn);
 };
 
 } // namespace PBD
 
-#endif /* __pbd_stateful_h__ */

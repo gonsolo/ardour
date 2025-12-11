@@ -18,6 +18,7 @@
 #include <cassert>
 
 #include "pbd/types_convert.h"
+#include "pbd/unwind.h"
 #include "pbd/xml++.h"
 
 #include "temporal/tempo.h"
@@ -40,36 +41,50 @@ using namespace ARDOUR;
 using namespace PBD;
 using namespace std;
 
-IOPlug::IOPlug (Session& s, boost::shared_ptr<Plugin> p, bool pre)
+IOPlug::IOPlug (Session& s, std::shared_ptr<Plugin> p, bool pre)
 	: SessionObject (s, "")
 	, GraphNode (s._process_graph)
 	, _plugin (p)
 	, _pre (pre)
 	, _plugin_signal_latency (0)
+	, _configuring_io (false)
 	, _window_proxy (0)
 {
-	g_atomic_int_set (&_stat_reset, 0);
-	g_atomic_int_set (&_reset_meters, 0);
+	_stat_reset.store (0);
+	_reset_meters.store (0);
 
 	if (_plugin) {
 		setup ();
 		set_name (p->get_info()->name);
+		_plugin->activate ();
 	}
 	_input.reset (new IO (_session, io_name (), IO::Input));
 	_output.reset (new IO (_session, io_name (), IO::Output));
+
+	/* do not allow to add/remove ports (for now).
+	 * when adding ports _buf will needs to be resized.
+	 */
+	_input->PortCountChanging.connect_same_thread (*this, [this](ChanCount) { return _configuring_io ? 0 : 1; });
+	_output->PortCountChanging.connect_same_thread (*this, [this](ChanCount) { return _configuring_io ? 0 : 1; });
 }
 
 IOPlug::~IOPlug ()
 {
 	for (CtrlOutMap::const_iterator i = _control_outputs.begin(); i != _control_outputs.end(); ++i) {
-		boost::dynamic_pointer_cast<ReadOnlyControl>(i->second)->drop_references ();
+		std::dynamic_pointer_cast<ReadOnlyControl>(i->second)->drop_references ();
 	}
+
+	Glib::Threads::Mutex::Lock lm (_control_lock);
+	for (Controls::const_iterator li = _controls.begin(); li != _controls.end(); ++li) {
+		std::dynamic_pointer_cast<AutomationControl>(li->second)->drop_references ();
+	}
+	_controls.clear ();
 }
 
 std::string
 IOPlug::io_name (std::string const& n) const
 {
-	return (string_compose ("%1/%2/%3", _("IO"), _pre ? _("Pre"): _("Post"), n.empty () ? name () : n));
+	return (string_compose ("%1/%2/%3", _("IO"), _pre ? S_("IO|Pre"): S_("IO|Post"), n.empty () ? name () : n));
 }
 
 std::string
@@ -102,7 +117,7 @@ IOPlug::get_state() const
 	node->add_child_nocopy (_plugin->get_state());
 
 	for (auto const& c : controls()) {
-		boost::shared_ptr<AutomationControl> ac = boost::dynamic_pointer_cast<AutomationControl> (c.second);
+		std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl> (c.second);
 		if (ac) {
 			node->add_child_nocopy (ac->get_state());
 		}
@@ -131,7 +146,7 @@ IOPlug::set_state (const XMLNode& node, int version)
 		return -1;
 	}
 
-	bool any_vst;
+	bool any_vst = false;
 	_plugin = find_and_load_plugin (_session, node, type, unique_id, any_vst);
 
 	if (!_plugin) {
@@ -156,7 +171,9 @@ IOPlug::set_state (const XMLNode& node, int version)
 	XMLNodeIterator niter;
 
 	for (niter = nlist.begin(); niter != nlist.end(); ++niter) {
-		if ((*niter)->name() == _plugin->state_node_name ()) {
+		if ((*niter)->name() == _plugin->state_node_name ()
+		   || (any_vst && ((*niter)->name() == "lxvst" || (*niter)->name() == "windows-vst" || (*niter)->name() == "mac-vst"))
+			 ) {
 			_plugin->set_state (**niter, version);
 			break;
 		}
@@ -183,6 +200,8 @@ IOPlug::set_state (const XMLNode& node, int version)
 	}
 
 	Latent::set_state (node, version);
+
+	_plugin->activate ();
 
 	return 0;
 }
@@ -239,8 +258,10 @@ IOPlug::setup ()
 	 }
 
 	 _plugin->reconfigure_io (_n_in, aux_in, _n_out);
-	 _plugin->ParameterChangedExternally.connect_same_thread (*this, boost::bind (&IOPlug::parameter_changed_externally, this, _1, _2));
-	 _plugin->activate ();
+	 _plugin->ParameterChangedExternally.connect_same_thread (*this, std::bind (&IOPlug::parameter_changed_externally, this, _1, _2));
+	 _plugin->PropertyChanged.connect_same_thread (*this, std::bind (&IOPlug::property_changed_externally, this, _1, _2));
+	 _plugin->ProcessorChange.connect_same_thread (*this, std::bind (&IOPlug::processor_change, this, _1));
+	 _plugin->set_insert (this, 0);
 }
 
 samplecnt_t
@@ -255,14 +276,14 @@ IOPlug::set_public_latency (bool playback)
 	/* Step1: set private port latency
 	 * compare to Route::set_private_port_latencies, Route::update_port_latencies
 	 */
-	PortSet& from = playback ? _output->ports () : _input->ports ();
-	PortSet& to   = playback ? _input->ports () : _output->ports ();
+	std::shared_ptr<PortSet> from = playback ? _output->ports () : _input->ports ();
+	std::shared_ptr<PortSet> to   = playback ? _input->ports () : _output->ports ();
 
 	LatencyRange all_connections;
 	all_connections.min = ~((pframes_t) 0);
 	all_connections.max = 0;
 
-	for (auto const& p : from) {
+	for (auto const& p : *from) {
 		if (!p->connected ()) {
 			continue;
 		}
@@ -278,14 +299,14 @@ IOPlug::set_public_latency (bool playback)
 	}
 
 	/* set the "from" port latencies to the max/min range of all their connections */
-	for (auto const& p : from) {
+	for (auto const& p : *from) {
 		p->set_private_latency_range (all_connections, playback);
 	}
 
 	all_connections.min += _plugin_signal_latency;
 	all_connections.max += _plugin_signal_latency;
 
-	for (auto const& p : to) {
+	for (auto const& p : *to) {
 		p->set_private_latency_range (all_connections, playback);
 	}
 
@@ -316,13 +337,13 @@ IOPlug::create_parameters ()
 		_plugin->get_parameter_descriptor (i, desc);
 
 		if (!_plugin->parameter_is_input (i)) {
-			_control_outputs[i] = boost::shared_ptr<ReadOnlyControl> (new ReadOnlyControl (_plugin, desc, i));
+			_control_outputs[i] = std::shared_ptr<ReadOnlyControl> (new ReadOnlyControl (_plugin, desc, i));
 			continue;
 		}
 
 		Evoral::Parameter param (PluginAutomation, 0, i);
 
-		boost::shared_ptr<AutomationControl> c (new PluginControl(this, param, desc));
+		std::shared_ptr<AutomationControl> c (new PluginControl (_session, this, param, desc));
 		c->set_flag (Controllable::NotAutomatable);
 		add_control (c);
 
@@ -337,21 +358,40 @@ IOPlug::create_parameters ()
 		if (desc.datatype == Variant::NOTHING) {
 			continue;
 		}
-		boost::shared_ptr<AutomationControl> c (new PluginPropertyControl (this, param, desc));
+		std::shared_ptr<AutomationControl> c (new PluginPropertyControl (_session, this, param, desc));
 		c->set_flag (Controllable::NotAutomatable);
 		add_control (c);
 	}
 
-	_plugin->PresetPortSetValue.connect_same_thread (*this, boost::bind (&IOPlug::preset_load_set_value, this, _1, _2));
+	_plugin->PresetPortSetValue.connect_same_thread (*this, std::bind (&IOPlug::preset_load_set_value, this, _1, _2));
 }
 
 void
 IOPlug::parameter_changed_externally (uint32_t which, float val)
 {
-	boost::shared_ptr<Evoral::Control> c = control (Evoral::Parameter (PluginAutomation, 0, which));
-	boost::shared_ptr<PluginControl> pc = boost::dynamic_pointer_cast<PluginControl> (c);
+	std::shared_ptr<Evoral::Control> c = control (Evoral::Parameter (PluginAutomation, 0, which));
+	std::shared_ptr<PluginControl> pc = std::dynamic_pointer_cast<PluginControl> (c);
 	if (pc) {
 		pc->catch_up_with_external_value (val);
+	}
+}
+
+void
+IOPlug::property_changed_externally (uint32_t which, Variant val)
+{
+	std::shared_ptr<Evoral::Control>        c  = control (Evoral::Parameter (PluginPropertyAutomation, 0, which));
+	std::shared_ptr<PluginPropertyControl>  pc = std::dynamic_pointer_cast<PluginPropertyControl> (c);
+
+	if (pc) {
+		pc->catch_up_with_external_value (val.to_double ());
+	}
+}
+
+void
+IOPlug::processor_change (RouteProcessorChange const& rpc)
+{
+	if (rpc.type & RouteProcessorChange::PortNameChange) {
+		set_pretty_port_names ();
 	}
 }
 
@@ -371,19 +411,9 @@ IOPlug::ui_elements () const
 	return rv;
 }
 
-bool
-IOPlug::ensure_io ()
+void
+IOPlug::set_pretty_port_names ()
 {
-	/* must be called with process-lock held */
-	if (_input->ensure_io (_n_in, false, this) != 0) {
-		return false;
-	}
-	if (_output->ensure_io (_n_out, false, this) != 0) {
-		return false;
-	}
-
-	_bufs.ensure_buffers (ChanCount::max (_n_in, _n_out), _session.get_block_size ());
-
 	for (uint32_t i = 0; i < _n_in.n_audio (); ++i) {
 		const auto& pd (_plugin->describe_io_port (DataType::AUDIO, true, i));
 		std::string const pn = string_compose ("%1 %2 - %3", _("IO"), name (), pd.name);
@@ -404,18 +434,56 @@ IOPlug::ensure_io ()
 		std::string const pn = string_compose ("%1 %2 - %3", _("IO"), name (), pd.name);
 		_output->midi (i)->set_pretty_name (pn);
 	}
+}
 
-	 if (_pre) {
-		 for (uint32_t i = 0; i < _n_out.n_audio (); ++i) {
-			 std::string const& n = AudioEngine::instance ()->make_port_name_non_relative (_output->audio (i)->name ());
-			 _audio_input_ports.insert (make_pair (n, PortManager::AudioInputPort (24288))); // 2^19 ~ 1MB / port
-		 }
-		 for (uint32_t i = 0; i < _n_out.n_midi (); ++i) {
-			 std::string const& n = AudioEngine::instance ()->make_port_name_non_relative (_output->midi (i)->name ());
-			 _midi_input_ports.insert (make_pair (n, PortManager::MIDIInputPort (32)));
-		 }
-	 }
+bool
+IOPlug::ensure_io ()
+{
+	PBD::Unwinder<bool> uw (_configuring_io, true);
+
+	/* must be called with process-lock held */
+	if (_input->ensure_io (_n_in, false, this) != 0) {
+		return false;
+	}
+	if (_output->ensure_io (_n_out, false, this) != 0) {
+		return false;
+	}
+
+	_bufs.ensure_buffers (ChanCount::max (_n_in, _n_out), _session.get_block_size ());
+
+	set_pretty_port_names ();
+
+	if (_pre) {
+		for (uint32_t i = 0; i < _n_out.n_audio (); ++i) {
+			std::string const& n = AudioEngine::instance ()->make_port_name_non_relative (_output->audio (i)->name ());
+			_audio_input_ports.insert (make_pair (n, PortManager::AudioInputPort (24288))); // 2^19 ~ 1MB / port
+		}
+		for (uint32_t i = 0; i < _n_out.n_midi (); ++i) {
+			std::string const& n = AudioEngine::instance ()->make_port_name_non_relative (_output->midi (i)->name ());
+			_midi_input_ports.insert (make_pair (n, PortManager::MIDIInputPort (32)));
+		}
+	}
 	return true;
+}
+
+ChanMapping
+IOPlug::input_map (uint32_t num) const
+{
+	if (num == 1) {
+		return ChanMapping (_n_in);
+	} else {
+		return ChanMapping ();
+	}
+}
+
+ChanMapping
+IOPlug::output_map (uint32_t num) const
+{
+	if (num == 1) {
+		return ChanMapping (_n_out);
+	} else {
+		return ChanMapping ();
+	}
 }
 
 void
@@ -430,7 +498,8 @@ IOPlug::connect_and_run (samplepos_t start, pframes_t n_samples)
 	Temporal::TempoMap::update_thread_tempo_map ();
 	assert (n_samples > 0);
 
-	if (g_atomic_int_compare_and_exchange (&_stat_reset, 1, 0)) {
+	int canderef (1);
+	if (_stat_reset.compare_exchange_strong (canderef, 0)) {
 		_timing_stats.reset ();
 	}
 
@@ -464,9 +533,9 @@ IOPlug::connect_and_run (samplepos_t start, pframes_t n_samples)
 		}
 	}
 
-	PortSet& ports (_output->ports());
 	if (_pre) {
-		const bool reset       = g_atomic_int_compare_and_exchange (&_reset_meters, 1, 0);
+		canderef = 1;
+		const bool reset       = _reset_meters.compare_exchange_strong (canderef, 0);
 		samplecnt_t const rate = _session.nominal_sample_rate ();
 
 		auto a = _audio_input_ports.begin ();
@@ -487,9 +556,7 @@ IOPlug::connect_and_run (samplepos_t start, pframes_t n_samples)
 			}
 		}
 	}
-	for (PortSet::iterator i = ports.begin(); i != ports.end(); ++i) {
-		i->flush_buffers (n_samples);
-	}
+	_output->flush_buffers (n_samples);;
 
 	const samplecnt_t l = effective_latency ();
 	if (_plugin_signal_latency != l) {
@@ -503,7 +570,7 @@ IOPlug::connect_and_run (samplepos_t start, pframes_t n_samples)
 void
 IOPlug::reset_input_meters ()
 {
-	g_atomic_int_set (&_reset_meters, 1);
+	_reset_meters.store (1);
 }
 
 bool
@@ -515,15 +582,15 @@ IOPlug::get_stats (PBD::microseconds_t& min, PBD::microseconds_t& max, double& a
 void
 IOPlug::clear_stats ()
 {
-	g_atomic_int_set (&_stat_reset, 1);
+	_stat_reset.store (1);
 }
 
-boost::shared_ptr<ReadOnlyControl>
+std::shared_ptr<ReadOnlyControl>
 IOPlug::control_output (uint32_t num) const
 {
 	CtrlOutMap::const_iterator i = _control_outputs.find (num);
 	if (i == _control_outputs.end ()) {
-		return boost::shared_ptr<ReadOnlyControl> ();
+		return std::shared_ptr<ReadOnlyControl> ();
 	} else {
 		return (*i).second;
 	}
@@ -541,12 +608,12 @@ IOPlug::write_immediate_event (Evoral::EventType event_type, size_t size, const 
 	return _plugin->write_immediate_event (event_type, size, buf);
 }
 
-boost::shared_ptr<Evoral::Control>
+std::shared_ptr<Evoral::Control>
 IOPlug::control_factory(const Evoral::Parameter& param)
 {
 	Evoral::Control*                  control   = NULL;
 	ParameterDescriptor               desc(param);
-	boost::shared_ptr<AutomationList> list;
+	std::shared_ptr<AutomationList> list;
 
 #if 0
 	if (param.type() == PluginAutomation) {
@@ -561,18 +628,18 @@ IOPlug::control_factory(const Evoral::Parameter& param)
 #endif
 
 	if (!control) {
-		boost::shared_ptr<AutomationList> list;
+		std::shared_ptr<AutomationList> list;
 		control = new AutomationControl (_session, param, desc, list);
 	}
 
-	return boost::shared_ptr<Evoral::Control>(control);
+	return std::shared_ptr<Evoral::Control>(control);
 }
 
 std::string
 IOPlug::describe_parameter (Evoral::Parameter param)
 {
 	if (param.type() == PluginAutomation) {
-		_plugin->describe_parameter (param);
+		return _plugin->describe_parameter (param);
 	} else if (param.type() == PluginPropertyAutomation) {
 		return string_compose ("Property %1", URIMap::instance ().id_to_uri (param.id()));
 	}
@@ -580,9 +647,9 @@ IOPlug::describe_parameter (Evoral::Parameter param)
 }
 
 bool
-IOPlug::direct_feeds_according_to_reality (boost::shared_ptr<GraphNode> node, bool* via_send_only)
+IOPlug::direct_feeds_according_to_reality (std::shared_ptr<GraphNode> node, bool* via_send_only)
 {
-	boost::shared_ptr<IOPlug> other (boost::dynamic_pointer_cast<IOPlug> (node));
+	std::shared_ptr<IOPlug> other (std::dynamic_pointer_cast<IOPlug> (node));
 	assert (other && other->_pre == _pre);
 	if (via_send_only) {
 		*via_send_only = false;
@@ -592,101 +659,50 @@ IOPlug::direct_feeds_according_to_reality (boost::shared_ptr<GraphNode> node, bo
 
 /* ****************************************************************************/
 
-IOPlug::PluginControl::PluginControl (IOPlug*                     p,
-                                      Evoral::Parameter const&    param,
-                                      ParameterDescriptor const&  desc)
-	: AutomationControl (p->session (), param, desc, boost::shared_ptr<AutomationList> (), p->describe_parameter (param))
-	, _iop (p)
+bool
+IOPlug::can_reset_all_parameters ()
 {
-}
+	bool all = true;
+	uint32_t params = 0;
+	for (uint32_t par = 0; par < _plugin->parameter_count(); ++par) {
+		bool ok=false;
+		const uint32_t cid = _plugin->nth_parameter (par, ok);
 
-void
-IOPlug::PluginControl::actually_set_value (double user_val, PBD::Controllable::GroupControlDisposition group_override)
-{
-	_iop->plugin ()->set_parameter (parameter().id(), user_val, 0);
-
-	AutomationControl::actually_set_value (user_val, group_override);
-}
-
-void
-IOPlug::PluginControl::catch_up_with_external_value (double user_val)
-{
-	AutomationControl::actually_set_value (user_val, Controllable::NoGroup);
-}
-
-XMLNode&
-IOPlug::PluginControl::get_state () const
-{
-	XMLNode& node (AutomationControl::get_state());
-	node.set_property ("parameter", parameter().id());
-
-	boost::shared_ptr<LV2Plugin> lv2plugin = boost::dynamic_pointer_cast<LV2Plugin> (_iop->plugin ());
-	if (lv2plugin) {
-		node.set_property ("symbol", lv2plugin->port_symbol (parameter().id()));
-	}
-
-	return node;
-}
-
-double
-IOPlug::PluginControl::get_value () const
-{
-	boost::shared_ptr<Plugin> plugin = _iop->plugin ();
-
-	if (!plugin) {
-		return 0.0;
-	}
-
-	return plugin->get_parameter (parameter().id());
-}
-
-std::string
-IOPlug::PluginControl::get_user_string () const
-{
-	boost::shared_ptr<Plugin> plugin = _iop->plugin (0);
-	if (plugin) {
-		std::string pp;
-		if (plugin->print_parameter (parameter().id(), pp) && pp.size () > 0) {
-			return pp;
+		if (!ok || !_plugin->parameter_is_input(cid)) {
+			continue;
 		}
+
+		++params;
 	}
-	return AutomationControl::get_user_string ();
+	return all && (params > 0);
 }
 
-IOPlug::PluginPropertyControl::PluginPropertyControl (IOPlug*                    p,
-                                                      Evoral::Parameter const&   param,
-                                                      ParameterDescriptor const& desc)
-	: AutomationControl (p->session(), param, desc )
-	, _iop (p)
+bool
+IOPlug::reset_parameters_to_default ()
 {
-}
+	bool all = true;
 
-void
-IOPlug::PluginPropertyControl::actually_set_value (double user_val, Controllable::GroupControlDisposition gcd)
-{
-	const Variant value(_desc.datatype, user_val);
-	if (value.type() == Variant::NOTHING) {
-		return;
+	for (uint32_t par = 0; par < _plugin->parameter_count(); ++par) {
+		bool ok=false;
+		const uint32_t cid = _plugin->nth_parameter (par, ok);
+
+		if (!ok || !_plugin->parameter_is_input(cid)) {
+			continue;
+		}
+
+		const float dflt = _plugin->default_value (cid);
+		const float curr = _plugin->get_parameter (cid);
+
+		if (dflt == curr) {
+			continue;
+		}
+
+		std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(control (Evoral::Parameter(PluginAutomation, 0, cid)));
+		if (!ac) {
+			continue;
+		}
+
+		ac->set_value (dflt, Controllable::NoGroup);
 	}
-
-	_iop->plugin ()->set_property (parameter().id(), value);
-
-	_value = value;
-
-	AutomationControl::actually_set_value (user_val, gcd);
-}
-
-XMLNode&
-IOPlug::PluginPropertyControl::get_state () const
-{
-	XMLNode& node (AutomationControl::get_state());
-	node.set_property ("property", parameter ().id ());
-	node.remove_property ("value");
-	return node;
-}
-
-double
-IOPlug::PluginPropertyControl::get_value () const
-{
-	return _value.to_double();
+	return all;
 }

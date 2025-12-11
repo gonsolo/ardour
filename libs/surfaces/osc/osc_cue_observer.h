@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2018 Len Ovens <len@ovenwerks.net>
+ * Copyright (C) 2024 Robin Gareus <robin@gareus.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,8 +20,11 @@
 #ifndef __osc_osccueobserver_h__
 #define __osc_osccueobserver_h__
 
+#include "osc.h"
+
 #include <string>
-#include <boost/shared_ptr.hpp>
+#include <memory>
+
 #include <sigc++/sigc++.h>
 #include <lo/lo.h>
 
@@ -35,17 +39,17 @@ class OSCCueObserver
 	OSCCueObserver (ArdourSurface::OSC& o, ArdourSurface::OSC::OSCSurface* sur);
 	~OSCCueObserver ();
 
-	boost::shared_ptr<ARDOUR::Stripable> strip () const { return _strip; }
+	std::shared_ptr<ARDOUR::Stripable> strip () const { return _strip; }
 	lo_address address() const { return addr; };
 	void tick (void);
-	typedef std::vector<boost::shared_ptr<ARDOUR::Stripable> > Sorted;
+	typedef std::vector<std::shared_ptr<ARDOUR::Stripable> > Sorted;
 	Sorted sends;
 	void clear_observer (void);
-	void refresh_strip (boost::shared_ptr<ARDOUR::Stripable> new_strip, Sorted new_sends, bool force);
+	void refresh_strip (std::shared_ptr<ARDOUR::Stripable> new_strip, Sorted new_sends, bool force);
 
   private:
 
-	boost::shared_ptr<ARDOUR::Stripable> _strip;
+	std::shared_ptr<ARDOUR::Stripable> _strip;
 	ArdourSurface::OSC& _osc;
 
 	PBD::ScopedConnectionList strip_connections;
@@ -56,14 +60,14 @@ class OSCCueObserver
 	ArdourSurface::OSC::OSCSurface* sur;
 	float _last_meter;
 	float _last_signal;
-	std::vector<uint32_t> gain_timeout;
+	std::map<uint32_t,float> gain_timeout;
 	bool tick_enable;
-	std::vector<float> _last_gain;
+	std::map<uint32_t,float> _last_gain;
 
 	void name_changed (const PBD::PropertyChange& what_changed, uint32_t id);
-	void send_change_message (std::string path, uint32_t id, boost::shared_ptr<PBD::Controllable> controllable);
-	void send_gain_message (uint32_t id, boost::shared_ptr<PBD::Controllable> controllable, bool force);
-	void send_enabled_message (std::string path, uint32_t id, boost::shared_ptr<ARDOUR::Processor> proc);
+	void send_change_message (std::string path, uint32_t id, std::weak_ptr<PBD::Controllable> controllable);
+	void send_gain_message (uint32_t id, std::weak_ptr<PBD::Controllable> controllable, bool force);
+	void send_enabled_message (std::string path, uint32_t id, std::weak_ptr<ARDOUR::Processor> proc);
 	void send_init (void);
 	void send_end (uint32_t new_sends_size);
 	void send_restart (void);

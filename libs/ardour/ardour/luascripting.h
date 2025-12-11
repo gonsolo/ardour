@@ -17,9 +17,10 @@
  */
 #ifndef _ardour_luascripting_h_
 #define _ardour_luascripting_h_
+
+#include <memory>
 #include <vector>
 
-#include <boost/shared_ptr.hpp>
 #include <glibmm/threads.h>
 
 #include "pbd/signals.h"
@@ -99,10 +100,10 @@ struct LIBARDOUR_API LuaScriptParam {
 };
 
 
-typedef boost::shared_ptr<LuaScriptInfo> LuaScriptInfoPtr;
+typedef std::shared_ptr<LuaScriptInfo> LuaScriptInfoPtr;
 typedef std::vector<LuaScriptInfoPtr> LuaScriptList;
 
-typedef boost::shared_ptr<LuaScriptParam> LuaScriptParamPtr;
+typedef std::shared_ptr<LuaScriptParam> LuaScriptParamPtr;
 typedef std::vector<LuaScriptParamPtr> LuaScriptParamList;
 
 
@@ -115,7 +116,7 @@ public:
 
 	LuaScriptList &scripts (LuaScriptInfo::ScriptType);
 	void refresh (bool run_scan = false);
-	PBD::Signal0<void> scripts_changed;
+	PBD::Signal<void()> scripts_changed;
 
 	LuaScriptInfoPtr by_name (const std::string&, LuaScriptInfo::ScriptType);
 

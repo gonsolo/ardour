@@ -16,13 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_plugin_dspload_window_h__
-#define __ardour_plugin_dspload_window_h__
+#pragma once
 
-#include <boost/weak_ptr.hpp>
+#include <memory>
 
-#include <gtkmm/box.h>
-#include <gtkmm/scrolledwindow.h>
+#include <ytkmm/box.h>
+#include <ytkmm/scrolledwindow.h>
 
 #include "widgets/ardour_button.h"
 #include "pbd/signals.h"
@@ -55,10 +54,10 @@ private:
 	void drop_references ();
 	void clear_all_stats ();
 	void sort_by_stats (bool);
-	void add_processor_to_display (boost::weak_ptr<ARDOUR::Processor>, std::string const&);
-	void add_pluginsert_to_display (boost::shared_ptr<ARDOUR::PlugInsertBase>, std::string const&);
-	void clear_processor_stats (boost::weak_ptr<ARDOUR::Processor>);
-	void clear_pluginsert_stats (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+	void add_processor_to_display (std::weak_ptr<ARDOUR::Processor>, std::string const&);
+	void add_pluginsert_to_display (std::shared_ptr<ARDOUR::PlugInsertBase>, std::string const&);
+	void clear_processor_stats (std::weak_ptr<ARDOUR::Processor>);
+	void clear_pluginsert_stats (std::shared_ptr<ARDOUR::PlugInsertBase>);
 
 	Gtk::ScrolledWindow _scroller;
 	Gtk::VBox _box;
@@ -70,5 +69,4 @@ private:
 	PBD::ScopedConnectionList _processor_connections;
 	PBD::ScopedConnectionList _route_connections;
 };
-#endif
 

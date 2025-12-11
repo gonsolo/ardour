@@ -22,10 +22,10 @@
  */
 
 #include <gtkmm2ext/gtk_ui.h>
-#include <gtkmm/stock.h>
-#include <gtkmm/label.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treeiter.h>
+#include <ytkmm/stock.h>
+#include <ytkmm/label.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treeiter.h>
 
 #include "ardour/audioregion.h"
 #include "ardour/audioplaylist.h"
@@ -243,8 +243,8 @@ AnalysisWindow::analyze_data (Gtk::Button * /*button*/)
 			TimeSelection ts = s.time;
 
 			for (TrackSelection::iterator i = s.tracks.begin(); i != s.tracks.end(); ++i) {
-				boost::shared_ptr<AudioPlaylist> pl
-					= boost::dynamic_pointer_cast<AudioPlaylist>((*i)->playlist());
+				std::shared_ptr<AudioPlaylist> pl
+					= std::dynamic_pointer_cast<AudioPlaylist>((*i)->playlist());
 
 				if (!pl)
 					continue;

@@ -39,7 +39,7 @@ using namespace std;
 using namespace ARDOUR;
 using namespace PBD;
 
-SendUI::SendUI (Gtk::Window* parent, Session* session, boost::shared_ptr<Send> s)
+SendUI::SendUI (Gtk::Window* parent, Session* session, std::shared_ptr<Send> s)
 	: _send (s)
 	, _invert_button (X_("Ø"))
 	, _gpm (session, 250)
@@ -55,11 +55,11 @@ SendUI::SendUI (Gtk::Window* parent, Session* session, boost::shared_ptr<Send> s
 	_panners.set_panner (s->panner_shell (), s->panner ());
 
 	_send->set_metering (true);
-	_send->output ()->changed.connect (_send_connection, invalidator (*this), boost::bind (&SendUI::outs_changed, this, _1, _2), gui_context ());
+	_send->output ()->changed.connect (_send_connection, invalidator (*this), std::bind (&SendUI::outs_changed, this, _1, _2), gui_context ());
 
 	_gpm.setup_meters ();
 	_gpm.set_fader_name (X_("SendUIFader"));
-	_gpm.set_controls (boost::shared_ptr<Route> (), s->meter (), s->amp (), s->gain_control ());
+	_gpm.set_controls (std::shared_ptr<Route> (), s->meter (), s->amp (), s->gain_control ());
 
 	_io = Gtk::manage (new IOSelector (parent, session, s->output ()));
 
@@ -133,7 +133,7 @@ SendUI::invert_press (GdkEventButton* ev)
 		return true;
 	}
 
-	boost::shared_ptr<AutomationControl> ac = _send->polarity_control ();
+	std::shared_ptr<AutomationControl> ac = _send->polarity_control ();
 	ac->start_touch (timepos_t (ac->session ().audible_sample ()));
 	return true;
 }
@@ -145,14 +145,23 @@ SendUI::invert_release (GdkEventButton* ev)
 		return true;
 	}
 
-	boost::shared_ptr<AutomationControl> ac = _send->polarity_control ();
+	std::shared_ptr<AutomationControl> ac = _send->polarity_control ();
 	ac->set_value (_invert_button.get_active () ? 0 : 1, PBD::Controllable::NoGroup);
 	ac->stop_touch (timepos_t (ac->session ().audible_sample ()));
 	return true;
 }
 
-SendUIWindow::SendUIWindow (Gtk::Window& parent, ARDOUR::Session* session, boost::shared_ptr<Send> send)
+SendUIWindow::SendUIWindow (Gtk::Window& parent, ARDOUR::Session* session, std::shared_ptr<Send> send)
 	: ArdourWindow (parent, string_compose (_("Send: %1"), send->name ()))
+	, _ui (this, session, send)
+{
+	set_name ("SendUIWindow");
+	add (_ui);
+	_ui.show ();
+}
+
+SendUIWindow::SendUIWindow (ARDOUR::Session* session, std::shared_ptr<Send> send)
+	: ArdourWindow (string_compose (_("Send: %1"), send->name ()))
 	, _ui (this, session, send)
 {
 	set_name ("SendUIWindow");

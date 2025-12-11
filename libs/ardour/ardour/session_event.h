@@ -19,13 +19,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_session_event_h__
-#define __ardour_session_event_h__
+#pragma once
 
 #include <list>
-#include <boost/function.hpp>
-#include <boost/shared_ptr.hpp>
-#include <boost/weak_ptr.hpp>
+#include <memory>
+
 
 #include "pbd/pool.h"
 #include "pbd/ringbuffer.h"
@@ -94,7 +92,7 @@ public:
 		int32_t          scene;
 	};
 
-	boost::weak_ptr<Track> track;
+	std::weak_ptr<Track> track;
 
 	union {
 		bool second_yes_or_no;
@@ -108,23 +106,23 @@ public:
 
 	/* 5 members to handle a multi-group event handled in RT context */
 
-	typedef boost::function<void (SessionEvent*)> RTeventCallback;
+	typedef std::function<void (SessionEvent*)> RTeventCallback;
 
-	boost::shared_ptr<ControlList> controls; /* apply to */
-	boost::shared_ptr<RouteList> routes;     /* apply to */
-	boost::function<void (void)> rt_slot;    /* what to call in RT context */
+	std::shared_ptr<AutomationControlList> controls; /* apply to */
+	std::shared_ptr<RouteList> routes;     /* apply to */
+	std::function<void (void)> rt_slot;    /* what to call in RT context */
 	RTeventCallback              rt_return;  /* called after rt_slot, with this event as an argument */
 	PBD::EventLoop*              event_loop;
 
 	std::list<TimelineRange> audio_range;
 	std::list<TimelineRange> music_range;
 
-	boost::shared_ptr<Region> region;
-	boost::shared_ptr<TransportMaster> transport_master;
+	std::shared_ptr<Region> region;
+	std::shared_ptr<TransportMaster> transport_master;
 
 	SessionEvent (Type t, Action a, samplepos_t when, samplepos_t where, double spd, bool yn = false, bool yn2 = false, bool yn3 = false);
 
-	void set_track (boost::shared_ptr<Track> t) {
+	void set_track (std::shared_ptr<Track> t) {
 		track = t;
 	}
 
@@ -167,7 +165,7 @@ public:
 
 	virtual void queue_event (SessionEvent *ev) = 0;
 	void clear_events (SessionEvent::Type type);
-	void clear_events (SessionEvent::Type type, boost::function<void (void)> after);
+	void clear_events (SessionEvent::Type type, std::function<void (void)> after);
 
 protected:
 	PBD::RingBuffer<SessionEvent*> pending_events;
@@ -202,4 +200,3 @@ protected:
 
 LIBARDOUR_API std::ostream& operator<<(std::ostream&, const ARDOUR::SessionEvent&);
 
-#endif /* __ardour_session_event_h__ */

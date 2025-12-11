@@ -16,12 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef  __gtk_ardour_port_matrix_grid_h__
-#define  __gtk_ardour_port_matrix_grid_h__
+#pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
+
 #include "ardour/types.h"
 #include "port_matrix_component.h"
 #include "port_matrix_types.h"
@@ -29,10 +29,6 @@
 
 class PortMatrix;
 class PortMatrixBody;
-
-namespace ARDOUR {
-	class Bundle;
-}
 
 /**  The grid part of the port matrix */
 class PortMatrixGrid : public PortMatrixComponent
@@ -55,7 +51,7 @@ private:
 
 	void compute_dimensions ();
 	void render (cairo_t *);
-	void render_group_pair (cairo_t *, boost::shared_ptr<const PortGroup>, boost::shared_ptr<const PortGroup>, uint32_t, uint32_t);
+	void render_group_pair (cairo_t *, std::shared_ptr<const PortGroup>, std::shared_ptr<const PortGroup>, uint32_t, uint32_t);
 
 	PortMatrixNode position_to_node (double, double) const;
 	void queue_draw_for (std::list<PortMatrixNode> const &);
@@ -75,4 +71,3 @@ private:
 	int _drag_y;
 };
 
-#endif

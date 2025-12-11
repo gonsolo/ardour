@@ -19,14 +19,36 @@
 #ifndef __osc_oscglobalobserver_h__
 #define __osc_oscglobalobserver_h__
 
+#include "osc.h"
+
+#include <memory>
 #include <string>
-#include <boost/shared_ptr.hpp>
+
 #include <sigc++/sigc++.h>
 #include <lo/lo.h>
 
 #include "pbd/controllable.h"
 #include "pbd/stateful.h"
+
+#include "ardour/route_group.h"
+#include "ardour/session.h"
 #include "ardour/types.h"
+
+namespace ArdourSurface {
+
+
+struct LocationMarker {
+	LocationMarker (const std::string& l, samplepos_t w)
+		: label (l), when (w) {}
+	std::string label;
+	samplepos_t  when;
+};
+
+struct LocationMarkerSort {
+	bool operator() (const LocationMarker& a, const LocationMarker& b) {
+		return (a.when < b.when);
+	}
+};
 
 class OSCGlobalObserver
 {
@@ -41,6 +63,8 @@ class OSCGlobalObserver
 	void jog_mode (uint32_t jogmode);
 
   private:
+	friend ArdourSurface::OSC;
+
 	ArdourSurface::OSC& _osc;
 
 	PBD::ScopedConnectionList strip_connections;
@@ -73,24 +97,12 @@ class OSCGlobalObserver
 	uint32_t last_click;
 	samplepos_t prev_mark;
 	samplepos_t next_mark;
-	struct LocationMarker {
-		LocationMarker (const std::string& l, samplepos_t w)
-			: label (l), when (w) {}
-		std::string label;
-		samplepos_t  when;
-	};
 	std::vector<LocationMarker> lm;
 
-	struct LocationMarkerSort {
-		bool operator() (const LocationMarker& a, const LocationMarker& b) {
-			return (a.when < b.when);
-		}
-	};
-
 	void update_mixer_scene_state();
-	void send_change_message (std::string path, boost::shared_ptr<PBD::Controllable> controllable);
-	void send_gain_message (std::string path, boost::shared_ptr<PBD::Controllable> controllable);
-	void send_trim_message (std::string path, boost::shared_ptr<PBD::Controllable> controllable);
+	void send_change_message (std::string path, std::shared_ptr<PBD::Controllable> controllable);
+	void send_gain_message (std::string path, std::shared_ptr<PBD::Controllable> controllable);
+	void send_trim_message (std::string path, std::shared_ptr<PBD::Controllable> controllable);
 	void send_transport_state_changed (void);
 	void send_record_state_changed (void);
 	void solo_active (bool active);
@@ -101,5 +113,7 @@ class OSCGlobalObserver
 	void group_changed (ARDOUR::RouteGroup*);
 	void group_changed (void);
 };
+
+} /* namespace */
 
 #endif /* __osc_oscglobalobserver_h__ */

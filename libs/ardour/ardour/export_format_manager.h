@@ -20,13 +20,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_format_manager_h__
-#define __ardour_export_format_manager_h__
+#pragma once
 
 #include <list>
+#include <memory>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/signals.h"
 
@@ -63,8 +61,8 @@ class LIBARDOUR_API ExportFormatManager : public PBD::ScopedConnectionList
 			quality (quality) { set_name (name); }
 		ExportFormatBase::Quality  quality;
 	};
-	typedef boost::shared_ptr<QualityState> QualityPtr;
-	typedef boost::weak_ptr<QualityState> WeakQualityPtr;
+	typedef std::shared_ptr<QualityState> QualityPtr;
+	typedef std::weak_ptr<QualityState> WeakQualityPtr;
 	typedef std::list<QualityPtr> QualityList;
 
 	/* Sample rate states */
@@ -75,8 +73,8 @@ class LIBARDOUR_API ExportFormatManager : public PBD::ScopedConnectionList
 			: rate (rate) { set_name (name); }
 		ExportFormatBase::SampleRate  rate;
 	};
-	typedef boost::shared_ptr<SampleRateState> SampleRatePtr;
-	typedef boost::weak_ptr<SampleRateState> WeakSampleRatePtr;
+	typedef std::shared_ptr<SampleRateState> SampleRatePtr;
+	typedef std::weak_ptr<SampleRateState> WeakSampleRatePtr;
 	typedef std::list<SampleRatePtr> SampleRateList;
 
   public:
@@ -86,8 +84,8 @@ class LIBARDOUR_API ExportFormatManager : public PBD::ScopedConnectionList
 
 	/* Signals */
 
-	PBD::Signal1<void,bool> CompleteChanged;
-	PBD::Signal0<void> DescriptionChanged;
+	PBD::Signal<void(bool)> CompleteChanged;
+	PBD::Signal<void()> DescriptionChanged;
 
 	/* Access to lists */
 
@@ -182,4 +180,3 @@ class LIBARDOUR_API ExportFormatManager : public PBD::ScopedConnectionList
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_format_manager_h__ */

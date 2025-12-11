@@ -19,8 +19,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#ifndef __gtk_ardour_editor_regions_h__
-#define __gtk_ardour_editor_regions_h__
+#pragma once
 
 #include "editor_component.h"
 #include "region_list_base.h"
@@ -29,13 +28,13 @@
 class EditorRegions : public EditorComponent, public RegionListBase
 {
 public:
-	EditorRegions (Editor*);
+	EditorRegions (Editor&);
 
 	void set_selected (RegionSelection&);
-	void selection_mapover (sigc::slot<void, boost::shared_ptr<ARDOUR::Region>>);
+	void selection_mapover (sigc::slot<void, std::shared_ptr<ARDOUR::Region>>);
 	void remove_unused_regions ();
 
-	boost::shared_ptr<ARDOUR::Region> get_single_selection ();
+	std::shared_ptr<ARDOUR::Region> get_single_selection ();
 
 	void unselect_all ()
 	{
@@ -43,7 +42,7 @@ public:
 	}
 
 protected:
-	void regions_changed (boost::shared_ptr<ARDOUR::RegionList>, PBD::PropertyChange const&);
+	void regions_changed (std::shared_ptr<ARDOUR::RegionList>, PBD::PropertyChange const&);
 
 private:
 	void init ();
@@ -52,4 +51,3 @@ private:
 	void show_context_menu (int button, int time);
 };
 
-#endif /* __gtk_ardour_editor_regions_h__ */

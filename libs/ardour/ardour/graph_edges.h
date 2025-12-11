@@ -16,13 +16,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_route_graph_h__
-#define __ardour_route_graph_h__
+#pragma once
 
 #include <map>
 #include <set>
-
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/types.h"
@@ -30,7 +27,7 @@
 namespace ARDOUR {
 class GraphNode;
 
-typedef boost::shared_ptr<GraphNode> GraphVertex;
+typedef std::shared_ptr<GraphNode> GraphVertex;
 
 /** A list of edges for a directed graph for routes.
  *
@@ -84,4 +81,3 @@ bool topological_sort (GraphNodeList&, GraphEdges&);
 
 }
 
-#endif

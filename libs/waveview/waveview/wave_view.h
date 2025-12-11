@@ -21,8 +21,7 @@
 #ifndef _WAVEVIEW_WAVE_VIEW_H_
 #define _WAVEVIEW_WAVE_VIEW_H_
 
-#include <boost/shared_ptr.hpp>
-#include <boost/scoped_ptr.hpp>
+#include <memory>
 
 #include <glibmm/refptr.h>
 
@@ -72,13 +71,14 @@ public:
 	   other view parameters).
 	*/
 
-	WaveView (ArdourCanvas::Canvas*, boost::shared_ptr<ARDOUR::AudioRegion>);
-	WaveView (Item*, boost::shared_ptr<ARDOUR::AudioRegion>);
+	WaveView (ArdourCanvas::Canvas*, std::shared_ptr<ARDOUR::AudioRegion>);
+	WaveView (Item*, std::shared_ptr<ARDOUR::AudioRegion>);
 	~WaveView ();
 
-	virtual void prepare_for_render (ArdourCanvas::Rect const& window_area) const;
+	void prepare_for_render (ArdourCanvas::Rect const& window_area) const;
+	bool needs_prepare_for_render () const { return true; }
 
-	virtual void render (ArdourCanvas::Rect const & area, Cairo::RefPtr<Cairo::Context>) const;
+	void render (ArdourCanvas::Rect const & area, Cairo::RefPtr<Cairo::Context>) const;
 
 	void compute_bounding_box () const;
 
@@ -138,7 +138,7 @@ public:
 	double amplitude_above_axis () const;
 
 	static void set_clip_level (double dB);
-	static PBD::Signal0<void> ClipLevelChanged;
+	static PBD::Signal<void()> ClipLevelChanged;
 
 	static void start_drawing_thread ();
 	static void stop_drawing_thread ();
@@ -149,13 +149,13 @@ private:
 	friend class WaveViewThreadClient;
 	friend class WaveViewThreads;
 
-	boost::shared_ptr<ARDOUR::AudioRegion> _region;
+	std::shared_ptr<ARDOUR::AudioRegion> _region;
 
-	boost::scoped_ptr<WaveViewProperties> _props;
+	const std::unique_ptr<WaveViewProperties> _props;
 
-	mutable boost::shared_ptr<WaveViewImage> _image;
+	mutable std::shared_ptr<WaveViewImage> _image;
 
-	mutable boost::shared_ptr<WaveViewCacheGroup> _cache_group;
+	mutable std::shared_ptr<WaveViewCacheGroup> _cache_group;
 
 	bool _shape_independent;
 	bool _logscaled_independent;
@@ -193,7 +193,7 @@ private:
 
 	void init();
 
-	mutable boost::shared_ptr<WaveViewDrawRequest> current_request;
+	mutable std::shared_ptr<WaveViewDrawRequest> current_request;
 
 	PBD::ScopedConnectionList invalidation_connection;
 
@@ -203,7 +203,7 @@ private:
 	static bool _global_show_waveform_clipping;
 	static double _global_clip_level;
 
-	static PBD::Signal0<void> VisualPropertiesChanged;
+	static PBD::Signal<void()> VisualPropertiesChanged;
 
 	void handle_visual_property_change ();
 	void handle_clip_level_change ();
@@ -223,25 +223,25 @@ private:
 	static void compute_tips (ARDOUR::PeakData const& peak, LineTips& tips, double const effective_height);
 
 	static void draw_image (Cairo::RefPtr<Cairo::ImageSurface>&, ARDOUR::PeakData*, int n_peaks,
-	                        boost::shared_ptr<WaveViewDrawRequest>);
+	                        std::shared_ptr<WaveViewDrawRequest>);
 	static void draw_absent_image (Cairo::RefPtr<Cairo::ImageSurface>&, ARDOUR::PeakData*, int);
 
 	ARDOUR::samplecnt_t optimal_image_width_samples () const;
 
-	void set_image (boost::shared_ptr<WaveViewImage> img) const;
+	void set_image (std::shared_ptr<WaveViewImage> img) const;
 
 	// @return true if item area intersects with draw area
 	bool get_item_and_draw_rect_in_window_coords (ArdourCanvas::Rect const& canvas_rect,
 	                                              ArdourCanvas::Rect& item_area,
 	                                              ArdourCanvas::Rect& draw_rect) const;
 
-	boost::shared_ptr<WaveViewDrawRequest> create_draw_request (WaveViewProperties const&) const;
+	std::shared_ptr<WaveViewDrawRequest> create_draw_request (WaveViewProperties const&) const;
 
-	void queue_draw_request (boost::shared_ptr<WaveViewDrawRequest> const&) const;
+	void queue_draw_request (std::shared_ptr<WaveViewDrawRequest> const&) const;
 
-	static void process_draw_request (boost::shared_ptr<WaveViewDrawRequest>);
+	static void process_draw_request (std::shared_ptr<WaveViewDrawRequest>);
 
-	boost::shared_ptr<WaveViewCacheGroup> get_cache_group () const;
+	std::shared_ptr<WaveViewCacheGroup> get_cache_group () const;
 
 	/**
 	 * Notify the Cache that we are dropping our reference to the

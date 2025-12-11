@@ -28,8 +28,8 @@
 
 #include <sigc++/signal.h>
 
-#include <gtkmm/messagedialog.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/messagedialog.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/gstdio_compat.h"
 #include "pbd/file_utils.h"
@@ -122,15 +122,11 @@ ExportDialog::set_session (ARDOUR::Session* s)
 	preset_selector->CriticalSelectionChanged.connect (sigc::mem_fun (*this, &ExportDialog::maybe_set_session_dirty));
 	timespan_selector->CriticalSelectionChanged.connect (sigc::mem_fun (*this, &ExportDialog::maybe_set_session_dirty));
 	channel_selector->CriticalSelectionChanged.connect (sigc::mem_fun (*this, &ExportDialog::maybe_set_session_dirty));
-	channel_selector->CriticalSelectionChanged.connect (sigc::mem_fun (*this, &ExportDialog::maybe_set_session_dirty));
 	file_notebook->CriticalSelectionChanged.connect (sigc::mem_fun (*this, &ExportDialog::maybe_set_session_dirty));
-
-	update_warnings_and_example_filename ();
-	update_realtime_selection ();
 
 	_initialized = true;
 
-	_session->config.ParameterChanged.connect (*this, invalidator (*this), boost::bind (&ExportDialog::parameter_changed, this, _1), gui_context());
+	_session->config.ParameterChanged.connect (*this, invalidator (*this), std::bind (&ExportDialog::parameter_changed, this, _1), gui_context());
 }
 
 void
@@ -181,7 +177,7 @@ ExportDialog::init_gui ()
 {
 	Gtk::Alignment * preset_align = Gtk::manage (new Gtk::Alignment());
 	preset_align->add (*preset_selector);
-	preset_align->set_padding (0, 12, 0, 0);
+	preset_align->set_padding (6, 8, 6, 6);
 
 	Gtk::VBox * file_format_selector = Gtk::manage (new Gtk::VBox());
 	file_format_selector->set_homogeneous (false);
@@ -269,7 +265,7 @@ ExportDialog::update_warnings_and_example_filename ()
 
 	/* Add new warnings */
 
-	boost::shared_ptr<ExportProfileManager::Warnings> warnings = profile_manager->get_warnings();
+	std::shared_ptr<ExportProfileManager::Warnings> warnings = profile_manager->get_warnings();
 
 	for (std::list<string>::iterator it = warnings->errors.begin(); it != warnings->errors.end(); ++it) {
 		add_error (*it);
@@ -356,7 +352,7 @@ ExportDialog::do_export (bool analysis_only)
 	_analysis_only = analysis_only;
 	if (analysis_only) {
 		for (auto const& fmt : profile_manager->get_formats ()) {
-			boost::shared_ptr<ExportFormatSpecification> fmp = fmt->format;
+			std::shared_ptr<ExportFormatSpecification> fmp = fmt->format;
 			fmp->set_format_id (ExportFormatBase::F_None);
 			fmp->set_type (ExportFormatBase::T_None);
 			fmp->set_analyse (true);
@@ -373,12 +369,12 @@ ExportDialog::do_export (bool analysis_only)
 
 		handler->SoundcloudProgress.connect_same_thread(
 				*this,
-				boost::bind(&ExportDialog::soundcloud_upload_progress, this, _1, _2, _3)
+				std::bind(&ExportDialog::soundcloud_upload_progress, this, _1, _2, _3)
 				);
 #if 0
 		handler->SoundcloudProgress.connect(
 				*this, invalidator (*this),
-				boost::bind(&ExportDialog::soundcloud_upload_progress, this, _1, _2, _3),
+				std::bind(&ExportDialog::soundcloud_upload_progress, this, _1, _2, _3),
 				gui_context()
 				);
 #endif
@@ -427,7 +423,7 @@ ExportDialog::show_progress ()
 		for (auto const& x : _files_to_reimport) {
 			timepos_t pos (x.first);
 			Editing::ImportDisposition disposition = Editing::ImportDistinctFiles;
-			editor.do_import (x.second, disposition, Editing::ImportAsTrack, SrcBest, SMFTrackNumber, SMFTempoIgnore, pos);
+			editor.do_import (x.second, disposition, Editing::ImportAsTrack, SrcBest, SMFFileAndTrackName, SMFTempoIgnore, pos);
 		}
 	}
 
@@ -481,7 +477,7 @@ ExportDialog::show_progress ()
 
 	if (!status->aborted()) {
 		hide();
-		if (!ARDOUR::Profile->get_mixbus()) {
+		if (!ARDOUR::Profile->get_mixbus () && !ARDOUR::Profile->get_livetrax ()) {
 			NagScreen* ns = NagScreen::maybe_nag (_("export"));
 			if (ns) {
 				ns->nag ();

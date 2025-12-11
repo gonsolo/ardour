@@ -20,11 +20,15 @@
  */
 
 #include <iostream>
-#include <boost/weak_ptr.hpp>
+#include <memory>
+
 #include <cairo.h>
 
 #include "gtkmm2ext/keyboard.h"
+
 #include "ardour/bundle.h"
+
+#include "gtkmm2ext/keyboard.h"
 #include "gtkmm2ext/colors.h"
 
 #include "port_matrix_row_labels.h"
@@ -233,7 +237,7 @@ PortMatrixRowLabels::port_name_x () const
 
 void
 PortMatrixRowLabels::render_bundle_name (
-	cairo_t* cr, Gdk::Color fg_colour, Gdk::Color bg_colour, double xoff, double yoff, boost::shared_ptr<ARDOUR::Bundle> b
+	cairo_t* cr, Gdk::Color fg_colour, Gdk::Color bg_colour, double xoff, double yoff, std::shared_ptr<ARDOUR::Bundle> b
 	)
 {
 	double const x = bundle_name_x ();

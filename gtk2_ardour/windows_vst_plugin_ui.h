@@ -17,8 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __windows_vst_plugin_ui_h__
-#define __windows_vst_plugin_ui_h__
+#pragma once
 
 #include "pbd/signals.h"
 #include "vst_plugin_ui.h"
@@ -26,7 +25,7 @@
 class WindowsVSTPluginUI : public VSTPluginUI
 {
 public:
-	WindowsVSTPluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase>, boost::shared_ptr<ARDOUR::VSTPlugin>, GtkWidget *parent);
+	WindowsVSTPluginUI (std::shared_ptr<ARDOUR::PlugInsertBase>, std::shared_ptr<ARDOUR::VSTPlugin>, GtkWidget *parent);
 	~WindowsVSTPluginUI ();
 
 	bool start_updating (GdkEventAny*) { return false; }
@@ -44,4 +43,3 @@ private:
 
 	PBD::ScopedConnection _resize_connection;
 };
-#endif

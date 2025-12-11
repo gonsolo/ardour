@@ -75,7 +75,7 @@ panner_descriptor ()
 	return &_descriptor;
 }
 
-Panner1in2out::Panner1in2out (boost::shared_ptr<Pannable> p)
+Panner1in2out::Panner1in2out (std::shared_ptr<Pannable> p)
 	: Panner (p)
 {
 	if (!_pannable->has_state ()) {
@@ -91,7 +91,7 @@ Panner1in2out::Panner1in2out (boost::shared_ptr<Pannable> p)
 	left_interp  = left;
 	right_interp = right;
 
-	_pannable->pan_azimuth_control->Changed.connect_same_thread (*this, boost::bind (&Panner1in2out::update, this));
+	_pannable->pan_azimuth_control->Changed.connect_same_thread (*this, std::bind (&Panner1in2out::update, this));
 }
 
 Panner1in2out::~Panner1in2out ()
@@ -324,7 +324,7 @@ Panner1in2out::distribute_one_automated (AudioBuffer& srcbuf, BufferSet& obufs,
 }
 
 Panner*
-Panner1in2out::factory (boost::shared_ptr<Pannable> p, boost::shared_ptr<Speakers> /* ignored */)
+Panner1in2out::factory (std::shared_ptr<Pannable> p, std::shared_ptr<Speakers> /* ignored */)
 {
 	return new Panner1in2out (p);
 }
@@ -340,7 +340,7 @@ Panner1in2out::get_state () const
 }
 
 string
-Panner1in2out::value_as_string (boost::shared_ptr<const AutomationControl> ac) const
+Panner1in2out::value_as_string (std::shared_ptr<const AutomationControl> ac) const
 {
 	double val = ac->get_value ();
 

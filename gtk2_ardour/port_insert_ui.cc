@@ -21,8 +21,8 @@
 
 #include <glibmm/objectbase.h>
 
-#include <gtkmm/messagedialog.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/messagedialog.h>
+#include <ytkmm/stock.h>
 
 #include "gtkmm2ext/keyboard.h"
 
@@ -35,7 +35,7 @@
 
 #include "context_menu_helper.h"
 #include "gui_thread.h"
-#include "latency_gui.h"
+#include "timectl_gui.h"
 #include "port_insert_ui.h"
 #include "timers.h"
 #include "utils.h"
@@ -44,7 +44,7 @@
 
 using namespace ARDOUR;
 
-PortInsertUI::PortInsertUI (Gtk::Window* parent, ARDOUR::Session* sess, boost::shared_ptr<ARDOUR::PortInsert> pi)
+PortInsertUI::PortInsertUI (Gtk::Window* parent, ARDOUR::Session* sess, std::shared_ptr<ARDOUR::PortInsert> pi)
 	: _pi (pi)
 	, _measure_latency_button (_("Measure Latency"))
 	, _invert_button (X_("Ø"))
@@ -104,20 +104,20 @@ PortInsertUI::PortInsertUI (Gtk::Window* parent, ARDOUR::Session* sess, boost::s
 
 	_input_gpm.setup_meters ();
 	_input_gpm.set_fader_name (X_("SendUIFader"));
-	_input_gpm.set_controls (boost::shared_ptr<Route> (), _pi->return_meter (), _pi->return_amp (), _pi->return_gain_control ());
+	_input_gpm.set_controls (std::shared_ptr<Route> (), _pi->return_meter (), _pi->return_amp (), _pi->return_gain_control ());
 
 	_output_gpm.setup_meters ();
 	_output_gpm.set_fader_name (X_("SendUIFader"));
-	_output_gpm.set_controls (boost::shared_ptr<Route> (), _pi->send_meter (), _pi->send_amp (), _pi->send_gain_control ());
+	_output_gpm.set_controls (std::shared_ptr<Route> (), _pi->send_meter (), _pi->send_amp (), _pi->send_gain_control ());
 
 	Gtkmm2ext::UI::instance ()->set_tip (_invert_button, _("Click to invert polarity of all send channels"));
 	Gtkmm2ext::UI::instance ()->set_tip (_edit_latency_button, _("Edit Latency, manually override measured or I/O reported latency"));
 	Gtkmm2ext::UI::instance ()->set_tip (_measure_latency_button, _("Measure Latency using the first port of each direction\n(note that gain is not applied during measurement).\nRight-click to forget previous measurements,\nand revert to use default port latency."));
 
 	_pi->set_metering (true);
-	_pi->input ()->changed.connect (_connections, invalidator (*this), boost::bind (&PortInsertUI::return_changed, this, _1, _2), gui_context ());
-	_pi->output ()->changed.connect (_connections, invalidator (*this), boost::bind (&PortInsertUI::send_changed, this, _1, _2), gui_context ());
-	_pi->LatencyChanged.connect (_connections, invalidator (*this), boost::bind (&PortInsertUI::set_latency_label, this), gui_context ());
+	_pi->input ()->changed.connect (_connections, invalidator (*this), std::bind (&PortInsertUI::return_changed, this, _1, _2), gui_context ());
+	_pi->output ()->changed.connect (_connections, invalidator (*this), std::bind (&PortInsertUI::send_changed, this, _1, _2), gui_context ());
+	_pi->LatencyChanged.connect (_connections, invalidator (*this), std::bind (&PortInsertUI::set_latency_label, this), gui_context ());
 
 	_fast_screen_update_connection = Timers::super_rapid_connect (sigc::mem_fun (*this, &PortInsertUI::fast_update));
 
@@ -176,7 +176,7 @@ PortInsertUI::invert_press (GdkEventButton* ev)
 		return true;
 	}
 
-	boost::shared_ptr<AutomationControl> ac = _pi->send_polarity_control ();
+	std::shared_ptr<AutomationControl> ac = _pi->send_polarity_control ();
 	ac->start_touch (timepos_t (ac->session ().audible_sample ()));
 	return true;
 }
@@ -188,7 +188,7 @@ PortInsertUI::invert_release (GdkEventButton* ev)
 		return true;
 	}
 
-	boost::shared_ptr<AutomationControl> ac = _pi->send_polarity_control ();
+	std::shared_ptr<AutomationControl> ac = _pi->send_polarity_control ();
 	ac->set_value (_invert_button.get_active () ? 0 : 1, PBD::Controllable::NoGroup);
 	ac->stop_touch (timepos_t (ac->session ().audible_sample ()));
 	return true;
@@ -282,14 +282,16 @@ PortInsertUI::edit_latency_button_clicked ()
 {
 	assert (_pi);
 	if (!_latency_gui) {
-		_latency_gui    = new LatencyGUI (*(_pi.get ()), _pi->session ().sample_rate (), _pi->session ().get_block_size ());
+		_latency_gui    = new TimeCtlGUI (*(_pi.get ()), _pi->session ().sample_rate (), _pi->session ().get_block_size ());
 		_latency_dialog = new ArdourWindow (_("Edit Latency"));
 		/* use both keep-above and transient for to try cover as many
 		   different WM's as possible.
 		*/
 		_latency_dialog->set_keep_above (true);
-		_latency_dialog->set_transient_for (*_parent);
 		_latency_dialog->add (*_latency_gui);
+		if (_parent) {
+			_latency_dialog->set_transient_for (*_parent);
+		}
 	}
 
 	_latency_gui->refresh ();
@@ -331,10 +333,21 @@ PortInsertUI::finished (IOSelector::Result r)
 	_output_selector.Finished (r);
 }
 
-PortInsertWindow::PortInsertWindow (Gtk::Window& parent, ARDOUR::Session* s, boost::shared_ptr<ARDOUR::PortInsert> pi)
+PortInsertWindow::PortInsertWindow (Gtk::Window& parent, ARDOUR::Session* s, std::shared_ptr<ARDOUR::PortInsert> pi)
 	: ArdourWindow (parent, string_compose (_("Port Insert: %1"), pi->name ()))
 	, _portinsertui (this, s, pi)
 {
 	set_name ("IOSelectorWindow");
 	add (_portinsertui);
+	_portinsertui.show ();
+}
+
+
+PortInsertWindow::PortInsertWindow (ARDOUR::Session* s, std::shared_ptr<ARDOUR::PortInsert> pi)
+	: ArdourWindow (string_compose (_("Port Insert: %1"), pi->name ()))
+	, _portinsertui (this, s, pi)
+{
+	set_name ("IOSelectorWindow");
+	add (_portinsertui);
+	_portinsertui.show ();
 }

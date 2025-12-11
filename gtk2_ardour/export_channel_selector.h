@@ -20,10 +20,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_channel_selector_h__
-#define __export_channel_selector_h__
+#pragma once
 
 #include <list>
+#include <memory>
 
 #include "ardour/export_profile_manager.h"
 
@@ -32,18 +32,18 @@
 #endif
 
 #include <sigc++/signal.h>
-#include <boost/shared_ptr.hpp>
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/cellrenderercombo.h>
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treeview.h>
+
+#include <ytkmm/alignment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/cellrenderercombo.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treeview.h>
 
 #include "widgets/ardour_dropdown.h"
 
@@ -63,9 +63,9 @@ class XMLNode;
 class ExportChannelSelector : public Gtk::HBox, public ARDOUR::SessionHandlePtr
 {
 protected:
-	typedef boost::shared_ptr<ARDOUR::ExportChannelConfiguration> ChannelConfigPtr;
+	typedef std::shared_ptr<ARDOUR::ExportChannelConfiguration> ChannelConfigPtr;
 	typedef std::list<ChannelConfigPtr> ChannelConfigList;
-	typedef boost::shared_ptr<ARDOUR::ExportProfileManager> ProfileManagerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportProfileManager> ProfileManagerPtr;
 
 	ProfileManagerPtr manager;
 
@@ -147,7 +147,7 @@ private:
 		public:
 			Channel (RouteCols & cols) { cols.add (port); cols.add (label); }
 
-			Gtk::TreeModelColumn<boost::weak_ptr<ARDOUR::AudioPort> > port;
+			Gtk::TreeModelColumn<std::weak_ptr<ARDOUR::AudioPort> > port;
 			Gtk::TreeModelColumn<std::string> label;
 		};
 		std::list<Channel> channels;
@@ -165,7 +165,7 @@ private:
 			PortCols () { add(selected); add(port); add(label); }
 
 			Gtk::TreeModelColumn<bool> selected;  // not used ATM
-			Gtk::TreeModelColumn<boost::weak_ptr<ARDOUR::AudioPort> > port;
+			Gtk::TreeModelColumn<std::weak_ptr<ARDOUR::AudioPort> > port;
 			Gtk::TreeModelColumn<std::string> label;
 		};
 		PortCols port_cols;
@@ -231,7 +231,7 @@ private:
 	void handle_selection ();
 
 	ARDOUR::ExportProfileManager::ChannelConfigStatePtr state;
-	boost::shared_ptr<ARDOUR::RegionExportChannelFactory> factory;
+	std::shared_ptr<ARDOUR::RegionExportChannelFactory> factory;
 	ARDOUR::AudioRegion const & region;
 	ARDOUR::AudioTrack & track;
 
@@ -261,7 +261,7 @@ class TrackExportChannelSelector : public ExportChannelSelector
 
 	void fill_list();
 	bool sync_with_manager_state ();
-	void add_track (boost::shared_ptr<ARDOUR::Route> route, bool selected);
+	void add_track (std::shared_ptr<ARDOUR::Route> route, bool selected);
 	void update_config();
 	ChannelConfigList configs;
 
@@ -270,7 +270,7 @@ class TrackExportChannelSelector : public ExportChannelSelector
 	struct TrackCols : public Gtk::TreeModelColumnRecord
 	{
 	  public:
-		Gtk::TreeModelColumn<boost::shared_ptr<ARDOUR::Route> > route;
+		Gtk::TreeModelColumn<std::shared_ptr<ARDOUR::Route> > route;
 		Gtk::TreeModelColumn<std::string>     label;
 		Gtk::TreeModelColumn<bool>            selected;
 		Gtk::TreeModelColumn<uint32_t>        order_key;
@@ -297,4 +297,3 @@ class TrackExportChannelSelector : public ExportChannelSelector
 	bool _syncing_with_manager;
 };
 
-#endif /* __export_channel_selector_h__ */

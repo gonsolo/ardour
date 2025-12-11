@@ -16,15 +16,14 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-#ifndef __ardour_meterbridge_h__
-#define __ardour_meterbridge_h__
+#pragma once
 
 #include <glibmm/thread.h>
 
-#include <gtkmm/box.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/label.h>
-#include <gtkmm/window.h>
+#include <ytkmm/box.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/label.h>
+#include <ytkmm/window.h>
 
 #include "ardour/ardour.h"
 #include "ardour/types.h"
@@ -96,8 +95,8 @@ private:
 	struct MeterOrderRouteSorter
 	{
 		bool operator() (struct MeterBridgeStrip ma, struct MeterBridgeStrip mb) {
-			boost::shared_ptr<ARDOUR::Route> a = ma.s->route();
-			boost::shared_ptr<ARDOUR::Route> b = mb.s->route();
+			std::shared_ptr<ARDOUR::Route> a = ma.s->route();
+			std::shared_ptr<ARDOUR::Route> b = mb.s->route();
 			if (a->is_master() || a->is_monitor()) {
 				/* "a" is a special route (master, monitor, etc), and comes
 				 * last in the mixer ordering
@@ -156,4 +155,3 @@ private:
 	bool on_configure_event (GdkEventConfigure* conf);
 };
 
-#endif

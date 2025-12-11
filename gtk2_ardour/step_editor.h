@@ -22,16 +22,20 @@
 
 #include <string>
 
-#include <gdk/gdk.h>
+#include <ydk/gdk.h>
 #include <sigc++/trackable.h>
 
 #include "pbd/signals.h"
 
 #include "temporal/beats.h"
+#include "temporal/timeline.h"
+
+#include "ardour/midi_state_tracker.h"
 
 namespace ARDOUR {
 class MidiTrack;
 class MidiRegion;
+class Region;
 }
 
 class MidiRegionView;
@@ -46,14 +50,14 @@ class StepEntry;
  * changes.
  *
  * The StepEntry is a singleton, used over and over each time the user wants to
- * step edit; the StepEditor is owned by a MidiTimeAxisView and re-used for any
+ * step edit; the StepEditor is owned by a MidiTimeAxisView and reused for any
  * step editing in the MidiTrack for which the MidiTimeAxisView is a view.
  */
 
 class StepEditor : public PBD::ScopedConnectionList, public sigc::trackable
 {
 public:
-	StepEditor (PublicEditor&, boost::shared_ptr<ARDOUR::MidiTrack>, MidiTimeAxisView&);
+	StepEditor (PublicEditor&, std::shared_ptr<ARDOUR::MidiTrack>, MidiTimeAxisView&);
 	virtual ~StepEditor ();
 
 	void step_entry_done ();
@@ -66,6 +70,7 @@ public:
 	int  step_add_program_change (uint8_t channel, uint8_t program);
 	int  step_add_note (uint8_t channel, uint8_t pitch, uint8_t velocity,
 	                    Temporal::Beats beat_duration);
+	void step_to_next_chord ();
 	void step_edit_sustain (Temporal::Beats beats);
 	bool step_edit_within_triplet () const;
 	void step_edit_toggle_triplet ();
@@ -84,22 +89,23 @@ public:
 private:
 	Temporal::timepos_t                    step_edit_insert_position;
 	Temporal::Beats                        step_edit_beat_pos;
-	boost::shared_ptr<ARDOUR::MidiRegion>  step_edit_region;
+	std::shared_ptr<ARDOUR::MidiRegion>  step_edit_region;
 	MidiRegionView*                        step_edit_region_view;
 	uint8_t                               _step_edit_triplet_countdown;
 	bool                                  _step_edit_within_chord;
 	Temporal::Beats                       _step_edit_chord_duration;
 	PBD::ScopedConnection                  step_edit_region_connection;
 	PublicEditor&                         _editor;
-	boost::shared_ptr<ARDOUR::MidiTrack>  _track;
+	std::shared_ptr<ARDOUR::MidiTrack>    _track;
 	MidiTimeAxisView&                     _mtv;
-	int8_t                                 last_added_pitch;
-	Temporal::Beats                        last_added_end;
+	Temporal::Beats                       _last_added_beat;
+	ARDOUR::MidiNoteTracker               _tracker;
+	ARDOUR::MidiNoteTracker               _chord_tracker;
 
 	sigc::connection delete_connection;
 	sigc::connection hide_connection;
 
-	void region_removed (boost::weak_ptr<ARDOUR::Region>);
+	void region_removed (std::weak_ptr<ARDOUR::Region>);
 	void playlist_changed ();
 	bool step_entry_hidden (GdkEventAny*);
 	void resync_step_edit_position ();

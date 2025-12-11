@@ -32,9 +32,9 @@ using namespace PBD;
  *  @param s Stateful object.
  */
 
-StatefulDiffCommand::StatefulDiffCommand (boost::shared_ptr<StatefulDestructible> s)
+StatefulDiffCommand::StatefulDiffCommand (std::shared_ptr<StatefulDestructible> s)
 	: _object (s)
-	, _changes (0)
+	, _changes (nullptr)
 {
 	_changes = s->get_changes_as_properties (this);
 
@@ -42,12 +42,14 @@ StatefulDiffCommand::StatefulDiffCommand (boost::shared_ptr<StatefulDestructible
            be sure to notify owners of this command.
         */
 
-	s->DropReferences.connect_same_thread (*this, boost::bind (&Destructible::drop_references, this));
+	if (!_changes || _changes->empty()) {
+		s->DropReferences.connect_same_thread (*this, std::bind (Destructible::drop_and_kill, this));
+	}
 }
 
-StatefulDiffCommand::StatefulDiffCommand (boost::shared_ptr<StatefulDestructible> s, XMLNode const& n)
+StatefulDiffCommand::StatefulDiffCommand (std::shared_ptr<StatefulDestructible> s, XMLNode const& n)
 	: _object (s)
-	, _changes (0)
+	, _changes (nullptr)
 {
 	const XMLNodeList& children (n.children ());
 
@@ -57,13 +59,15 @@ StatefulDiffCommand::StatefulDiffCommand (boost::shared_ptr<StatefulDestructible
 		}
 	}
 
-	assert (_changes != 0);
+	assert (_changes);
 
 	/* if the stateful object that this command refers to goes away,
            be sure to notify owners of this command.
         */
 
-	s->DropReferences.connect_same_thread (*this, boost::bind (&Destructible::drop_references, this));
+	if (_changes->empty()) {
+		s->DropReferences.connect_same_thread (*this, std::bind (Destructible::drop_and_kill, this));
+	}
 }
 
 StatefulDiffCommand::~StatefulDiffCommand ()
@@ -74,7 +78,7 @@ StatefulDiffCommand::~StatefulDiffCommand ()
 void
 StatefulDiffCommand::operator() ()
 {
-	boost::shared_ptr<Stateful> s (_object.lock ());
+	std::shared_ptr<Stateful> s (_object.lock ());
 
 	if (s) {
 		s->apply_changes (*_changes);
@@ -84,7 +88,7 @@ StatefulDiffCommand::operator() ()
 void
 StatefulDiffCommand::undo ()
 {
-	boost::shared_ptr<Stateful> s (_object.lock ());
+	std::shared_ptr<Stateful> s (_object.lock ());
 
 	if (s) {
 		PropertyList p = *_changes;
@@ -96,7 +100,7 @@ StatefulDiffCommand::undo ()
 XMLNode&
 StatefulDiffCommand::get_state () const
 {
-	boost::shared_ptr<Stateful> s (_object.lock ());
+	std::shared_ptr<Stateful> s (_object.lock ());
 
 	if (!s) {
 		/* XXX should we throw? */

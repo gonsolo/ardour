@@ -19,8 +19,8 @@
 #ifndef _WIDGETS_FRAME_H_
 #define _WIDGETS_FRAME_H_
 
-#include <boost/optional.hpp>
-#include <gtkmm/bin.h>
+#include <optional>
+#include <ytkmm/bin.h>
 
 #include "gtkmm2ext/colors.h"
 #include "gtkmm2ext/cairo_theme.h"
@@ -44,6 +44,9 @@ public:
 	void set_edge_color (Gtkmm2ext::Color);
 	void reset_edge_color ();
 
+	void set_draw (bool yn);
+	bool draw() const { return _draw; }
+	
 protected:
 	void on_add (Gtk::Widget*);
 	void on_remove (Gtk::Widget*);
@@ -52,6 +55,8 @@ protected:
 	bool on_expose_event (GdkEventExpose*);
 	void on_style_changed (const Glib::RefPtr<Gtk::Style>&);
 	void on_name_changed ();
+
+	static void child_destroyed (GtkWidget*, gpointer);
 
 private:
 	Glib::RefPtr<Gtk::Style> get_parent_style ();
@@ -62,7 +67,7 @@ private:
 	sigc::connection            _parent_style_change;
 	Glib::RefPtr<Pango::Layout> _layout;
 	std::string                 _label_text;
-	boost::optional<Gdk::Color> _edge_color;
+	std::optional<Gdk::Color> _edge_color;
 	GtkRequisition              _min_size;
 
 	int  _border;
@@ -75,6 +80,9 @@ private:
 	int  _alloc_x0;
 	int  _alloc_y0;
 	bool _boxy;
+	bool _draw;
+
+	gulong _destroy_connection;
 };
 
 } // namespace ArdourWidgets

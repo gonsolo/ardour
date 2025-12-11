@@ -24,7 +24,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <unistd.h>
 #include <cerrno>
 #include <vector>
 #include <exception>
@@ -54,7 +53,7 @@
 #include "ardour/audioengine.h"
 #include "ardour/search_paths.h"
 #include "ardour/buffer.h"
-#include "ardour/cycle_timer.h"
+#include "ardour/debug.h"
 #include "ardour/internal_send.h"
 #include "ardour/meter.h"
 #include "ardour/midi_port.h"
@@ -75,7 +74,7 @@ using namespace PBD;
 
 AudioEngine* AudioEngine::_instance = 0;
 
-static GATOMIC_QUAL gint audioengine_thread_cnt = 1;
+static std::atomic<int> audioengine_thread_cnt (1);
 
 #ifdef SILENCE_AFTER
 #define SILENCE_AFTER_SECONDS 600
@@ -84,6 +83,7 @@ static GATOMIC_QUAL gint audioengine_thread_cnt = 1;
 AudioEngine::AudioEngine ()
 	: session_remove_pending (false)
 	, session_removal_countdown (-1)
+	, session_deleted (false)
 	, _running (false)
 	, _freewheeling (false)
 	, monitor_check_interval (INT32_MAX)
@@ -112,12 +112,12 @@ AudioEngine::AudioEngine ()
 	start_hw_event_processing();
 	discover_backends ();
 
-	g_atomic_int_set (&_hw_reset_request_count, 0);
-	g_atomic_int_set (&_pending_playback_latency_callback, 0);
-	g_atomic_int_set (&_pending_capture_latency_callback, 0);
-	g_atomic_int_set (&_hw_devicelist_update_count, 0);
-	g_atomic_int_set (&_stop_hw_reset_processing, 0);
-	g_atomic_int_set (&_stop_hw_devicelist_processing, 0);
+	_hw_reset_request_count.store (0);
+	_pending_playback_latency_callback.store (0);
+	_pending_capture_latency_callback.store (0);
+	_hw_devicelist_update_count.store (0);
+	_stop_hw_reset_processing.store (0);
+	_stop_hw_devicelist_processing.store (0);
 }
 
 AudioEngine::~AudioEngine ()
@@ -148,7 +148,7 @@ AudioEngine::split_cycle (pframes_t nframes)
 {
 	/* caller must hold process lock */
 
-	boost::shared_ptr<Ports> p = _ports.reader();
+	std::shared_ptr<Ports const> p = _ports.reader();
 
 	/* This is mainly for the benefit of rt-control ports (MTC, MClk)
 	 *
@@ -171,8 +171,8 @@ AudioEngine::split_cycle (pframes_t nframes)
 	 * be relaxed, ignore ev->time() checks, and simply send
 	 * all events as-is.
 	 */
-	for (Ports::iterator i = p->begin(); i != p->end(); ++i) {
-		i->second->flush_buffers (nframes);
+	for (auto const& i : *p) {
+		i.second->flush_buffers (nframes);
 	}
 
 	Port::increment_global_port_buffer_offset (nframes);
@@ -180,8 +180,8 @@ AudioEngine::split_cycle (pframes_t nframes)
 	/* tell all Ports that we're going to start a new (split) cycle */
 
 
-	for (Ports::iterator i = p->begin(); i != p->end(); ++i) {
-		i->second->cycle_split ();
+	for (auto const& i : *p) {
+		i.second->cycle_split ();
 	}
 }
 
@@ -195,10 +195,11 @@ AudioEngine::sample_rate_change (pframes_t nframes)
 
 	if (_session) {
 		_session->set_sample_rate (nframes);
+	} else {
+		Temporal::set_sample_rate (nframes);
 	}
 
 	SampleRateChanged (nframes); /* EMIT SIGNAL */
-	Temporal::set_sample_rate (nframes);
 
 #ifdef SILENCE_AFTER_SECONDS
 	_silence_countdown = nframes * SILENCE_AFTER_SECONDS;
@@ -236,9 +237,6 @@ AudioEngine::process_callback (pframes_t nframes)
 	Glib::Threads::Mutex::Lock tm (_process_lock, Glib::Threads::TRY_LOCK);
 	Port::set_varispeed_ratio (1.0);
 
-	PT_TIMING_REF;
-	PT_TIMING_CHECK (1);
-
 	/// The number of samples that will have been processed when we've finished
 	pframes_t next_processed_samples;
 
@@ -258,14 +256,14 @@ AudioEngine::process_callback (pframes_t nframes)
 	if (!tm.locked()) {
 		/* return having done nothing */
 		if (_session) {
-			Xrun();
+			Xrun (); /* EMIT SIGNAL */
 		}
-		/* really only JACK requires this
-		 * (other backends clear the output buffers
-		 * before the process_callback. it may even be
-		 * jack/alsa only). but better safe than sorry.
+		/* only JACK requires this (other backends clear the
+		 * output buffers before the process_callback.
 		 */
-		PortManager::silence_outputs (nframes);
+		if (!session_deleted) {
+			PortManager::silence_outputs (nframes);
+		}
 		return 0;
 	}
 
@@ -289,7 +287,7 @@ AudioEngine::process_callback (pframes_t nframes)
 		thread_init_callback (NULL);
 	}
 
-	Temporal::TempoMap::WritableSharedPtr current_map = Temporal::TempoMap::read ();
+	Temporal::TempoMap::SharedPtr current_map = Temporal::TempoMap::read ();
 	if (current_map != Temporal::TempoMap::use()) {
 		Temporal::TempoMap::set (current_map);
 	}
@@ -304,10 +302,12 @@ AudioEngine::process_callback (pframes_t nframes)
 	if (_session && !_session->processing_blocked ()) {
 		bool lp = false;
 		bool lc = false;
-		if (g_atomic_int_compare_and_exchange (&_pending_playback_latency_callback, 1, 0)) {
+		int canderef (1);
+		if (_pending_playback_latency_callback.compare_exchange_strong (canderef, 0)) {
 			lp = true;
 		}
-		if (g_atomic_int_compare_and_exchange (&_pending_capture_latency_callback, 1, 0)) {
+		canderef = 1;
+		if (_pending_capture_latency_callback.compare_exchange_strong (canderef, 0)) {
 			lc = true;
 		}
 		if (lp || lc) {
@@ -335,7 +335,13 @@ AudioEngine::process_callback (pframes_t nframes)
 				}
 				/* release latency lock, **before** reacquiring process-lock */
 				ll.release ();
-				tm.acquire ();
+				/* this should not be able to fail, but it is good practice
+				 * to only use try-lock in the process callback.
+				 */
+				if (!tm.try_acquire ()) {
+					Xrun (); /* EMIT SIGNAL */
+					return 0; // XXX or spin?
+				}
 			}
 		}
 	}
@@ -451,7 +457,14 @@ AudioEngine::process_callback (pframes_t nframes)
 
 		} else {
 			/* fade out done */
+			PortManager::silence_outputs (nframes);
+			session_deleted = true;
+#ifdef TRACE_SETSESSION_NULL
+			_session_connections.drop_connections ();
 			_session = 0;
+#else
+			SessionHandlePtr::set_session (0);
+#endif
 			session_removal_countdown = -1; // reset to "not in progress"
 			session_remove_pending = false;
 			session_removed.signal(); // wakes up thread that initiated session removal
@@ -472,7 +485,7 @@ AudioEngine::process_callback (pframes_t nframes)
 
 	if (_session == 0) {
 
-		if (!_freewheeling) {
+		if (!_freewheeling && !session_deleted) {
 			PortManager::silence_outputs (nframes);
 		}
 
@@ -567,6 +580,7 @@ AudioEngine::process_callback (pframes_t nframes)
 
 	if (!_running) {
 		_processed_samples = next_processed_samples;
+		PortManager::cycle_end (nframes, _session);
 		return 0;
 	}
 
@@ -592,7 +606,7 @@ AudioEngine::process_callback (pframes_t nframes)
 	}
 
 	if (_silence_countdown == 0 || _session->silent()) {
-		PortManager::silence (nframes);
+		PortManager::silence (nframes, _session);
 	}
 
 #else
@@ -617,8 +631,6 @@ AudioEngine::process_callback (pframes_t nframes)
 	}
 
 	_processed_samples = next_processed_samples;
-
-	PT_TIMING_CHECK (2);
 
 	return 0;
 }
@@ -651,32 +663,31 @@ void
 AudioEngine::request_backend_reset()
 {
 	Glib::Threads::Mutex::Lock guard (_reset_request_lock);
-	g_atomic_int_inc (&_hw_reset_request_count);
+	_hw_reset_request_count.fetch_add (1);
 	_hw_reset_condition.signal ();
 }
 
 int
 AudioEngine::backend_reset_requested()
 {
-	return g_atomic_int_get (&_hw_reset_request_count);
+	return _hw_reset_request_count.load ();
 }
 
 void
 AudioEngine::do_reset_backend()
 {
 	SessionEvent::create_per_thread_pool (X_("Backend reset processing thread"), 1024);
-	pthread_set_name ("EngineWatchdog");
 
 	Glib::Threads::Mutex::Lock guard (_reset_request_lock);
 
-	while (!g_atomic_int_get (&_stop_hw_reset_processing)) {
+	while (!_stop_hw_reset_processing.load ()) {
 
-		if (g_atomic_int_get (&_hw_reset_request_count) != 0 && _backend) {
+		if (_hw_reset_request_count.load () != 0 && _backend) {
 
 			_reset_request_lock.unlock();
 
 			Glib::Threads::RecMutex::Lock pl (_state_lock);
-			g_atomic_int_dec_and_test (&_hw_reset_request_count);
+			PBD::atomic_dec_and_test (_hw_reset_request_count);
 
 			std::cout << "AudioEngine::RESET::Reset request processing. Requests left: " << _hw_reset_request_count << std::endl;
 			DeviceResetStarted(); // notify about device reset to be started
@@ -718,7 +729,7 @@ void
 AudioEngine::request_device_list_update()
 {
 	Glib::Threads::Mutex::Lock guard (_devicelist_update_lock);
-	g_atomic_int_inc (&_hw_devicelist_update_count);
+	_hw_devicelist_update_count.fetch_add (1);
 	_hw_devicelist_update_condition.signal ();
 }
 
@@ -726,19 +737,18 @@ void
 AudioEngine::do_devicelist_update()
 {
 	SessionEvent::create_per_thread_pool (X_("Device list update processing thread"), 512);
-	pthread_set_name ("DeviceList");
 
 	Glib::Threads::Mutex::Lock guard (_devicelist_update_lock);
 
 	while (!_stop_hw_devicelist_processing) {
 
-		if (g_atomic_int_get (&_hw_devicelist_update_count)) {
+		if (_hw_devicelist_update_count.load ()) {
 
 			_devicelist_update_lock.unlock();
 
 			Glib::Threads::RecMutex::Lock pl (_state_lock);
 
-			g_atomic_int_dec_and_test (&_hw_devicelist_update_count);
+			PBD::atomic_dec_and_test (_hw_devicelist_update_count);
 			DeviceListChanged (); /* EMIT SIGNAL */
 
 			_devicelist_update_lock.lock();
@@ -754,15 +764,15 @@ void
 AudioEngine::start_hw_event_processing()
 {
 	if (_hw_reset_event_thread == 0) {
-		g_atomic_int_set (&_hw_reset_request_count, 0);
-		g_atomic_int_set (&_stop_hw_reset_processing, 0);
-		_hw_reset_event_thread = PBD::Thread::create (boost::bind (&AudioEngine::do_reset_backend, this));
+		_hw_reset_request_count.store (0);
+		_stop_hw_reset_processing.store (0);
+		_hw_reset_event_thread = PBD::Thread::create (std::bind (&AudioEngine::do_reset_backend, this), "EngineWatchdog");
 	}
 
 	if (_hw_devicelist_update_thread == 0) {
-		g_atomic_int_set (&_hw_devicelist_update_count, 0);
-		g_atomic_int_set (&_stop_hw_devicelist_processing, 0);
-		_hw_devicelist_update_thread = PBD::Thread::create (boost::bind (&AudioEngine::do_devicelist_update, this));
+		_hw_devicelist_update_count.store (0);
+		_stop_hw_devicelist_processing.store (0);
+		_hw_devicelist_update_thread = PBD::Thread::create (std::bind (&AudioEngine::do_devicelist_update, this), "DeviceList");
 	}
 }
 
@@ -771,16 +781,16 @@ void
 AudioEngine::stop_hw_event_processing()
 {
 	if (_hw_reset_event_thread) {
-		g_atomic_int_set (&_stop_hw_reset_processing, 1);
-		g_atomic_int_set (&_hw_reset_request_count, 0);
+		_stop_hw_reset_processing.store (1);
+		_hw_reset_request_count.store (0);
 		_hw_reset_condition.signal ();
 		_hw_reset_event_thread->join ();
 		_hw_reset_event_thread = 0;
 	}
 
 	if (_hw_devicelist_update_thread) {
-		g_atomic_int_set (&_stop_hw_devicelist_processing, 1);
-		g_atomic_int_set (&_hw_devicelist_update_count, 0);
+		_stop_hw_devicelist_processing.store (1);
+		_hw_devicelist_update_count.store (0);
 		_hw_devicelist_update_condition.signal ();
 		_hw_devicelist_update_thread->join ();
 		_hw_devicelist_update_thread = 0;
@@ -795,9 +805,10 @@ AudioEngine::set_session (Session *s)
 	SessionHandlePtr::set_session (s);
 
 	if (_session) {
+		session_deleted = false;
 		_init_countdown = std::max (4, (int)(_backend->sample_rate () / _backend->buffer_size ()) / 8);
-		g_atomic_int_set (&_pending_playback_latency_callback, 0);
-		g_atomic_int_set (&_pending_capture_latency_callback, 0);
+		_pending_playback_latency_callback.store (0);
+		_pending_capture_latency_callback.store (0);
 	}
 }
 
@@ -816,10 +827,11 @@ AudioEngine::remove_session ()
 		}
 
 	} else {
+		session_deleted = true;
 		SessionHandlePtr::set_session (0);
 	}
 
-	remove_all_ports ();
+	remove_session_ports ();
 }
 
 void
@@ -971,6 +983,12 @@ AudioEngine::current_backend_name() const
 	return string();
 }
 
+bool
+AudioEngine::is_jack() const
+{
+	return _backend && _backend->is_jack();
+}
+
 void
 AudioEngine::drop_backend ()
 {
@@ -995,13 +1013,13 @@ AudioEngine::drop_backend ()
 	}
 }
 
-boost::shared_ptr<AudioBackend>
+std::shared_ptr<AudioBackend>
 AudioEngine::set_backend (const std::string& name, const std::string& arg1, const std::string& arg2)
 {
 	BackendMap::iterator b = _backends.find (name);
 
 	if (b == _backends.end()) {
-		return boost::shared_ptr<AudioBackend>();
+		return std::shared_ptr<AudioBackend>();
 	}
 
 	drop_backend ();
@@ -1015,7 +1033,7 @@ AudioEngine::set_backend (const std::string& name, const std::string& arg1, cons
 
 	} catch (exception& e) {
 		error << string_compose (_("Could not create backend for %1: %2"), name, e.what()) << endmsg;
-		return boost::shared_ptr<AudioBackend>();
+		return std::shared_ptr<AudioBackend>();
 	}
 
 	return _backend;
@@ -1046,6 +1064,12 @@ AudioEngine::start (bool for_latency)
 	if (error_code != 0) {
 		_last_backend_error_string = AudioBackend::get_error_string((AudioBackend::ErrorCode) error_code);
 		return -1;
+	}
+
+	if (_backend->is_realtime ()) {
+		pbd_set_engine_rt_priority (_backend->client_real_time_priority ());
+	} else {
+		pbd_set_engine_rt_priority (0);
 	}
 
 	_running = true;
@@ -1171,38 +1195,6 @@ AudioEngine::get_dsp_load() const
 	return _backend->dsp_load ();
 }
 
-bool
-AudioEngine::is_realtime() const
-{
-	if (!_backend) {
-		return false;
-	}
-
-	return _backend->is_realtime();
-}
-
-int
-AudioEngine::client_real_time_priority ()
-{
-	if (!_backend) {
-		assert (0);
-		return PBD_RT_PRI_PROC;
-	}
-	if (!_backend->is_realtime ()) {
-		/* this is only an issue with the Dummy backend.
-		 * - with JACK, we require rt permissions.
-		 * - with ALSA/PulseAudio this can only happen if rt permissions
-		 *   are n/a. Other attempts to get rt will fail likewise.
-		 *
-		 * perhaps:
-		 * TODO: use is_realtime () ? PBD_SCHED_FIFO : PBD_SCHED_OTHER
-		 */
-		return PBD_RT_PRI_PROC; // XXX
-	}
-
-	return _backend->client_real_time_priority();
-}
-
 void
 AudioEngine::transport_start ()
 {
@@ -1324,7 +1316,7 @@ AudioEngine::get_sync_offset (pframes_t& offset) const
 }
 
 int
-AudioEngine::create_process_thread (boost::function<void()> func)
+AudioEngine::create_process_thread (std::function<void()> func)
 {
 	if (!_backend) {
 		return -1;
@@ -1397,24 +1389,6 @@ AudioEngine::set_interleaved (bool yn)
 }
 
 int
-AudioEngine::set_input_channels (uint32_t ic)
-{
-	if (!_backend) {
-		return -1;
-	}
-	return _backend->set_input_channels  (ic);
-}
-
-int
-AudioEngine::set_output_channels (uint32_t oc)
-{
-	if (!_backend) {
-		return -1;
-	}
-	return _backend->set_output_channels (oc);
-}
-
-int
 AudioEngine::set_systemic_input_latency (uint32_t il)
 {
 	if (!_backend) {
@@ -1447,10 +1421,10 @@ AudioEngine::thread_init_callback (void* arg)
 	   knows about it.
 	*/
 
-	pthread_set_name (X_("audioengine"));
-
-	const int thread_num = g_atomic_int_add (&audioengine_thread_cnt, 1);
+	const int thread_num = audioengine_thread_cnt.fetch_add (1);
 	const string thread_name = string_compose (X_("AudioEngine %1"), thread_num);
+
+	pthread_set_name (thread_name.c_str());
 
 	SessionEvent::create_per_thread_pool (thread_name, 512);
 	PBD::notify_event_loops_about_thread_creation (pthread_self(), thread_name, 4096);
@@ -1523,9 +1497,9 @@ void
 AudioEngine::queue_latency_update (bool for_playback)
 {
 	if (for_playback) {
-		g_atomic_int_set (&_pending_playback_latency_callback, 1);
+		_pending_playback_latency_callback.store (1);
 	} else {
-		g_atomic_int_set (&_pending_capture_latency_callback, 1);
+		_pending_capture_latency_callback.store (1);
 	}
 }
 
@@ -1762,4 +1736,28 @@ AudioEngine::add_pending_port_deletion (Port* p)
 		DEBUG_TRACE (DEBUG::Ports, string_compose ("Directly delete port %1\n", p->name()));
 		delete p;
 	}
+}
+
+std::string
+AudioEngine::backend_id (bool for_input)
+{
+	if (!_backend) {
+		return "";
+	}
+	if (!setup_required ()) {
+		return "JACK";
+	}
+
+	std::stringstream ss;
+	ss << _backend->name() << ";" << _backend->driver_name () << ";";
+	if (_backend->use_separate_input_and_output_devices ()) {
+		if (for_input) {
+			ss << _backend->input_device_name ();
+		} else {
+			ss << _backend->output_device_name ();
+		}
+	} else {
+		ss << _backend->device_name ();
+	}
+	return ss.str ();
 }

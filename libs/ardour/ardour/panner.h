@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_panner_h__
-#define __ardour_panner_h__
+#pragma once
 
 #include <cmath>
 #include <cassert>
@@ -61,10 +60,10 @@ class Speakers;
 class LIBARDOUR_API Panner : public PBD::Stateful, public PBD::ScopedConnectionList
 {
 public:
-	Panner (boost::shared_ptr<Pannable>);
+	Panner (std::shared_ptr<Pannable>);
 	~Panner ();
 
-	virtual boost::shared_ptr<Speakers> get_speakers() const { return boost::shared_ptr<Speakers>(); }
+	virtual std::shared_ptr<Speakers> get_speakers() const { return std::shared_ptr<Speakers>(); }
 
 	virtual ChanCount in() const = 0;
 	virtual ChanCount out() const = 0;
@@ -104,7 +103,7 @@ public:
 	virtual void reset () = 0;
 
 	/* azimut, width or elevation updated -> recalc signal_position ->  emit Changed */
-	PBD::Signal0<void> SignalPositionChanged;
+	PBD::Signal<void()> SignalPositionChanged;
 
 	/**
 	 *  Pan some input buffers to a number of output buffers.
@@ -130,7 +129,7 @@ public:
 	int set_state (const XMLNode&, int version);
 	XMLNode& get_state () const;
 
-	boost::shared_ptr<Pannable> pannable() const { return _pannable; }
+	std::shared_ptr<Pannable> pannable() const { return _pannable; }
 
 	virtual void freeze ();
 	virtual void thaw ();
@@ -139,7 +138,7 @@ public:
 		return _can_automate_list;
 	}
 
-	virtual std::string value_as_string (boost::shared_ptr<const AutomationControl>) const = 0;
+	virtual std::string value_as_string (std::shared_ptr<const AutomationControl>) const = 0;
 
 protected:
 	virtual void distribute_one (AudioBuffer&, BufferSet& obufs, gain_t gain_coeff, pframes_t nframes, uint32_t which) = 0;
@@ -147,7 +146,7 @@ protected:
 	                                       samplepos_t start, samplepos_t end, pframes_t nframes,
 	                                       pan_t** buffers, uint32_t which) = 0;
 
-	boost::shared_ptr<Pannable> _pannable;
+	std::shared_ptr<Pannable> _pannable;
 	std::set<Evoral::Parameter> _can_automate_list;
 
 	int32_t _frozen;
@@ -163,8 +162,7 @@ struct LIBARDOUR_API PanPluginDescriptor {
 	int32_t in;
 	int32_t out;
 	uint32_t priority;
-	ARDOUR::Panner* (*factory)(boost::shared_ptr<ARDOUR::Pannable>, boost::shared_ptr<ARDOUR::Speakers>);
+	ARDOUR::Panner* (*factory)(std::shared_ptr<ARDOUR::Pannable>, std::shared_ptr<ARDOUR::Speakers>);
 };
 }
 
-#endif /* __ardour_panner_h__ */

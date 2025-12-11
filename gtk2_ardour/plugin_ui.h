@@ -22,8 +22,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_plugin_ui_h__
-#define __ardour_plugin_ui_h__
+#pragma once
 
 #ifdef WAF_BUILD
 #include "gtk2ardour-config.h"
@@ -35,20 +34,19 @@
 
 #include <sigc++/signal.h>
 
-#include <gtkmm/adjustment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/expander.h>
-#include <gtkmm/filechooserbutton.h>
-#include <gtkmm/image.h>
-#include <gtkmm/label.h>
-#include <gtkmm/menu.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/socket.h>
-#include <gtkmm/table.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/viewport.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/expander.h>
+#include <ytkmm/filechooserbutton.h>
+#include <ytkmm/image.h>
+#include <ytkmm/label.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/socket.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/viewport.h>
 
 #include "ardour/types.h"
 #include "ardour/plugin.h"
@@ -81,7 +79,7 @@ namespace ArdourWidgets {
 	class FastMeter;
 }
 
-class LatencyGUI;
+class TimeCtlGUI;
 class ArdourWindow;
 class PluginEqGui;
 class PluginLoadStatsGui;
@@ -91,7 +89,7 @@ class VSTPluginUI;
 class PlugUIBase : public virtual sigc::trackable, public PBD::ScopedConnectionList
 {
 public:
-	PlugUIBase (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+	PlugUIBase (std::shared_ptr<ARDOUR::PlugInsertBase>);
 	virtual ~PlugUIBase();
 
 	virtual gint get_preferred_height () = 0;
@@ -100,6 +98,9 @@ public:
 	virtual bool start_updating(GdkEventAny*) = 0;
 	virtual bool stop_updating(GdkEventAny*) = 0;
 
+	virtual bool is_external () const { return false; }
+	virtual bool is_external_visible () const { return false; }
+
 	virtual void activate () {}
 	virtual void deactivate () {}
 
@@ -107,6 +108,7 @@ public:
 	void update_preset ();
 
 	void latency_button_clicked ();
+	void tailtime_button_clicked ();
 
 	virtual bool on_window_show(const std::string& /*title*/) { return true; }
 	virtual void on_window_hide() {}
@@ -118,9 +120,9 @@ public:
 	sigc::signal<void,bool> KeyboardFocused;
 
 protected:
-	boost::shared_ptr<ARDOUR::PlugInsertBase> _pib;
-	boost::shared_ptr<ARDOUR::PluginInsert> _pi;
-	boost::shared_ptr<ARDOUR::Plugin> plugin;
+	std::shared_ptr<ARDOUR::PlugInsertBase> _pib;
+	std::shared_ptr<ARDOUR::PluginInsert> _pi;
+	std::shared_ptr<ARDOUR::Plugin> plugin;
 
 	void add_common_widgets (Gtk::HBox*, bool with_focus = true);
 
@@ -154,6 +156,8 @@ protected:
 	Gtk::Expander cpuload_expander;
 	/** a button which, when clicked, opens the latency GUI */
 	ArdourWidgets::ArdourButton _latency_button;
+	/** a button which, when clicked, opens the tailtime GUI */
+	ArdourWidgets::ArdourButton _tailtime_button;
 	/** a button which sets all controls' automation setting to Manual */
 	ArdourWidgets::ArdourButton automation_manual_all_button;
 	/** a button which sets all controls' automation setting to Play */
@@ -166,8 +170,12 @@ protected:
 	ArdourWidgets::ArdourButton automation_latch_all_button;
 
 	void set_latency_label ();
-	LatencyGUI* latency_gui;
+	TimeCtlGUI*   latency_gui;
 	ArdourWindow* latency_dialog;
+
+	void set_tailtime_label ();
+	TimeCtlGUI*   tailtime_gui;
+	ArdourWindow* tailtime_dialog;
 
 	PluginEqGui* eqgui;
 	PluginLoadStatsGui* stats_gui;
@@ -188,7 +196,7 @@ protected:
 	void toggle_description ();
 	void toggle_plugin_analysis ();
 	void toggle_cpuload_display ();
-	void processor_active_changed (boost::weak_ptr<ARDOUR::Processor> p);
+	void processor_active_changed (std::weak_ptr<ARDOUR::Processor> p);
 	void plugin_going_away ();
 	void automation_state_changed ();
 	void preset_added_or_removed ();
@@ -210,11 +218,12 @@ private:
 class GenericPluginUI : public PlugUIBase, public Gtk::VBox
 {
 public:
-	GenericPluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase> plug, bool scrollable=false);
+	GenericPluginUI (std::shared_ptr<ARDOUR::PlugInsertBase> plug, bool scrollable = false, bool ctrls_only = false);
 	~GenericPluginUI ();
 
 	gint get_preferred_height () { return prefheight; }
 	gint get_preferred_width () { return -1; }
+	bool empty () const { return _empty; }
 
 	bool start_updating(GdkEventAny*);
 	bool stop_updating(GdkEventAny*);
@@ -227,6 +236,8 @@ private:
 
 	gint prefheight;
 	bool is_scrollable;
+	bool want_ctrl_only;
+	bool _empty;
 
 	struct MeterInfo {
 		ArdourWidgets::FastMeter* meter;
@@ -244,12 +255,12 @@ private:
 		const Evoral::Parameter parameter() const { return param; }
 
 		Evoral::Parameter                            param;
-		boost::shared_ptr<ARDOUR::AutomationControl> control;
+		std::shared_ptr<ARDOUR::AutomationControl> control;
 
 		/* input */
 
-		boost::shared_ptr<ARDOUR::ScalePoints>  scale_points;
-		boost::shared_ptr<AutomationController> controller;
+		std::shared_ptr<ARDOUR::ScalePoints>  scale_points;
+		std::shared_ptr<AutomationController> controller;
 
 		ArdourWidgets::ArdourButton             automate_button;
 		Gtk::Label                              label;
@@ -274,10 +285,6 @@ private:
 		ControlUI (const Evoral::Parameter& param);
 		~ControlUI ();
 
-		/* layout */
-		Gtk::Table* knobtable;
-		int x0, x1, y0, y1;
-
 		bool short_autostate; // modify with set_short_autostate below
 	};
 
@@ -296,10 +303,9 @@ private:
 
 	ControlUI* build_control_ui (const Evoral::Parameter&                     param,
 	                             const ARDOUR::ParameterDescriptor&           desc,
-	                             boost::shared_ptr<ARDOUR::AutomationControl> mcontrol,
+	                             std::shared_ptr<ARDOUR::AutomationControl> mcontrol,
 	                             float                                        value,
-	                             bool                                         is_input,
-	                             bool                                         use_knob = false);
+	                             bool                                         is_input);
 
 	void ui_parameter_changed (ControlUI* cui);
 	void update_control_display (ControlUI* cui);
@@ -344,7 +350,7 @@ private:
 class PluginUIWindow : public ArdourWindow
 {
 public:
-	PluginUIWindow (boost::shared_ptr<ARDOUR::PlugInsertBase>,
+	PluginUIWindow (std::shared_ptr<ARDOUR::PlugInsertBase>,
 	                bool scrollable = false,
 	                bool editor = true);
 	~PluginUIWindow ();
@@ -379,12 +385,12 @@ private:
 	void app_activated (bool);
 	void plugin_going_away ();
 
-	bool create_windows_vst_editor (boost::shared_ptr<ARDOUR::PlugInsertBase>);
-	bool create_lxvst_editor(boost::shared_ptr<ARDOUR::PlugInsertBase>);
-	bool create_mac_vst_editor(boost::shared_ptr<ARDOUR::PlugInsertBase>);
-	bool create_audiounit_editor (boost::shared_ptr<ARDOUR::PlugInsertBase>);
-	bool create_lv2_editor (boost::shared_ptr<ARDOUR::PlugInsertBase>);
-	bool create_vst3_editor (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_windows_vst_editor (std::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_lxvst_editor(std::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_mac_vst_editor(std::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_audiounit_editor (std::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_lv2_editor (std::shared_ptr<ARDOUR::PlugInsertBase>);
+	bool create_vst3_editor (std::shared_ptr<ARDOUR::PlugInsertBase>);
 
 	static PluginUIWindow* the_plugin_window;
 };
@@ -393,12 +399,11 @@ private:
 /* this function has to be in a .mm file
  * because MacVSTPluginUI has Cocoa members
  */
-extern VSTPluginUI* create_mac_vst_gui (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+extern VSTPluginUI* create_mac_vst_gui (std::shared_ptr<ARDOUR::PlugInsertBase>);
 #endif
 
 #ifdef AUDIOUNIT_SUPPORT
 /* this function has to be in a .mm file */
-extern PlugUIBase* create_au_gui (boost::shared_ptr<ARDOUR::PlugInsertBase>, Gtk::VBox**);
+extern PlugUIBase* create_au_gui (std::shared_ptr<ARDOUR::PlugInsertBase>, Gtk::VBox**);
 #endif
 
-#endif /* __ardour_plugin_ui_h__ */

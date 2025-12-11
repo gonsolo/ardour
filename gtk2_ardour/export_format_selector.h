@@ -18,18 +18,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_format_selector_h__
-#define __export_format_selector_h__
+#pragma once
 
+#include <memory>
 #include <string>
-#include <sigc++/signal.h>
-#include <boost/shared_ptr.hpp>
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/treemodel.h>
+#include <sigc++/signal.h>
+
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/treemodel.h>
 
 #include "ardour/export_profile_manager.h"
 #include "ardour/session_handle.h"
@@ -43,7 +43,7 @@ class ExportFormatSelector : public Gtk::HBox, public ARDOUR::SessionHandlePtr
 {
 private:
 
-	typedef boost::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
+	typedef std::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
 	typedef std::list<FormatPtr> FormatList;
 
 public:
@@ -93,4 +93,3 @@ private:
 	Gtk::Button new_button;
 };
 
-#endif /* __export_format_selector_h__ */

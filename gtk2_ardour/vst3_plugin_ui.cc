@@ -35,7 +35,7 @@ using namespace Steinberg;
 DEF_CLASS_IID (Presonus::IPlugInViewScaling)
 #endif
 
-VST3PluginUI::VST3PluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::shared_ptr<VST3Plugin> vst3)
+VST3PluginUI::VST3PluginUI (std::shared_ptr<PlugInsertBase> pib, std::shared_ptr<VST3Plugin> vst3)
 	: PlugUIBase (pib)
 	, _vst3 (vst3)
 	, _req_width (0)
@@ -48,8 +48,8 @@ VST3PluginUI::VST3PluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::shared
 
 	add_common_widgets (&_ardour_buttons_box);
 
-	_vst3->OnResizeView.connect (_resize_connection, invalidator (*this), boost::bind (&VST3PluginUI::resize_callback, this, _1, _2), gui_context());
-	//pib->plugin()->PresetLoaded.connect (*this, invalidator (*this), boost::bind (&VST3PluginUI::queue_port_update, this), gui_context ());
+	_vst3->OnResizeView.connect (_resize_connection, invalidator (*this), std::bind (&VST3PluginUI::resize_callback, this, _1, _2), gui_context());
+	//pib->plugin()->PresetLoaded.connect (*this, invalidator (*this), std::bind (&VST3PluginUI::queue_port_update, this), gui_context ());
 
 	pack_start (_ardour_buttons_box, false, false);
 	_ardour_buttons_box.show_all ();

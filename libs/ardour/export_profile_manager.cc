@@ -160,7 +160,7 @@ ExportProfileManager::prepare_for_export ()
 		     ++format_it, ++filename_it) {
 			ExportFilenamePtr filename = (*filename_it)->filename;
 
-			boost::shared_ptr<BroadcastInfo> b;
+			std::shared_ptr<BroadcastInfo> b;
 			if ((*format_it)->format->has_broadcast_info ()) {
 				b.reset (new BroadcastInfo);
 				b->set_from_session (session, (*ts_it)->get_start ());
@@ -220,16 +220,15 @@ ExportProfileManager::load_presets ()
 std::string
 ExportProfileManager::preset_filename (std::string const& preset_name)
 {
-	string safe_name = legalize_for_path (preset_name);
+	string safe_name = legalize_for_universal_path (preset_name);
 	return Glib::build_filename (export_config_dir, safe_name + export_preset_suffix);
 }
 
 ExportPresetPtr
 ExportProfileManager::new_preset (string const& name)
 {
-	// Generate new ID and do regular save
-	string filename = preset_filename (name);
-	current_preset.reset (new ExportPreset (filename, session));
+	// Generate new and do regular save
+	current_preset.reset (new ExportPreset (session));
 	preset_list.push_back (current_preset);
 	return save_preset (name);
 }
@@ -240,7 +239,7 @@ ExportProfileManager::save_preset (string const& name)
 	string filename = preset_filename (name);
 
 	if (!current_preset) {
-		current_preset.reset (new ExportPreset (filename, session));
+		current_preset.reset (new ExportPreset (session, filename));
 		preset_list.push_back (current_preset);
 	}
 
@@ -288,7 +287,7 @@ ExportProfileManager::remove_preset ()
 void
 ExportProfileManager::load_preset_from_disk (std::string const& path)
 {
-	ExportPresetPtr preset (new ExportPreset (path, session));
+	ExportPresetPtr preset (new ExportPreset (session, path));
 
 	/* Handle id to filename mapping and don't add duplicates to list */
 
@@ -301,20 +300,20 @@ ExportProfileManager::load_preset_from_disk (std::string const& path)
 bool
 ExportProfileManager::set_state (XMLNode const& root)
 {
-	return set_global_state (root) & set_local_state (root);
+	return set_global_state (root) && set_local_state (root);
 }
 
 bool
 ExportProfileManager::set_global_state (XMLNode const& root)
 {
-	return init_filenames (root.children ("ExportFilename")) &
+	return init_filenames (root.children ("ExportFilename")) &&
 	       init_formats (root.children ("ExportFormat"));
 }
 
 bool
 ExportProfileManager::set_local_state (XMLNode const& root)
 {
-	return init_timespans (root.children ("ExportTimespan")) &
+	return init_timespans (root.children ("ExportTimespan")) &&
 	       init_channel_configs (root.children ("ExportChannelConfiguration"));
 }
 
@@ -544,6 +543,18 @@ ExportProfileManager::init_channel_configs (XMLNodeList nodes)
 		ChannelConfigStatePtr config (new ChannelConfigState (handler->add_channel_config ()));
 		channel_configs.push_back (config);
 
+#ifdef LIVETRAX
+		/* Do not add master-bus for stem-export.
+		 *
+		 * This changes "with processing" to be false
+		 * since TrackExportChannelSelector::sync_with_manager_state
+		 * checks for  RouteExportChannel/PortExportChannel
+		 */
+		if (_type == StemExport) {
+			return false;
+		}
+#endif
+
 		/* Add master outs as default */
 		if (!session.master_out ()) {
 			return false;
@@ -606,7 +617,7 @@ ExportProfileManager::save_format_to_disk (ExportFormatSpecPtr format)
 	new_name += export_format_suffix;
 
 	/* make sure its legal for the filesystem */
-	new_name = legalize_for_path (new_name);
+	new_name = legalize_for_universal_path (new_name);
 
 	std::string new_path = Glib::build_filename (export_config_dir, new_name);
 
@@ -871,37 +882,34 @@ ExportProfileManager::init_filenames (XMLNodeList nodes)
 	return true;
 }
 
-boost::shared_ptr<ExportProfileManager::Warnings>
+std::shared_ptr<ExportProfileManager::Warnings>
 ExportProfileManager::get_warnings ()
 {
-	boost::shared_ptr<Warnings> warnings (new Warnings ());
-
-	ChannelConfigStatePtr channel_config_state;
-	if (!channel_configs.empty ()) {
-		channel_config_state = channel_configs.front ();
-	}
+	std::shared_ptr<Warnings> warnings (new Warnings ());
 
 	TimespanStatePtr timespan_state = timespans.front ();
 
 	/* Check "global" config ***/
 	TimespanListPtr timespans = timespan_state->timespans;
 
-	ExportChannelConfigPtr channel_config;
-	if (channel_config_state) {
-		channel_config = channel_config_state->config;
-	}
-
 	/* Check Timespans are not empty */
 	if (timespans->empty ()) {
 		warnings->errors.push_back (_("No timespan has been selected!"));
 	}
 
-	if (channel_config_state == 0) {
+	if (channel_configs.empty ()) {
 		warnings->errors.push_back (_("No channels have been selected!"));
 	} else {
-		/* Check channel config ports */
-		if (!channel_config->all_channels_have_ports ()) {
-			warnings->warnings.push_back (_("Some channels are empty"));
+		for (auto const& cc : channel_configs) {
+			ExportChannelConfigPtr channel_config = cc->config;
+			if (!cc) {
+				warnings->errors.push_back (_("Invalid export channel config!"));
+				continue;
+			}
+			/* Check channel config ports */
+			if (!channel_config->all_channels_have_ports ()) {
+				warnings->warnings.push_back (_("Some channels are empty"));
+			}
 		}
 	}
 
@@ -915,7 +923,7 @@ ExportProfileManager::get_warnings ()
 	/*** Check files ***/
 
 	/* handle_duplicate_format_extensions */
-	for (TimespanList::iterator t1 = timespans->begin (); t1 != timespans->end (); ++t1) {
+	{
 		typedef std::map<std::string, int> ExtCountMap;
 		ExtCountMap                        counts;
 
@@ -944,23 +952,24 @@ ExportProfileManager::get_warnings ()
 			}
 		}
 
-		for (format_it = formats.begin (), filename_it = filenames.begin ();
-		     format_it != formats.end () && filename_it != filenames.end ();
-		     ++format_it, ++filename_it) {
-			ExportFilenamePtr filename    = (*filename_it)->filename;
+		for (auto const& i : filenames) {
+			ExportFilenamePtr filename    = i->filename;
 			filename->include_format_name = duplicates_found;
 		}
 	}
 
 	bool folder_ok = true;
 
-	if (channel_config_state) {
+	if (!channel_configs.empty ()) {
 		FormatStateList::const_iterator   format_it;
 		FilenameStateList::const_iterator filename_it;
 		for (format_it = formats.begin (), filename_it = filenames.begin ();
 		     format_it != formats.end () && filename_it != filenames.end ();
 		     ++format_it, ++filename_it) {
-			check_config (warnings, timespan_state, channel_config_state, *format_it, *filename_it);
+
+			for (auto const& cc : channel_configs) {
+				check_config (warnings, timespan_state, cc->config, *format_it, *filename_it);
+			}
 
 			if (!Glib::file_test ((*filename_it)->filename->get_folder (), Glib::FileTest (G_FILE_TEST_EXISTS | G_FILE_TEST_IS_DIR))) {
 				folder_ok = false;
@@ -976,13 +985,12 @@ ExportProfileManager::get_warnings ()
 }
 
 void
-ExportProfileManager::check_config (boost::shared_ptr<Warnings> warnings,
+ExportProfileManager::check_config (std::shared_ptr<Warnings> warnings,
                                     TimespanStatePtr            timespan_state,
-                                    ChannelConfigStatePtr       channel_config_state,
+                                    ExportChannelConfigPtr      channel_config,
                                     FormatStatePtr format_state, FilenameStatePtr filename_state)
 {
 	TimespanListPtr        timespans      = timespan_state->timespans;
-	ExportChannelConfigPtr channel_config = channel_config_state->config;
 	ExportFormatSpecPtr    format         = format_state->format;
 	ExportFilenamePtr      filename       = filename_state->filename;
 
@@ -1064,6 +1072,7 @@ ExportProfileManager::build_filenames (std::list<std::string>& result, ExportFil
 	for (std::list<ExportTimespanPtr>::iterator timespan_it = timespans->begin ();
 	     timespan_it != timespans->end (); ++timespan_it) {
 		filename->set_timespan (*timespan_it);
+		filename->set_channel_config (channel_config);
 
 		if (channel_config->get_split ()) {
 			filename->include_channel = true;
@@ -1078,6 +1087,11 @@ ExportProfileManager::build_filenames (std::list<std::string>& result, ExportFil
 			result.push_back (filename->get_path (format));
 		}
 	}
+	/* no not retain the channel config - otherwise this retains
+	 * Route::_capturing_processor that may already be removed
+	 * from the processor chain.
+	 */
+	filename->set_channel_config (ExportChannelConfigPtr());
 }
 
 };

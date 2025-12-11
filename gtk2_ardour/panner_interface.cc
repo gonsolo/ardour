@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm.h>
+#include <ytkmm/ytkmm.h>
 #include "gtkmm2ext/keyboard.h"
 #include "gtkmm2ext/persistent_tooltip.h"
 
@@ -33,7 +33,7 @@ using namespace Gtk;
 using namespace ARDOUR;
 using namespace Gtkmm2ext;
 
-PannerInterface::PannerInterface (boost::shared_ptr<Panner> p)
+PannerInterface::PannerInterface (std::shared_ptr<Panner> p)
 	: _panner (p)
 	, _tooltip (this)
 	, _send_mode (false)
@@ -71,7 +71,7 @@ PannerInterface::on_leave_notify_event (GdkEventCrossing *)
 {
 	Keyboard::magic_widget_drop_focus ();
 	if (!proxy_controllable ().expired ()) {
-		PBD::Controllable::GUIFocusChanged (boost::weak_ptr<PBD::Controllable> ());
+		PBD::Controllable::GUIFocusChanged (std::weak_ptr<PBD::Controllable> ());
 	}
 	return false;
 }

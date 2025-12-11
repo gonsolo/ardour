@@ -26,6 +26,7 @@
 #include "evoral/Event.h"
 
 using namespace std;
+using namespace std::placeholders;
 
 namespace Evoral {
 
@@ -41,16 +42,16 @@ ControlSet::ControlSet (ControlSet const & other)
 }
 
 void
-ControlSet::add_control(boost::shared_ptr<Control> ac)
+ControlSet::add_control(std::shared_ptr<Control> ac)
 {
 	_controls[ac->parameter()] = ac;
 
-	ac->ListMarkedDirty.connect_same_thread (_control_connections, boost::bind (&ControlSet::control_list_marked_dirty, this));
+	ac->ListMarkedDirty.connect_same_thread (_control_connections, std::bind (&ControlSet::control_list_marked_dirty, this));
 
 	if (ac->list()) {
 		ac->list()->InterpolationChanged.connect_same_thread (
 			_list_connections,
-			boost::bind (&ControlSet::control_list_interpolation_changed,
+			std::bind (&ControlSet::control_list_interpolation_changed,
 			             this, ac->parameter(), _1));
 	}
 }
@@ -71,7 +72,7 @@ ControlSet::what_has_data (set<Parameter>& s) const
  * a control will be created, added to this set, and returned.
  * If \a create_if_missing is false this function may return null.
  */
-boost::shared_ptr<Control>
+std::shared_ptr<Control>
 ControlSet::control (const Parameter& parameter, bool create_if_missing)
 {
 	Controls::iterator i = _controls.find(parameter);
@@ -80,12 +81,12 @@ ControlSet::control (const Parameter& parameter, bool create_if_missing)
 		return i->second;
 
 	} else if (create_if_missing) {
-		boost::shared_ptr<Control> ac(control_factory(parameter));
+		std::shared_ptr<Control> ac(control_factory(parameter));
 		add_control(ac);
 		return ac;
 
 	} else {
-		return boost::shared_ptr<Control>();
+		return std::shared_ptr<Control>();
 	}
 }
 
@@ -104,6 +105,29 @@ ControlSet::clear_controls ()
 	}
 }
 
+void
+ControlSet::start_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	for (auto & c : _controls) {
+		std::shared_ptr<Evoral::ControlList> cl = c.second->list();
+		if (cl && cl->time_domain() != cmd.to) {
+			cl->start_domain_bounce (cmd);
+		}
+	}
+}
+
+void
+ControlSet::finish_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	for (auto & c : _controls) {
+		std::shared_ptr<Evoral::ControlList> cl = c.second->list();
+		if (cl && cl->time_domain() != cmd.to) {
+			cl->finish_domain_bounce (cmd);
+		}
+	}
+}
+
+
 } // namespace Evoral
 
 /* No good place for this so just put it here */
@@ -113,3 +137,4 @@ std::operator<< (std::ostream & str, Evoral::Parameter const & p)
 {
 	return str << p.type() << '-' << p.id() << '-' << (int) p.channel();
 }
+

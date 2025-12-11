@@ -115,7 +115,7 @@ TransportMasterManager::set_session (Session* s)
 	}
 
 	if (_session) {
-		_session->config.ParameterChanged.connect_same_thread (config_connection, boost::bind (&TransportMasterManager::parameter_changed, this, _1));
+		_session->config.ParameterChanged.connect_same_thread (config_connection, std::bind (&TransportMasterManager::parameter_changed, this, _1));
 	}
 
 }
@@ -160,7 +160,7 @@ TransportMasterManager::pre_process_transport_masters (pframes_t nframes, sample
 		return 1.0;
 	}
 
-	boost::optional<samplepos_t> session_pos;
+	std::optional<samplepos_t> session_pos;
 
 	if (_session) {
 		session_pos = _session->audible_sample();
@@ -332,8 +332,8 @@ TransportMasterManager::maybe_set_tc_format ()
 	if (!Config->get_timecode_sync_frame_rate() || !_session) {
 		return;
 	}
-	boost::shared_ptr<TimecodeTransportMaster> tcm;
-	if ((tcm = boost::dynamic_pointer_cast<TimecodeTransportMaster>(_current_master)) == 0) {
+	std::shared_ptr<TimecodeTransportMaster> tcm;
+	if ((tcm = std::dynamic_pointer_cast<TimecodeTransportMaster>(_current_master)) == 0) {
 		return;
 	}
 
@@ -393,7 +393,7 @@ int
 TransportMasterManager::add (SyncSource type, std::string const & name, bool removeable)
 {
 	int ret = 0;
-	boost::shared_ptr<TransportMaster> tm;
+	std::shared_ptr<TransportMaster> tm;
 
 	DEBUG_TRACE (DEBUG::Slave, string_compose ("adding new transport master, type %1 name %2 removeable %3\n", enum_2_string (type), name, removeable));
 
@@ -426,7 +426,7 @@ TransportMasterManager::add (SyncSource type, std::string const & name, bool rem
 }
 
 int
-TransportMasterManager::add_locked (boost::shared_ptr<TransportMaster> tm)
+TransportMasterManager::add_locked (std::shared_ptr<TransportMaster> tm)
 {
 	if (!tm) {
 		return -1;
@@ -445,7 +445,7 @@ int
 TransportMasterManager::remove (std::string const & name)
 {
 	int ret = -1;
-	boost::shared_ptr<TransportMaster> tm;
+	std::shared_ptr<TransportMaster> tm;
 
 	{
 		Glib::Threads::RWLock::WriterLock lm (lock);
@@ -471,7 +471,7 @@ TransportMasterManager::remove (std::string const & name)
 }
 
 int
-TransportMasterManager::set_current_locked (boost::shared_ptr<TransportMaster> c)
+TransportMasterManager::set_current_locked (std::shared_ptr<TransportMaster> c)
 {
 	if (c) {
 		if (find (_transport_masters.begin(), _transport_masters.end(), c) == _transport_masters.end()) {
@@ -514,10 +514,10 @@ TransportMasterManager::set_current_locked (boost::shared_ptr<TransportMaster> c
 }
 
 int
-TransportMasterManager::set_current (boost::shared_ptr<TransportMaster> c)
+TransportMasterManager::set_current (std::shared_ptr<TransportMaster> c)
 {
 	int ret = -1;
-	boost::shared_ptr<TransportMaster> old (_current_master);
+	std::shared_ptr<TransportMaster> old (_current_master);
 
 	{
 		Glib::Threads::RWLock::WriterLock lm (lock);
@@ -535,7 +535,7 @@ int
 TransportMasterManager::set_current (SyncSource ss)
 {
 	int ret = -1;
-	boost::shared_ptr<TransportMaster> old (_current_master);
+	std::shared_ptr<TransportMaster> old (_current_master);
 
 	{
 		Glib::Threads::RWLock::WriterLock lm (lock);
@@ -560,7 +560,7 @@ int
 TransportMasterManager::set_current (std::string const & str)
 {
 	int ret = -1;
-	boost::shared_ptr<TransportMaster> old (_current_master);
+	std::shared_ptr<TransportMaster> old (_current_master);
 
 	{
 		Glib::Threads::RWLock::WriterLock lm (lock);
@@ -582,7 +582,7 @@ TransportMasterManager::set_current (std::string const & str)
 
 
 void
-TransportMasterManager::clear ()
+TransportMasterManager::clear (bool emit)
 {
 	{
 		Glib::Threads::RWLock::WriterLock lm (lock);
@@ -590,7 +590,9 @@ TransportMasterManager::clear ()
 		_transport_masters.clear ();
 	}
 
-	Removed (boost::shared_ptr<TransportMaster>());
+	if (emit) {
+		Removed (std::shared_ptr<TransportMaster>());
+	}
 }
 
 int
@@ -618,7 +620,7 @@ TransportMasterManager::set_state (XMLNode const & node, int version)
 
 		for (XMLNodeList::const_iterator c = children.begin(); c != children.end(); ++c) {
 
-			boost::shared_ptr<TransportMaster> tm = TransportMaster::factory (**c);
+			std::shared_ptr<TransportMaster> tm = TransportMaster::factory (**c);
 
 			if (!tm) {
 				continue;
@@ -663,7 +665,7 @@ TransportMasterManager::get_state () const
 	return *node;
 }
 
-boost::shared_ptr<TransportMaster>
+std::shared_ptr<TransportMaster>
 TransportMasterManager::master_by_type (SyncSource src) const
 {
 	Glib::Threads::RWLock::ReaderLock lm (lock);
@@ -674,11 +676,11 @@ TransportMasterManager::master_by_type (SyncSource src) const
 		}
 	}
 
-	return boost::shared_ptr<TransportMaster> ();
+	return std::shared_ptr<TransportMaster> ();
 }
 
-boost::shared_ptr<TransportMaster>
-TransportMasterManager::master_by_port (boost::shared_ptr<Port> const &p) const
+std::shared_ptr<TransportMaster>
+TransportMasterManager::master_by_port (std::shared_ptr<Port> const &p) const
 {
 	Glib::Threads::RWLock::ReaderLock lm (lock);
 
@@ -688,7 +690,7 @@ TransportMasterManager::master_by_port (boost::shared_ptr<Port> const &p) const
 		}
 	}
 
-	return boost::shared_ptr<TransportMaster> ();
+	return std::shared_ptr<TransportMaster> ();
 
 }
 

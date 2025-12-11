@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_resampled_source_h__
-#define __ardour_resampled_source_h__
+#pragma once
 
 #include <samplerate.h>
 
@@ -33,7 +32,7 @@ namespace ARDOUR {
 class LIBARDOUR_API ResampledImportableSource : public ImportableSource
 {
   public:
-	ResampledImportableSource (boost::shared_ptr<ImportableSource>, samplecnt_t rate, SrcQuality);
+	ResampledImportableSource (std::shared_ptr<ImportableSource>, samplecnt_t rate, SrcQuality);
 
 	~ResampledImportableSource ();
 
@@ -53,7 +52,7 @@ class LIBARDOUR_API ResampledImportableSource : public ImportableSource
 	static const uint32_t blocksize;
 
    private:
-	boost::shared_ptr<ImportableSource> source;
+	std::shared_ptr<ImportableSource> source;
 	float*          _input;
 	int             _src_type;
 	SRC_STATE*      _src_state;
@@ -63,4 +62,3 @@ class LIBARDOUR_API ResampledImportableSource : public ImportableSource
 
 }
 
-#endif /* __ardour_resampled_source_h__ */

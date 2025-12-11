@@ -16,14 +16,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __port_matrix_labels_h__
-#define __port_matrix_labels_h__
+#pragma once
+
+#include "ardour/bundle.h"
 
 #include "port_matrix_component.h"
-
-namespace ARDOUR {
-	class BundleChannel;
-}
 
 class PortMatrixLabels : public PortMatrixComponent
 {
@@ -38,7 +35,7 @@ public:
 
 private:
 	virtual void render_channel_name (cairo_t *, Gdk::Color, Gdk::Color, double, double, ARDOUR::BundleChannel const &) = 0;
-	virtual void render_bundle_name (cairo_t *, Gdk::Color, Gdk::Color, double, double, boost::shared_ptr<ARDOUR::Bundle>) = 0;
+	virtual void render_bundle_name (cairo_t *, Gdk::Color, Gdk::Color, double, double, std::shared_ptr<ARDOUR::Bundle>) = 0;
 	virtual double channel_x (ARDOUR::BundleChannel const &) const = 0;
 	virtual double channel_y (ARDOUR::BundleChannel const &) const = 0;
 	virtual void queue_draw_for (ARDOUR::BundleChannel const &) = 0;
@@ -46,4 +43,3 @@ private:
 	std::vector<ARDOUR::BundleChannel> _channel_highlights;
 };
 
-#endif

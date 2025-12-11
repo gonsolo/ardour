@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_ladspa_plugin_h__
-#define __ardour_ladspa_plugin_h__
+#pragma once
 
 #include <set>
 #include <vector>
@@ -98,7 +97,7 @@ class LIBARDOUR_API LadspaPlugin : public ARDOUR::Plugin
 	bool parameter_is_output(uint32_t) const;
 	bool parameter_is_toggled(uint32_t) const;
 
-	boost::shared_ptr<ScalePoints>
+	std::shared_ptr<ScalePoints>
 	get_scale_points(uint32_t port_index) const;
 
 	int set_state (const XMLNode&, int version);
@@ -142,9 +141,8 @@ class LIBARDOUR_API LadspaPlugin : public ARDOUR::Plugin
 	int set_state_2X (const XMLNode&, int version);
 	std::string do_save_preset (std::string name);
 	void do_remove_preset (std::string name);
-	std::string preset_envvar () const;
-	std::string preset_source (std::string) const;
-	bool write_preset_file (std::string);
+	std::string preset_source () const;
+	bool write_preset_file ();
 	void add_state (XMLNode *) const;
 };
 
@@ -164,8 +162,7 @@ class LIBARDOUR_API LadspaPluginInfo : public PluginInfo {
 	std::vector<Plugin::PresetRecord> get_presets (bool user_only) const;
 };
 
-typedef boost::shared_ptr<LadspaPluginInfo> LadspaPluginInfoPtr;
+typedef std::shared_ptr<LadspaPluginInfo> LadspaPluginInfoPtr;
 
 } // namespace ARDOUR
 
-#endif /* __ardour_ladspa_plugin_h__ */

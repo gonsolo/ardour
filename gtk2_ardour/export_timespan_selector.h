@@ -21,29 +21,28 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_timespan_selector_h__
-#define __export_timespan_selector_h__
-
-#include "audio_clock.h"
+#pragma once
 
 #include <ctime>
 #include <list>
+#include <memory>
+
+#include "audio_clock.h"
 
 #ifdef interface
 #undef interface
 #endif
 
-#include <boost/shared_ptr.hpp>
 
-#include <gtkmm/box.h>
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/treemodel.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/box.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/treemodel.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/treeview.h>
 
 #include "ardour/export_profile_manager.h"
 #include "ardour/session_handle.h"
@@ -63,11 +62,11 @@ class ExportTimespanSelector : public Gtk::VBox, public ARDOUR::SessionHandlePtr
 {
 protected:
 	typedef std::list<ARDOUR::Location*>                    LocationList;
-	typedef boost::shared_ptr<ARDOUR::ExportHandler>        HandlerPtr;
-	typedef boost::shared_ptr<ARDOUR::ExportProfileManager> ProfileManagerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportHandler>        HandlerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportProfileManager> ProfileManagerPtr;
 
 	typedef std::list<ARDOUR::ExportTimespanPtr>           TimespanList;
-	typedef boost::shared_ptr<TimespanList>                TimespanListPtr;
+	typedef std::shared_ptr<TimespanList>                TimespanListPtr;
 	typedef ARDOUR::ExportProfileManager::TimespanStatePtr TimespanStatePtr;
 
 public:
@@ -198,4 +197,3 @@ private:
 	std::string range_id;
 };
 
-#endif /* __export_timespan_selector_h__ */

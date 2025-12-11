@@ -18,20 +18,19 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_filename_selector_h__
-#define __export_filename_selector_h__
+#pragma once
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/entry.h>
-#include <gtkmm/label.h>
-#include <gtkmm/liststore.h>
-#include <gtkmm/sizegroup.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/treemodel.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/entry.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/sizegroup.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/treemodel.h>
 
 #include "ardour/export_filename.h"
 #include "ardour/export_profile_manager.h"
@@ -40,7 +39,7 @@
 class ExportFilenameSelector : public Gtk::VBox, public ARDOUR::SessionHandlePtr
 {
 public:
-	typedef boost::shared_ptr<ARDOUR::ExportFilename> FilenamePtr;
+	typedef std::shared_ptr<ARDOUR::ExportFilename> FilenamePtr;
 
 	ExportFilenameSelector ();
 	~ExportFilenameSelector ();
@@ -71,7 +70,7 @@ private:
 	void open_browse_dialog ();
 	void open_folder ();
 
-	boost::shared_ptr<ARDOUR::ExportFilename> filename;
+	std::shared_ptr<ARDOUR::ExportFilename> filename;
 
 	Glib::RefPtr<Gtk::SizeGroup> label_sizegroup;
 
@@ -139,4 +138,3 @@ private:
 	bool _require_timespan;
 };
 
-#endif /* __export_filename_selector_h__ */

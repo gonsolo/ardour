@@ -40,13 +40,17 @@ using namespace ARDOUR;
 using namespace PBD;
 using namespace Temporal;
 
-MidiClockTicker::MidiClockTicker (Session* s)
+MidiClockTicker::MidiClockTicker (Session& s)
+	: _session (s)
+	, _midi_port (s.midi_clock_output_port ())
+	, _rolling (false)
+	, _next_tick (0)
+	, _beat_pos (0)
+	, _clock_cnt (0)
+	, _transport_pos (-1)
 {
-	_session   = s;
-	_midi_port = s->midi_clock_output_port ();
-	reset ();
 	resync_latency (true);
-	s->LatencyUpdated.connect_same_thread (_latency_connection, boost::bind (&MidiClockTicker::resync_latency, this, _1));
+	_session.LatencyUpdated.connect_same_thread (_latency_connection, std::bind (&MidiClockTicker::resync_latency, this, _1));
 }
 
 MidiClockTicker::~MidiClockTicker ()
@@ -66,7 +70,7 @@ MidiClockTicker::reset ()
 void
 MidiClockTicker::resync_latency (bool playback)
 {
-	if (_session->deletion_in_progress() || !playback) {
+	if (_session.deletion_in_progress() || !playback) {
 		return;
 	}
 	assert (_midi_port);
@@ -96,7 +100,7 @@ MidiClockTicker::tick (samplepos_t start_sample, samplepos_t end_sample, pframes
 		 */
 
 		if (pre_roll > 0 && pre_roll >= _mclk_out_latency.max && pre_roll < _mclk_out_latency.max + n_samples) {
-			assert (!_rolling);
+			assert (!_rolling); // FIXME this tiggers when grabbing the shuttle while not rolling
 
 			pframes_t pos = pre_roll - _mclk_out_latency.max;
 			_next_tick    = one_ppqn_in_samples (0) - _mclk_out_latency.max;
@@ -207,15 +211,15 @@ MidiClockTicker::tick (samplepos_t start_sample, samplepos_t end_sample, pframes
 	_transport_pos = end_sample;
 
 out:
-	_midi_port->flush_buffers (n_samples);
 	_midi_port->cycle_end (n_samples);
 }
 
 double
 MidiClockTicker::one_ppqn_in_samples (samplepos_t transport_position) const
 {
-	Tempo const & tempo (TempoMap::use()->metric_at (transport_position).tempo());
-	const double samples_per_quarter_note = tempo.samples_per_quarter_note (_session->nominal_sample_rate());
+	TempoPoint const & tempo (TempoMap::use()->metric_at (timepos_t (transport_position)).tempo());
+	/* un-rounded superclock_to_samples (tempo.superclocks_per_note_type_at (timepos_t (transport_position)), _session.nominal_sample_rate()) */
+	const double samples_per_quarter_note = tempo.superclocks_per_note_type_at (timepos_t (transport_position)) * _session.nominal_sample_rate() / (double)superclock_ticks_per_second ();
 	return samples_per_quarter_note / 24.0;
 }
 

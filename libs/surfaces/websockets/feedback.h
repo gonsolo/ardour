@@ -19,8 +19,8 @@
 #ifndef _ardour_surface_websockets_feedback_h_
 #define _ardour_surface_websockets_feedback_h_
 
-#include <boost/shared_ptr.hpp>
-#include <boost/unordered_map.hpp>
+#include <memory>
+
 #include <glibmm/threads.h>
 
 #include "pbd/abstract_ui.h"
@@ -35,11 +35,10 @@ class FeedbackHelperUI : public AbstractUI<BaseUI::BaseRequestObject>
 {
 public:
 	FeedbackHelperUI ();
-	~FeedbackHelperUI () {};
+	~FeedbackHelperUI ();
 
 protected:
 	virtual void do_request (BaseUI::BaseRequestObject*);
-
 };
 
 class ArdourFeedback : public SurfaceComponent

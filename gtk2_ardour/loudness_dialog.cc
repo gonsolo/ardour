@@ -16,9 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/label.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/label.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/unwind.h"
 
@@ -53,6 +53,7 @@
 
 using namespace Gtk;
 using namespace ARDOUR;
+using namespace Gtkmm2ext;
 using namespace ArdourWidgets;
 
 bool LoudnessDialog::_first_time = true;
@@ -328,7 +329,7 @@ LoudnessDialog::LoudnessDialog (Session* s, TimelineRange const& ar, bool as)
 	/* fill in presets */
 	for (size_t i = 0; i < _lp.n_presets (); ++i) {
 		using namespace Gtkmm2ext;
-		_preset_dropdown.AddMenuElem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
+		_preset_dropdown.add_menu_elem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
 	}
 
 	apply_preset ();
@@ -442,9 +443,9 @@ LoudnessDialog::analyze ()
 
 	ExportTimespanPtr tsp = _session->get_export_handler ()->add_timespan ();
 
-	boost::shared_ptr<ExportChannelConfiguration> ccp = _session->get_export_handler ()->add_channel_config ();
-	boost::shared_ptr<ARDOUR::ExportFilename>     fnp = _session->get_export_handler ()->add_filename ();
-	boost::shared_ptr<ExportFormatSpecification>  fmp = _session->get_export_handler ()->add_format ();
+	std::shared_ptr<ExportChannelConfiguration> ccp = _session->get_export_handler ()->add_channel_config ();
+	std::shared_ptr<ARDOUR::ExportFilename>     fnp = _session->get_export_handler ()->add_filename ();
+	std::shared_ptr<ExportFormatSpecification>  fmp = _session->get_export_handler ()->add_format ();
 
 	/* setup format */
 	fmp->set_sample_format (ExportFormatBase::SF_Float);
@@ -470,7 +471,7 @@ LoudnessDialog::analyze ()
 	}
 
 	/* do audio export */
-	boost::shared_ptr<AudioGrapher::BroadcastInfo> b;
+	std::shared_ptr<AudioGrapher::BroadcastInfo> b;
 	_session->get_export_handler ()->reset ();
 	_session->get_export_handler ()->add_export_config (tsp, ccp, fmp, fnp, b);
 	_session->get_export_handler ()->do_export ();
@@ -563,7 +564,7 @@ LoudnessDialog::save_preset ()
 		_preset_dropdown.clear_items ();
 		for (size_t i = 0; i < _lp.n_presets (); ++i) {
 			using namespace Gtkmm2ext;
-			_preset_dropdown.AddMenuElem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
+			_preset_dropdown.add_menu_elem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
 		}
 		PBD::Unwinder<bool> uw (_ignore_preset, true);
 		_preset_dropdown.set_active (_preset.label);
@@ -580,7 +581,7 @@ LoudnessDialog::remove_preset ()
 		_preset_dropdown.clear_items ();
 		for (size_t i = 0; i < _lp.n_presets (); ++i) {
 			using namespace Gtkmm2ext;
-			_preset_dropdown.AddMenuElem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
+			_preset_dropdown.add_menu_elem (MenuElemNoMnemonic (_lp[i].label, sigc::bind (sigc::mem_fun (*this, &LoudnessDialog::load_preset), i)));
 		}
 		_preset.label = _("Custom");
 		update_settings ();
@@ -774,7 +775,7 @@ LoudnessDialog::calculate_gain ()
 	_gain_norm_label.set_text (string_compose (_("%1 dB"), std::setprecision (2), std::showpos, std::fixed, _gain_norm));
 	if (!in_range) {
 		_gain_exceeds_label.set_text (_("exceeds"));
-		_gain_total_label.set_markup (_("<b>    \u00B140 dB</b>"));
+		_gain_total_label.set_markup (_(u8"<b>    \u00B140 dB</b>"));
 	} else {
 		_gain_exceeds_label.set_text (X_(""));
 		_gain_total_label.set_markup (string_compose (_("<b>%1 dB</b>"), std::setw (7), std::setprecision (2), std::showpos, std::fixed, gain_db ()));
@@ -819,21 +820,21 @@ LoudnessDialog::test_conformity ()
 		    || (preset.enable[0] && dbfs > preset.level[0])
 		    || (preset.enable[1] && dbtp > preset.level[1])
 		   ) {
-			l = manage (new Label ("\u274C", ALIGN_CENTER)); // cross mark
+			l = manage (new Label (u8"\u274C", ALIGN_CENTER)); // cross mark
 			l->modify_font (UIConfiguration::instance ().get_ArdourBigFont ());
 			l->modify_fg (Gtk::STATE_NORMAL, color_fail);
 			set_tooltip (*l, "The signal is too loud.");
 		} else if (lufs_i < preset.LUFS_range[1]) {
-			l = manage (new Label ("\U0001F509", ALIGN_CENTER)); // speaker icon w/1 bar
+			l = manage (new Label (u8"\U0001F509", ALIGN_CENTER)); // speaker icon w/1 bar
 			l->modify_font (UIConfiguration::instance ().get_ArdourBigFont ());
 			l->modify_fg (Gtk::STATE_NORMAL, color_warn);
 			set_tooltip (*l, "The signal is too quiet, but satisfies the max. loudness spec.");
 		} else {
-			l = manage (new Label ("\u2714", ALIGN_CENTER)); // heavy check mark
+			l = manage (new Label (u8"\u2714", ALIGN_CENTER)); // heavy check mark
 			l->modify_font (UIConfiguration::instance ().get_ArdourBigFont ());
 			l->modify_fg (Gtk::STATE_NORMAL, color_good);
 			set_tooltip (*l, "Signal loudness is within the spec.");
-			Gtkmm2ext::set_size_request_to_display_given_text (*l, "\u274C\u2713", 0, 0);
+			Gtkmm2ext::set_size_request_to_display_given_text (*l, u8"\u274C\u2713", 0, 0);
 		}
 
 		t->attach (*l, col + 1, col + 2, row, row + 1, SHRINK, SHRINK, 2, 0);

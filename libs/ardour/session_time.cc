@@ -25,14 +25,15 @@
 
 #include <iostream>
 #include <cmath>
-#include <unistd.h>
 
 #include "ardour/timestamps.h"
 
 #include "pbd/error.h"
 #include "pbd/enumwriter.h"
 
+#include "ardour/location.h"
 #include "ardour/session.h"
+#include "ardour/session_playlists.h"
 #include "ardour/tempo.h"
 #include "ardour/transport_fsm.h"
 
@@ -62,7 +63,7 @@ Session::timecode_drop_frames() const
 void
 Session::sync_time_vars ()
 {
-	_current_sample_rate = (samplecnt_t) round (_nominal_sample_rate * (1.0 + (config.get_video_pullup()/100.0)));
+	_current_sample_rate = (samplecnt_t) round (_base_sample_rate * (1.0 + (config.get_video_pullup()/100.0)));
 	_samples_per_timecode_frame = (double) _current_sample_rate / (double) timecode_frames_per_second();
 	if (timecode_drop_frames()) {
 	  _frames_per_hour = (int32_t)(107892 * _samples_per_timecode_frame);
@@ -234,7 +235,7 @@ Session::convert_to_samples (AnyTime const & position)
 
 	switch (position.type) {
 	case AnyTime::BBT:
-		return Temporal::superclock_to_samples (TempoMap::use()->superclock_at (position.bbt), _current_sample_rate);
+		return Temporal::superclock_to_samples (TempoMap::use()->superclock_at (BBT_Argument (superclock_t (0), position.bbt)), _current_sample_rate);
 		break;
 
 	case AnyTime::Timecode:
@@ -296,3 +297,43 @@ Session::any_duration_to_samples (samplepos_t position, AnyTime const & duration
 
 	return duration.samples;
 }
+
+void
+Session::start_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	{
+		std::shared_ptr<RouteList const> rl (routes.reader());
+
+		for (auto const& r : *rl) {
+			r->start_domain_bounce (cmd);
+		}
+	}
+
+	_playlists->start_domain_bounce(cmd);
+	_locations->start_domain_bounce (cmd);
+}
+
+void
+Session::finish_domain_bounce (Temporal::DomainBounceInfo& cmd)
+{
+	{
+		std::shared_ptr<RouteList const> rl (routes.reader());
+
+		for (auto const& r : *rl) {
+			r->finish_domain_bounce (cmd);
+		}
+	}
+
+	_playlists->finish_domain_bounce (cmd);
+	_locations->finish_domain_bounce (cmd);
+}
+
+void
+Session::time_domain_changed ()
+{
+	TimeDomainProvider::time_domain_changed ();
+
+	// _playlists->set_time_domain (time_domain());
+	// _locations->set_time_domain (time_domain());
+}
+

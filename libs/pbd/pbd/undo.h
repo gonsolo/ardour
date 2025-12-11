@@ -20,8 +20,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __lib_pbd_undo_h__
-#define __lib_pbd_undo_h__
+#pragma once
 
 #include <list>
 #include <map>
@@ -39,9 +38,11 @@
 #include "pbd/command.h"
 #include "pbd/libpbd_visibility.h"
 
+namespace PBD {
+
 typedef sigc::slot<void> UndoAction;
 
-class LIBPBD_API UndoTransaction : public Command
+class LIBPBD_API UndoTransaction : public PBD::Command
 {
 public:
 	UndoTransaction ();
@@ -55,8 +56,10 @@ public:
 		return _clearing;
 	}
 
-	void add_command (Command* const);
-	void remove_command (Command* const);
+	void add_command (PBD::Command* const);
+	void remove_command (PBD::Command* const);
+
+	std::list<PBD::Command*>::size_type size() const { return actions.size(); }
 
 	void operator() ();
 	void undo ();
@@ -75,7 +78,7 @@ public:
 	}
 
 private:
-	std::list<Command*> actions;
+	std::list<PBD::Command*> actions;
 	struct timeval      _timestamp;
 	bool                _clearing;
 
@@ -127,9 +130,9 @@ public:
 
 	void set_depth (uint32_t);
 
-	PBD::Signal0<void> Changed;
-	PBD::Signal0<void> BeginUndoRedo;
-	PBD::Signal0<void> EndUndoRedo;
+	PBD::Signal<void()> Changed;
+	PBD::Signal<void()> BeginUndoRedo;
+	PBD::Signal<void()> EndUndoRedo;
 
 private:
 	bool                        _clearing;
@@ -140,4 +143,5 @@ private:
 	void remove (UndoTransaction*);
 };
 
-#endif /* __lib_pbd_undo_h__ */
+} /* namespace */
+

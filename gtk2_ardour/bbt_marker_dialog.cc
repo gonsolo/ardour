@@ -16,7 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/stock.h>
+#include <ytkmm/stock.h>
 
 #include "bbt_marker_dialog.h"
 
@@ -34,7 +34,8 @@ BBTMarkerDialog::BBTMarkerDialog (timepos_t const & pos, BBT_Time const& bbt)
 	, _point (0)
 	, _position (pos)
 	, _bbt (bbt)
-	, entry_label (_("BBT"))
+	, bar_label (_("Bar"))
+	, beat_label (_("Beat"))
 	, name_label (_("Name"))
 
 {
@@ -45,8 +46,9 @@ BBTMarkerDialog::BBTMarkerDialog (MusicTimePoint& p)
 	: ArdourDialog (_("Edit Music Time"))
 	, _point (&p)
 	, _position (timepos_t::from_superclock (p.sclock()))
-	, _bbt (TempoMap::use()->bbt_at (_position).round_to_beat ())
-	, entry_label (_("BBT"))
+	, _bbt (TempoMap::use()->meter_at (_position).round_to_beat (TempoMap::use()->bbt_at (_position)))
+	, bar_label (_("Bar"))
+	, beat_label (_("Beat"))
 	, name_label (_("Name"))
 {
 	init (false);
@@ -60,15 +62,19 @@ BBTMarkerDialog::init (bool add)
 	bar_entry.set_digits (0);
 	beat_entry.set_digits (0);
 
-	bbt_box.pack_start (entry_label);
-	bbt_box.pack_start (bar_entry);
-	bbt_box.pack_start (beat_entry);
+	bar_label.set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	beat_label.set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+
+	bbt_box.pack_start (bar_label, true, true, 2);
+	bbt_box.pack_start (bar_entry, true, true, 2);
+	bbt_box.pack_start (beat_label, true, true, 2);
+	bbt_box.pack_start (beat_entry, true, true, 2);
 
 	bar_entry.set_value (_bbt.bars);
 	beat_entry.set_value (_bbt.beats);
 
-	name_box.pack_start (name_label);
-	name_box.pack_start (name_entry);
+	name_box.pack_start (name_label, true, true, 4);
+	name_box.pack_start (name_entry, true, true);
 
 	if (_point) {
 		name_entry.set_text (_point->name());

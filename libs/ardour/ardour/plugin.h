@@ -3,7 +3,7 @@
  * Copyright (C) 2005-2007 Taybin Rutkin <taybin@taybin.com>
  * Copyright (C) 2006-2014 David Robillard <d@drobilla.net>
  * Copyright (C) 2009-2012 Carl Hetherington <carl@carlh.net>
- * Copyright (C) 2013-2019 Robin Gareus <robin@gareus.org>
+ * Copyright (C) 2013-2023 Robin Gareus <robin@gareus.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,11 +20,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_plugin_h__
-#define __ardour_plugin_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
-
+#include <atomic>
+#include <memory>
 #include <set>
 #include <string>
 
@@ -34,12 +33,12 @@
 #include "ardour/buffer_set.h"
 #include "ardour/chan_count.h"
 #include "ardour/chan_mapping.h"
-#include "ardour/cycles.h"
 #include "ardour/latent.h"
 #include "ardour/libardour_visibility.h"
 #include "ardour/midi_ring_buffer.h"
 #include "ardour/midi_state_tracker.h"
 #include "ardour/parameter_descriptor.h"
+#include "ardour/tailtime.h"
 #include "ardour/types.h"
 #include "ardour/variant.h"
 
@@ -53,14 +52,16 @@ class AudioEngine;
 class Session;
 class BufferSet;
 class IOPlug;
+class PlugInsertBase;
 class PluginInsert;
 class Plugin;
 class PluginInfo;
+class RegionFxPlugin;
 class AutomationControl;
 class SessionObject;
 
-typedef boost::shared_ptr<Plugin>     PluginPtr;
-typedef boost::shared_ptr<PluginInfo> PluginInfoPtr;
+typedef std::shared_ptr<Plugin>     PluginPtr;
+typedef std::shared_ptr<PluginInfo> PluginInfoPtr;
 typedef std::list<PluginInfoPtr>      PluginInfoList;
 typedef std::set<uint32_t>            PluginOutputConfiguration;
 
@@ -72,7 +73,7 @@ typedef std::set<uint32_t>            PluginOutputConfiguration;
  *
  * Plugins are not used directly in Ardour but always wrapped by a PluginInsert.
  */
-class LIBARDOUR_API Plugin : public PBD::StatefulDestructible, public HasLatency
+class LIBARDOUR_API Plugin : public PBD::StatefulDestructible, public HasLatency, public HasTailTime
 {
 public:
 	Plugin (ARDOUR::AudioEngine&, ARDOUR::Session&);
@@ -85,12 +86,12 @@ public:
 	virtual void set_insert_id (PBD::ID id) {}
 	virtual void set_state_dir (const std::string& d = "") {}
 
-	void set_insert (PluginInsert* pi, uint32_t num) {
-		_pi = pi;
+	void set_insert (PlugInsertBase* pib, uint32_t num) {
+		_pib = pib;
 		_num = num;
 	}
 
-	PluginInsert* plugin_insert () const { return _pi; }
+	PlugInsertBase* plugin_insert () const { return _pib; }
 	uint32_t plugin_number () const { return _num; }
 
 	virtual std::string unique_id () const                   = 0;
@@ -131,11 +132,12 @@ public:
 
 	struct LIBARDOUR_API IOPortDescription {
 	public:
-		IOPortDescription (const std::string& n, bool sc = false, std::string gn = "", uint32_t gc = 0)
+		IOPortDescription (const std::string& n, bool sc = false, std::string gn = "", uint32_t gc = 0, uint32_t bn = 0)
 		        : name (n)
 		        , is_sidechain (sc)
 		        , group_name (gn.empty () ? n : gn)
 		        , group_channel (gc)
+		        , bus_number (bn)
 		{ }
 
 		IOPortDescription (const IOPortDescription& other)
@@ -143,6 +145,7 @@ public:
 		        , is_sidechain (other.is_sidechain)
 		        , group_name (other.group_name)
 		        , group_channel (other.group_channel)
+		        , bus_number (other.bus_number)
 		{ }
 
 		std::string name;
@@ -150,21 +153,27 @@ public:
 
 		std::string group_name;
 		uint32_t    group_channel;
+		uint32_t    bus_number;
 	};
 
 	virtual IOPortDescription         describe_io_port (DataType dt, bool input, uint32_t id) const;
 	virtual PluginOutputConfiguration possible_output () const;
 
-	virtual void set_automation_control (uint32_t /*port_index*/, boost::shared_ptr<ARDOUR::AutomationControl>) {}
+	virtual void set_automation_control (uint32_t /*port_index*/, std::shared_ptr<ARDOUR::AutomationControl>) {}
 
-	virtual boost::shared_ptr<ScalePoints> get_scale_points (uint32_t /*port_index*/) const
+	virtual std::shared_ptr<ScalePoints> get_scale_points (uint32_t /*port_index*/) const
 	{
-		return boost::shared_ptr<ScalePoints> ();
+		return std::shared_ptr<ScalePoints> ();
 	}
 
 	samplecnt_t signal_latency () const
 	{
 		return plugin_latency ();
+	}
+
+	samplecnt_t signal_tailtime () const
+	{
+		return plugin_tailtime ();
 	}
 
 	/** the max possible latency a plugin will have */
@@ -187,8 +196,11 @@ public:
 	void realtime_locate (bool);
 	void monitoring_changed ();
 
-	virtual void add_slave (boost::shared_ptr<Plugin>, bool realtime) {}
-	virtual void remove_slave (boost::shared_ptr<Plugin>) {}
+	/* use plugin for offline processing */
+	virtual void set_non_realtime (bool) {}
+
+	virtual void add_slave (std::shared_ptr<Plugin>, bool realtime) {}
+	virtual void remove_slave (std::shared_ptr<Plugin>) {}
 
 	typedef struct {
 		unsigned char* data;
@@ -200,17 +212,17 @@ public:
 	virtual bool has_inline_display () { return false; }
 	virtual bool inline_display_in_gui () { return false; }
 	virtual Display_Image_Surface* render_inline_display (uint32_t, uint32_t) { return NULL; }
-	PBD::Signal0<void> QueueDraw;
+	PBD::Signal<void()> QueueDraw;
 
 	virtual bool has_midnam () { return false; }
 	virtual bool read_midnam () { return false; }
 	virtual std::string midnam_model () { return ""; }
-	PBD::Signal0<void> UpdateMidnam;
-	PBD::Signal0<void> UpdatedMidnam;
+	PBD::Signal<void()> UpdateMidnam;
+	PBD::Signal<void()> UpdatedMidnam;
 
 	virtual bool knows_bank_patch () { return false; }
 	virtual uint32_t bank_patch (uint8_t chn) { return UINT32_MAX; }
-	PBD::Signal1<void, uint8_t> BankPatchChange;
+	PBD::Signal<void(uint8_t)> BankPatchChange;
 
 	struct PresetRecord {
 		PresetRecord () : valid (false) { }
@@ -226,6 +238,14 @@ public:
 		bool operator!= (PresetRecord const& a) const
 		{
 			return uri != a.uri || label != a.label;
+		}
+
+		bool operator< (PresetRecord const& a) const
+		{
+			if (label == a.label) {
+				return uri < a.uri;
+			}
+			return label < a.label;
 		}
 
 		std::string uri;
@@ -250,7 +270,7 @@ public:
 	const PresetRecord* preset_by_label (const std::string&);
 	const PresetRecord* preset_by_uri (const std::string&);
 
-	std::vector<PresetRecord> get_presets ();
+	virtual std::vector<PresetRecord> get_presets ();
 
 	/** @return Last preset to be requested; the settings may have
 	 * been changed since; find out with parameter_changed_since_last_preset.
@@ -268,22 +288,22 @@ public:
 	virtual int first_user_preset_index () const { return 0; }
 
 	/** Emitted when a preset is added or removed, respectively */
-	PBD::Signal0<void> PresetAdded;
-	PBD::Signal0<void> PresetRemoved;
+	PBD::Signal<void()> PresetAdded;
+	PBD::Signal<void()> PresetRemoved;
 
 	/** Emitted when any preset has been changed */
-	static PBD::Signal3<void, std::string, Plugin*, bool> PresetsChanged;
+	static PBD::Signal<void(std::string, Plugin*, bool)> PresetsChanged;
 
 	/** Emitted when a preset has been loaded */
-	PBD::Signal0<void> PresetLoaded;
+	PBD::Signal<void()> PresetLoaded;
 
 	/** Emitted when a parameter is altered in a way that may have
 	 *  changed the settings with respect to any loaded preset.
 	 */
-	PBD::Signal0<void> PresetDirty;
+	PBD::Signal<void()> PresetDirty;
 
 	/** Emitted for preset-load to set a control-port */
-	PBD::Signal2<void, uint32_t, float> PresetPortSetValue;
+	PBD::Signal<void(uint32_t, float)> PresetPortSetValue;
 
 	/** @return true if plugin has a custom plugin GUI */
 	virtual bool has_editor () const = 0;
@@ -291,10 +311,11 @@ public:
 	/** Emitted when a parameter is altered by something outside of our
 	 * control, most typically a Plugin GUI/editor
 	 */
-	PBD::Signal2<void, uint32_t, float> ParameterChangedExternally;
+	PBD::Signal<void(uint32_t, float)> ParameterChangedExternally;
 
 	virtual bool reconfigure_io (ChanCount /*in*/, ChanCount /*aux_in*/, ChanCount /*out*/) { return true; }
 	virtual bool match_variable_io (ChanCount& /*in*/, ChanCount& /*aux_in*/, ChanCount& /*out*/) { return false; }
+	virtual void request_bus_layout (ChanCount const& /*in*/, ChanCount const& /*aux_in*/, ChanCount const& /*out*/) { }
 
 	virtual ChanCount output_streams () const;
 	virtual ChanCount input_streams () const;
@@ -304,9 +325,6 @@ public:
 
 	virtual void set_owner (SessionObject* o) { _owner = o; }
 	SessionObject* owner () const { return _owner; }
-
-	void set_cycles (uint32_t c) { _cycles = c; }
-	cycles_t cycles () const { return _cycles; }
 
 	void use_for_impulse_analysis ()
 	{
@@ -326,7 +344,7 @@ public:
 	 * For LV2 plugins, properties are implemented by sending/receiving set/get
 	 * messages to/from the plugin via event ports.
 	 */
-	virtual const PropertyDescriptors& get_supported_properties () const
+	virtual const PropertyDescriptors& get_supported_properties (bool readonly = false) const
 	{
 		static const PropertyDescriptors nothing;
 		return nothing;
@@ -347,19 +365,33 @@ public:
 	 */
 	virtual void set_property (uint32_t key, const Variant& value) {}
 
+	virtual Variant get_property_value (uint32_t) const
+	{
+		return Variant();
+	}
+
 	/** Emit PropertyChanged for all current property values. */
 	virtual void announce_property_values () {}
 
 	/** Emitted when a property is changed in the plugin. */
-	PBD::Signal2<void, uint32_t, Variant> PropertyChanged;
+	PBD::Signal<void(uint32_t, Variant)> PropertyChanged;
 
-	PBD::Signal1<void, uint32_t> StartTouch;
-	PBD::Signal1<void, uint32_t> EndTouch;
+	PBD::Signal<void(uint32_t)> StartTouch;
+	PBD::Signal<void(uint32_t)> EndTouch;
+
+	PBD::Signal<void(RouteProcessorChange)> ProcessorChange;
 
 protected:
-	friend class IOPlug;
 	friend class PluginInsert;
+	friend class PlugInsertBase;
+	friend class RegionFxPlugin;
 	friend class Session;
+
+	/* Notifiy owner (Route) that some config property changed.
+	 * -> ProcessorChange ()
+	 * -> route->processors_changed ()
+	 */
+	virtual void send_processors_changed (ARDOUR::RouteProcessorChange const&);
 
 	/* Called when a parameter of the plugin is changed outside of this
 	 * host's control (typical via a plugin's own GUI/editor)
@@ -401,6 +433,11 @@ protected:
 
 private:
 	virtual samplecnt_t plugin_latency () const = 0;
+	/** tail duration in samples. e.g. for reverb or delay plugins.
+	 *
+	 * The default when unknown is 2 sec */
+	virtual samplecnt_t plugin_tailtime () const;
+
 
 	/** Fill _presets with our presets */
 	virtual void find_presets () = 0;
@@ -415,15 +452,16 @@ private:
 	PresetRecord     _last_preset;
 	bool             _parameter_changed_since_last_preset;
 
-	PBD::ScopedConnection _preset_connection;
-
 	MidiRingBuffer<samplepos_t> _immediate_events;
+	std::atomic<bool>           _resolve_midi;
 
 	void invalidate_preset_cache (std::string const&, Plugin*, bool);
 	void resolve_midi ();
 
-	PluginInsert* _pi;
-	uint32_t      _num;
+	PlugInsertBase* _pib;
+	uint32_t        _num;
+
+	PBD::ScopedConnection _preset_connection;
 };
 
 struct PluginPreset {
@@ -443,7 +481,7 @@ struct PluginPreset {
 	}
 };
 
-typedef boost::shared_ptr<PluginPreset> PluginPresetPtr;
+typedef std::shared_ptr<PluginPreset> PluginPresetPtr;
 typedef std::list<PluginPresetPtr>      PluginPresetList;
 
 PluginPtr
@@ -455,6 +493,7 @@ public:
 	PluginInfo ()
 	        : multichannel_name_ambiguity (false)
 	        , plugintype_name_ambiguity (false)
+	        , internal (false)
 	        , index (0)
 	{}
 
@@ -494,17 +533,25 @@ public:
 	/* @return true if the plugin can change its inputs or outputs on demand. */
 	virtual bool reconfigurable_io () const { return false; }
 
+	/* @return true if the plugin has configurable busses but no AU style reconfigureable I/O (VST3)
+	 * implies request_bus_layout ()
+	 */
+	virtual bool variable_bus_layout () const { return false; }
+
 	/* max [re]configurable outputs (if finite, 0 otherwise) */
 	virtual uint32_t max_configurable_outputs () const
 	{
 		return n_outputs.n_audio();
 	}
 
+	/* hide from user */
+	virtual bool is_internal () const { return internal; }
+
 protected:
 	friend class PluginManager;
+	bool     internal;
 	uint32_t index; //< used for LADSPA, index in module
 };
 
 } // namespace ARDOUR
 
-#endif /* __ardour_plugin_h__ */

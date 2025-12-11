@@ -17,14 +17,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_selection_h__
-#define __ardour_selection_h__
+#pragma once
 
+#include <memory>
 #include <set>
 #include <vector>
-
-#include <boost/weak_ptr.hpp>
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/stateful.h"
 
@@ -45,36 +42,34 @@ class LIBARDOUR_API CoreSelection : public PBD::Stateful {
 	CoreSelection (Session& s);
 	~CoreSelection ();
 
-	void toggle (boost::shared_ptr<Stripable>, boost::shared_ptr<AutomationControl>);
-	void add (boost::shared_ptr<Stripable>, boost::shared_ptr<AutomationControl>);
-	void remove (boost::shared_ptr<Stripable>, boost::shared_ptr<AutomationControl>);
-	void set (boost::shared_ptr<Stripable>, boost::shared_ptr<AutomationControl>);
-	void set (StripableList&);
+	bool select_stripable_and_maybe_group (std::shared_ptr<Stripable> s, SelectionOperation op, bool with_group = true, bool routes_only = true, RouteGroup* = nullptr);
+	void select_stripable_with_control (std::shared_ptr<Stripable> s, std::shared_ptr<AutomationControl>, SelectionOperation);
 
 	void select_next_stripable (bool mixer_order, bool routes_only);
 	void select_prev_stripable (bool mixer_order, bool routes_only);
-	bool select_stripable_and_maybe_group (boost::shared_ptr<Stripable> s, bool with_group, bool routes_only, RouteGroup*);
 
 	void clear_stripables();
 
-	boost::shared_ptr<Stripable> first_selected_stripable () const;
+	std::shared_ptr<Stripable> first_selected_stripable () const;
 
-	bool selected (boost::shared_ptr<const Stripable>) const;
-	bool selected (boost::shared_ptr<const AutomationControl>) const;
+	bool selected (std::shared_ptr<const Stripable>) const;
+	bool selected (std::shared_ptr<const AutomationControl>) const;
 	uint32_t selected() const;
 
 	struct StripableAutomationControl {
-		boost::shared_ptr<Stripable> stripable;
-		boost::shared_ptr<AutomationControl> controllable;
+		std::shared_ptr<Stripable> stripable;
+		std::shared_ptr<AutomationControl> controllable;
 		int order;
 
-		StripableAutomationControl (boost::shared_ptr<Stripable> s, boost::shared_ptr<AutomationControl> c, int o)
+		StripableAutomationControl (std::shared_ptr<Stripable> s, std::shared_ptr<AutomationControl> c, int o)
 			: stripable (s), controllable (c), order (o) {}
 	};
 
 	typedef std::vector<StripableAutomationControl> StripableAutomationControls;
 
 	void get_stripables (StripableAutomationControls&) const;
+	void get_stripables_for_op (StripableList&, std::shared_ptr<Stripable> base, bool (RouteGroup::*group_predicate)() const) const;
+	void get_stripables_for_op (std::shared_ptr<StripableList>, std::shared_ptr<Stripable> base, bool (RouteGroup::*group_predicate)() const) const;
 
 	XMLNode& get_state () const;
 	int set_state (const XMLNode&, int version);
@@ -91,12 +86,12 @@ class LIBARDOUR_API CoreSelection : public PBD::Stateful {
 
   private:
 	mutable Glib::Threads::RWLock _lock;
-	GATOMIC_QUAL gint             _selection_order;
+	std::atomic<int>             _selection_order;
 
 	Session& session;
 
 	struct SelectedStripable {
-		SelectedStripable (boost::shared_ptr<Stripable>, boost::shared_ptr<AutomationControl>, int);
+		SelectedStripable (std::shared_ptr<Stripable>, std::shared_ptr<AutomationControl>, int);
 		SelectedStripable (PBD::ID const & s, PBD::ID const & c, int o)
 			: stripable (s), controllable (c), order (o) {}
 
@@ -114,7 +109,7 @@ class LIBARDOUR_API CoreSelection : public PBD::Stateful {
 
 	typedef std::set<SelectedStripable> SelectedStripables;
 
-	boost::weak_ptr<ARDOUR::Stripable> _first_selected_stripable;
+	std::weak_ptr<ARDOUR::Stripable> _first_selected_stripable;
 
 	SelectedStripables _stripables;
 
@@ -124,8 +119,14 @@ class LIBARDOUR_API CoreSelection : public PBD::Stateful {
 		void select_adjacent_stripable (bool mixer_order, bool routes_only,
 		                                IterTypeCore (StripableList::*begin_method)(),
 		                                IterTypeCore (StripableList::*end_method)());
+
+	bool toggle (StripableList&, std::shared_ptr<AutomationControl>);
+	bool add (StripableList&, std::shared_ptr<AutomationControl>);
+	bool remove (StripableList&, std::shared_ptr<AutomationControl>);
+	bool set (StripableList&, std::shared_ptr<AutomationControl>, std::vector<std::shared_ptr<Stripable> > &);
+
+	bool do_select (std::shared_ptr<Stripable> s, std::shared_ptr<AutomationControl> c, SelectionOperation op, bool with_group, bool routes_only, RouteGroup* not_allowed_in_group);
 };
 
 } // namespace ARDOUR
 
-#endif /* __ardour_selection_h__ */

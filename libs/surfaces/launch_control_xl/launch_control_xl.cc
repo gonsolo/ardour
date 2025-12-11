@@ -47,8 +47,7 @@
 #include "ardour/types_convert.h"
 #include "ardour/vca.h"
 #include "ardour/vca_manager.h"
-
-
+#include "ardour/well_known_enum.h"
 
 #include "gtkmm2ext/gui_thread.h"
 
@@ -66,7 +65,7 @@ using namespace std;
 using namespace PBD;
 using namespace Glib;
 using namespace ArdourSurface;
-#include "pbd/abstract_ui.cc" // instantiate template
+#include "pbd/abstract_ui.inc.cc" // instantiate template
 
 /* init global object */
 LaunchControlXL* lcxl = 0;
@@ -79,7 +78,7 @@ LaunchControlXL::LaunchControlXL (ARDOUR::Session& s)
 	, _template_number(8) // default template (factory 1)
 	, _fader8master (false)
 	, _device_mode (false)
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 	, _ctrllowersends (false)
 	, _fss_is_mixbus (false)
 #endif
@@ -103,10 +102,10 @@ LaunchControlXL::LaunchControlXL (ARDOUR::Session& s)
 	ports_acquire ();
 
 	/* Catch port connections and disconnections */
-	ARDOUR::AudioEngine::instance()->PortConnectedOrDisconnected.connect (port_connection, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::connection_handler, this, _1, _2, _3, _4, _5), this);
+	ARDOUR::AudioEngine::instance()->PortConnectedOrDisconnected.connect (port_connection, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::connection_handler, this, _1, _2, _3, _4, _5), this);
 
-	session->RouteAdded.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::stripables_added, this), lcxl);
-	session->vca_manager().VCAAdded.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::stripables_added, this), lcxl);
+	session->RouteAdded.connect (session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::stripables_added, this), lcxl);
+	session->vca_manager().VCAAdded.connect (session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::stripables_added, this), lcxl);
 }
 
 LaunchControlXL::~LaunchControlXL ()
@@ -164,7 +163,7 @@ LaunchControlXL::begin_using_device ()
 	if (fader8master()) {
 		set_fader8master (fader8master());
 	}
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 	if (ctrllowersends()) {
 		set_ctrllowersends (ctrllowersends());
 	}
@@ -211,8 +210,8 @@ LaunchControlXL::ports_acquire ()
 	 * really insist on that (and use JACK)
 	 */
 
-	_input_port = boost::dynamic_pointer_cast<AsyncMIDIPort>(_async_in).get();
-	_output_port = boost::dynamic_pointer_cast<AsyncMIDIPort>(_async_out).get();
+	_input_port = std::dynamic_pointer_cast<AsyncMIDIPort>(_async_in).get();
+	_output_port = std::dynamic_pointer_cast<AsyncMIDIPort>(_async_out).get();
 
 	session->BundleAddedOrRemoved ();
 
@@ -251,10 +250,10 @@ LaunchControlXL::ports_release ()
 	_output_port = 0;
 }
 
-list<boost::shared_ptr<ARDOUR::Bundle> >
+list<std::shared_ptr<ARDOUR::Bundle> >
 LaunchControlXL::bundles ()
 {
-	list<boost::shared_ptr<ARDOUR::Bundle> > b;
+	list<std::shared_ptr<ARDOUR::Bundle> > b;
 
 	if (_output_bundle) {
 		b.push_back (_output_bundle);
@@ -281,7 +280,7 @@ LaunchControlXL::init_buttons (ButtonID buttons[], uint8_t i)
 {
 	DEBUG_TRACE (DEBUG::LaunchControlXL, "init_buttons buttons[]\n");
 	for (uint8_t n = 0; n < i; ++n) {
-		boost::shared_ptr<TrackButton> button = boost::dynamic_pointer_cast<TrackButton> (id_note_button_map[buttons[n]]);
+		std::shared_ptr<TrackButton> button = std::dynamic_pointer_cast<TrackButton> (id_note_button_map[buttons[n]]);
 		if (button) {
 			switch ((button->check_method)()) {
 				case (dev_nonexistant):
@@ -300,14 +299,14 @@ LaunchControlXL::init_buttons (ButtonID buttons[], uint8_t i)
 		}
 	}
 	/* set "Track Select" LEDs always on - we cycle through stripables */
-	boost::shared_ptr<SelectButton> sl = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
-	boost::shared_ptr<SelectButton> sr = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
+	std::shared_ptr<SelectButton> sl = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
+	std::shared_ptr<SelectButton> sr = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
 	if (sl && sr) {
 		write(sl->state_msg(true));
 		write(sr->state_msg(true));
 	}
 
-	boost::shared_ptr<TrackStateButton> db =  boost::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
+	std::shared_ptr<TrackStateButton> db =  std::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
 	if (db) {
 		write(db->state_msg(device_mode()));
 	}
@@ -327,7 +326,7 @@ LaunchControlXL::init_buttons (bool startup)
 			Control1, Control2, Control3, Control4, Control5, Control6, Control7, Control8 };
 
 		for (size_t n = 0; n < sizeof (buttons) / sizeof (buttons[0]); ++n) {
-			boost::shared_ptr<TrackButton> button = boost::dynamic_pointer_cast<TrackButton> (id_note_button_map[buttons[n]]);
+			std::shared_ptr<TrackButton> button = std::dynamic_pointer_cast<TrackButton> (id_note_button_map[buttons[n]]);
 			if (button) {
 				switch ((button->check_method)()) {
 					case (dev_nonexistant):
@@ -348,14 +347,14 @@ LaunchControlXL::init_buttons (bool startup)
 	}
 
 	/* set "Track Select" LEDs always on - we cycle through stripables */
-	boost::shared_ptr<SelectButton> sl = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
-	boost::shared_ptr<SelectButton> sr = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
+	std::shared_ptr<SelectButton> sl = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
+	std::shared_ptr<SelectButton> sr = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
 	if (sl && sr) {
 		write(sl->state_msg(true));
 		write(sr->state_msg(true));
 	}
 #ifdef MIXBUS // for now we only offer a device mode for Mixbus
-	boost::shared_ptr<TrackStateButton> db =  boost::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
+	std::shared_ptr<TrackStateButton> db =  std::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
 	if (db) {
 		write(db->state_msg(device_mode()));
 	}
@@ -367,7 +366,7 @@ LaunchControlXL::init_knobs (KnobID knobs[], uint8_t i)
 {
 	for (uint8_t n = 0; n < i ; ++n) {
 		DEBUG_TRACE (DEBUG::LaunchControlXL, string_compose ("init_knobs from array - n:%1\n", n));
-		boost::shared_ptr<Knob> knob = id_knob_map[knobs[n]];
+		std::shared_ptr<Knob> knob = id_knob_map[knobs[n]];
 		if (knob) {
 			switch ((knob->check_method)()) {
 				case (dev_nonexistant):
@@ -400,7 +399,7 @@ LaunchControlXL::init_knobs ()
 							Pan1, Pan2, Pan3, Pan4, Pan5, Pan6, Pan7, Pan8 };
 
 		for (size_t n = 0; n < sizeof (knobs) / sizeof (knobs[0]); ++n) {
-			boost::shared_ptr<Knob> knob = id_knob_map[knobs[n]];
+			std::shared_ptr<Knob> knob = id_knob_map[knobs[n]];
 			if (knob) {
 				switch ((knob->check_method)()) {
 					case (dev_nonexistant):
@@ -419,23 +418,6 @@ LaunchControlXL::init_knobs ()
 			}
 		}
 	}
-}
-
-bool
-LaunchControlXL::probe ()
-{
-	return true;
-}
-
-void*
-LaunchControlXL::request_factory (uint32_t num_requests)
-{
-	/* AbstractUI<T>::request_buffer_factory() is a template method only
-	   instantiated in this source module. To provide something visible for
-	   use in the interface/descriptor, we have this static method that is
-	   template-free.
-	*/
-	return request_buffer_factory (num_requests);
 }
 
 void
@@ -532,15 +514,15 @@ LaunchControlXL::connect_to_parser ()
 	MIDI::Parser* p = _input_port->parser();
 
 	/* Incoming sysex */
-	p->sysex.connect_same_thread (*this, boost::bind (&LaunchControlXL::handle_midi_sysex, this, _1, _2, _3));
+	p->sysex.connect_same_thread (*this, std::bind (&LaunchControlXL::handle_midi_sysex, this, _1, _2, _3));
 
  for (MIDI::channel_t n = 0; n < 16; ++n) {
 	/* Controller */
-		p->channel_controller[(int)n].connect_same_thread (*this, boost::bind (&LaunchControlXL::handle_midi_controller_message, this, _1, _2, n));
+		p->channel_controller[(int)n].connect_same_thread (*this, std::bind (&LaunchControlXL::handle_midi_controller_message, this, _1, _2, n));
 		/* Button messages are NoteOn */
-		p->channel_note_on[(int)n].connect_same_thread (*this, boost::bind (&LaunchControlXL::handle_midi_note_on_message, this, _1, _2, n));
+		p->channel_note_on[(int)n].connect_same_thread (*this, std::bind (&LaunchControlXL::handle_midi_note_on_message, this, _1, _2, n));
 		/* Button messages are NoteOn but libmidi++ sends note-on w/velocity = 0 as note-off so catch them too */
-		p->channel_note_off[(int)n].connect_same_thread (*this, boost::bind (&LaunchControlXL::handle_midi_note_off_message, this, _1, _2, n));
+		p->channel_note_off[(int)n].connect_same_thread (*this, std::bind (&LaunchControlXL::handle_midi_note_off_message, this, _1, _2, n));
 	}
 }
 
@@ -577,13 +559,13 @@ LaunchControlXL::handle_midi_sysex (MIDI::Parser&, MIDI::byte* raw_bytes, size_t
 
 
 void
-LaunchControlXL::handle_button_message(boost::shared_ptr<Button> button, MIDI::EventTwoBytes* ev)
+LaunchControlXL::handle_button_message(std::shared_ptr<Button> button, MIDI::EventTwoBytes* ev)
 {
 	if (ev->value) {
 		/* any press cancels any pending long press timeouts */
 		for (set<ButtonID>::iterator x = buttons_down.begin(); x != buttons_down.end(); ++x) {
-			boost::shared_ptr<ControllerButton> cb = id_controller_button_map[*x];
-			boost::shared_ptr<NoteButton>	nb = id_note_button_map[*x];
+			std::shared_ptr<ControllerButton> cb = id_controller_button_map[*x];
+			std::shared_ptr<NoteButton>	nb = id_note_button_map[*x];
 			if (cb != 0) {
 				cb->timeout_connection.disconnect();
 			} else if (nb != 0) {
@@ -619,7 +601,7 @@ LaunchControlXL::handle_button_message(boost::shared_ptr<Button> button, MIDI::E
 
 
 bool
-LaunchControlXL::check_pick_up(boost::shared_ptr<Controller> controller, boost::shared_ptr<AutomationControl> ac, bool rotary)
+LaunchControlXL::check_pick_up(std::shared_ptr<Controller> controller, std::shared_ptr<AutomationControl> ac, bool rotary)
 {
 	/* returns false until the controller value matches with the current setting of the stripable's ac */
 	return (abs (controller->value() / 127.0 - ac->internal_to_interface(ac->get_value(), rotary)) < 0.007875);
@@ -640,14 +622,14 @@ LaunchControlXL::handle_midi_controller_message (MIDI::Parser& parser, MIDI::Eve
 	CCKnobMap::iterator k = cc_knob_map.find (ev->controller_number);
 
 	if (b != cc_controller_button_map.end()) {
-		boost::shared_ptr<Button> button = b->second;
+		std::shared_ptr<Button> button = b->second;
 		handle_button_message(button, ev);
 	} else if (f != cc_fader_map.end()) {
-		boost::shared_ptr<Fader> fader = f->second;
+		std::shared_ptr<Fader> fader = f->second;
 		fader->set_value(ev->value);
 		(fader->action_method)();
 	} else if (k != cc_knob_map.end()) {
-		boost::shared_ptr<Knob> knob = k->second;
+		std::shared_ptr<Knob> knob = k->second;
 		knob->set_value(ev->value);
 		(knob->action_method)();
 	}
@@ -667,7 +649,7 @@ LaunchControlXL::handle_midi_note_on_message (MIDI::Parser& parser, MIDI::EventT
 	 NNNoteButtonMap::iterator b = nn_note_button_map.find (ev->controller_number);
 
 	 if (b != nn_note_button_map.end()) {
-		 boost::shared_ptr<Button> button = b->second;
+		 std::shared_ptr<Button> button = b->second;
 		handle_button_message(button, ev);
 	}
 }
@@ -683,8 +665,6 @@ void LaunchControlXL::handle_midi_note_off_message(MIDI::Parser & parser, MIDI::
 void
 LaunchControlXL::thread_init ()
 {
-	pthread_set_name (event_loop_name().c_str());
-
 	PBD::notify_event_loops_about_thread_creation (pthread_self(), event_loop_name(), 2048);
 	ARDOUR::SessionEvent::create_per_thread_pool (event_loop_name(), 128);
 
@@ -695,16 +675,16 @@ void
 LaunchControlXL::connect_session_signals()
 {
 	// receive transport state changed
-	session->TransportStateChange.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_transport_state_changed, this), this);
-	session->TransportLooped.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_loop_state_changed, this), this);
+	session->TransportStateChange.connect(session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_transport_state_changed, this), this);
+	session->TransportLooped.connect (session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_loop_state_changed, this), this);
 	// receive punch-in and punch-out
-	Config->ParameterChanged.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_parameter_changed, this, _1), this);
-	session->config.ParameterChanged.connect (session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_parameter_changed, this, _1), this);
+	Config->ParameterChanged.connect(session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_parameter_changed, this, _1), this);
+	session->config.ParameterChanged.connect (session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_parameter_changed, this, _1), this);
 
 	// receive rude solo changed
-	//session->SoloActive.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_solo_active_changed, this, _1), this);
+	//session->SoloActive.connect(session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_solo_active_changed, this, _1), this);
 	// receive record state toggled
-	//session->RecordStateChanged.connect(session_connections, MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::notify_record_state_changed, this), this);
+	//session->RecordStateChanged.connect(session_connections, MISSING_INVALIDATOR, std::bind (&LaunchControlXL::notify_record_state_changed, this), this);
 
 }
 
@@ -775,7 +755,7 @@ LaunchControlXL::get_state() const
 
 	child = new XMLNode (X_("Configuration"));
 	child->set_property ("fader8master", fader8master());
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 	child->set_property ("ctrllowersends", ctrllowersends());
 #endif
 	node.add_child_nocopy (*child);
@@ -815,7 +795,7 @@ LaunchControlXL::set_state (const XMLNode & node, int version)
 	if ((child = node.child (X_("Configuration"))) !=0) {
 		/* this should propably become a for-loop at some point */
 		child->get_property ("fader8master", _fader8master);
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 		child->get_property ("ctrllowersends", _ctrllowersends);
 #endif
 	}
@@ -824,15 +804,15 @@ LaunchControlXL::set_state (const XMLNode & node, int version)
 }
 
 bool
-LaunchControlXL::connection_handler (boost::weak_ptr<ARDOUR::Port>, std::string name1, boost::weak_ptr<ARDOUR::Port>, std::string name2, bool yn)
+LaunchControlXL::connection_handler (std::weak_ptr<ARDOUR::Port>, std::string name1, std::weak_ptr<ARDOUR::Port>, std::string name2, bool yn)
 {
 	DEBUG_TRACE (DEBUG::LaunchControlXL, "LaunchControlXL::connection_handler start\n");
 	if (!_async_in || !_async_out) {
 		return false;
 	}
 
-	string ni = ARDOUR::AudioEngine::instance()->make_port_name_non_relative (boost::shared_ptr<ARDOUR::Port>(_async_in)->name());
-	string no = ARDOUR::AudioEngine::instance()->make_port_name_non_relative (boost::shared_ptr<ARDOUR::Port>(_async_out)->name());
+	string ni = ARDOUR::AudioEngine::instance()->make_port_name_non_relative (std::shared_ptr<ARDOUR::Port>(_async_in)->name());
+	string no = ARDOUR::AudioEngine::instance()->make_port_name_non_relative (std::shared_ptr<ARDOUR::Port>(_async_out)->name());
 
 	if (ni == name1 || ni == name2) {
 		if (yn) {
@@ -880,13 +860,13 @@ LaunchControlXL::connection_handler (boost::weak_ptr<ARDOUR::Port>, std::string 
 }
 
 
-boost::shared_ptr<Port>
+std::shared_ptr<Port>
 LaunchControlXL::output_port()
 {
 	return _async_out;
 }
 
-boost::shared_ptr<Port>
+std::shared_ptr<Port>
 LaunchControlXL::input_port()
 {
 	return _async_in;
@@ -901,7 +881,7 @@ LaunchControlXL::stripable_selection_changed ()
 	if (!device_mode()) {
 		switch_bank (bank_start);
 	} else {
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 		if (first_selected_stripable()) {
 			DEBUG_TRACE (DEBUG::LaunchControlXL, "32C special handling. Checking if stripable type changed\n");
 			bool fss_unchanged;
@@ -949,23 +929,23 @@ LaunchControlXL::stripable_property_change (PropertyChange const& what_changed, 
 }
 /* strip filter definitions */
 
-static bool flt_default (boost::shared_ptr<Stripable> s) {
+static bool flt_default (std::shared_ptr<Stripable> s) {
 	if (s->is_master() || s->is_monitor()) {
 		return false;
 	}
-	return (boost::dynamic_pointer_cast<Route>(s) != 0 ||
-			boost::dynamic_pointer_cast<VCA>(s) != 0);
+	return (std::dynamic_pointer_cast<Route>(s) != 0 ||
+			std::dynamic_pointer_cast<VCA>(s) != 0);
 }
 
-static bool flt_track (boost::shared_ptr<Stripable> s) {
-	return boost::dynamic_pointer_cast<Track>(s) != 0;
+static bool flt_track (std::shared_ptr<Stripable> s) {
+	return std::dynamic_pointer_cast<Track>(s) != 0;
 }
 
-static bool flt_auxbus (boost::shared_ptr<Stripable> s) {
+static bool flt_auxbus (std::shared_ptr<Stripable> s) {
 	if (s->is_master() || s->is_monitor()) {
 		return false;
 	}
-	if (boost::dynamic_pointer_cast<Route>(s) == 0) {
+	if (std::dynamic_pointer_cast<Route>(s) == 0) {
 		return false;
 	}
 #ifdef MIXBUS
@@ -973,30 +953,30 @@ static bool flt_auxbus (boost::shared_ptr<Stripable> s) {
 		return false;
 	}
 #endif
-	return boost::dynamic_pointer_cast<Track>(s) == 0;
+	return std::dynamic_pointer_cast<Track>(s) == 0;
 }
 
 #ifdef MIXBUS
-static bool flt_mixbus (boost::shared_ptr<Stripable> s) {
+static bool flt_mixbus (std::shared_ptr<Stripable> s) {
 	if (s->mixbus () == 0) {
 		return false;
 	}
-	return boost::dynamic_pointer_cast<Track>(s) == 0;
+	return std::dynamic_pointer_cast<Track>(s) == 0;
 }
 #endif
 
-static bool flt_vca (boost::shared_ptr<Stripable> s) {
-	return boost::dynamic_pointer_cast<VCA>(s) != 0;
+static bool flt_vca (std::shared_ptr<Stripable> s) {
+	return std::dynamic_pointer_cast<VCA>(s) != 0;
 }
 
-static bool flt_selected (boost::shared_ptr<Stripable> s) {
+static bool flt_selected (std::shared_ptr<Stripable> s) {
 	return s->is_selected ();
 }
 
 #ifdef MIXBUS
 #else
-static bool flt_rec_armed (boost::shared_ptr<Stripable> s) {
-	boost::shared_ptr<Track> t = boost::dynamic_pointer_cast<Track>(s);
+static bool flt_rec_armed (std::shared_ptr<Stripable> s) {
+	std::shared_ptr<Track> t = std::dynamic_pointer_cast<Track>(s);
 	if (!t) {
 		return false;
 	}
@@ -1004,14 +984,14 @@ static bool flt_rec_armed (boost::shared_ptr<Stripable> s) {
 }
 #endif
 
-static bool flt_mains (boost::shared_ptr<Stripable> s) {
+static bool flt_mains (std::shared_ptr<Stripable> s) {
 	return (s->is_master() || s->is_monitor());
 }
 
 void
 LaunchControlXL::filter_stripables(StripableList& strips) const
 {
-	typedef bool (*FilterFunction)(boost::shared_ptr<Stripable>);
+	typedef bool (*FilterFunction)(std::shared_ptr<Stripable>);
 	FilterFunction flt;
 
 	switch ((int)template_number()) {
@@ -1087,11 +1067,11 @@ LaunchControlXL::switch_bank (uint32_t base)
 	
 	set_send_bank(0);
 
-	boost::shared_ptr<SelectButton> sl = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
-	boost::shared_ptr<SelectButton> sr = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
+	std::shared_ptr<SelectButton> sl = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectLeft]);
+	std::shared_ptr<SelectButton> sr = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectRight]);
 
-	boost::shared_ptr<Stripable> s[8];
-	boost::shared_ptr<Stripable> next_base;
+	std::shared_ptr<Stripable> s[8];
+	std::shared_ptr<Stripable> next_base;
 	uint32_t stripable_counter = get_amount_of_tracks();
 	uint32_t skip = base;
 	uint32_t n = 0;
@@ -1142,26 +1122,26 @@ LaunchControlXL::switch_bank (uint32_t base)
 			DEBUG_TRACE (DEBUG::LaunchControlXL, string_compose ("Binding Callbacks stripable[%1] exists\n", n));
 
 			stripable[n]->DropReferences.connect (stripable_connections, MISSING_INVALIDATOR,
-					boost::bind (&LaunchControlXL::switch_bank, this, bank_start), lcxl);
+					std::bind (&LaunchControlXL::switch_bank, this, bank_start), lcxl);
 			stripable[n]->presentation_info().PropertyChanged.connect (stripable_connections, MISSING_INVALIDATOR,
-					boost::bind (&LaunchControlXL::stripable_property_change, this, _1, n), lcxl);
+					std::bind (&LaunchControlXL::stripable_property_change, this, _1, n), lcxl);
 			stripable[n]->solo_control()->Changed.connect (stripable_connections, MISSING_INVALIDATOR,
-					boost::bind (&LaunchControlXL::solo_changed, this, n), lcxl);
+					std::bind (&LaunchControlXL::solo_changed, this, n), lcxl);
 			stripable[n]->mute_control()->Changed.connect (stripable_connections, MISSING_INVALIDATOR,
-					boost::bind (&LaunchControlXL::mute_changed, this, n), lcxl);
+					std::bind (&LaunchControlXL::mute_changed, this, n), lcxl);
 			if (stripable[n]->solo_isolate_control()) {	/*VCAs are stripables without isolate solo */
 				stripable[n]->solo_isolate_control()->Changed.connect (stripable_connections, MISSING_INVALIDATOR,
-						boost::bind (&LaunchControlXL::solo_iso_changed, this,n ), lcxl);
+						std::bind (&LaunchControlXL::solo_iso_changed, this,n ), lcxl);
 			}
 #ifdef MIXBUS
 			if (stripable[n]->master_send_enable_controllable()) {
 				stripable[n]->master_send_enable_controllable()->Changed.connect (stripable_connections, MISSING_INVALIDATOR,
-						boost::bind (&LaunchControlXL::master_send_changed, this,n ), lcxl);
+						std::bind (&LaunchControlXL::master_send_changed, this,n ), lcxl);
 			}
 #endif
 			if (stripable[n]->rec_enable_control()) {
 				stripable[n]->rec_enable_control()->Changed.connect (stripable_connections, MISSING_INVALIDATOR,
-						boost::bind (&LaunchControlXL::rec_changed, this, n), lcxl);
+						std::bind (&LaunchControlXL::rec_changed, this, n), lcxl);
 
 			}
 
@@ -1183,54 +1163,54 @@ LaunchControlXL::init_dm_callbacks()
 	}
 	if (first_selected_stripable()->mute_control()) {
 		first_selected_stripable()->mute_control()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_buttons,this), lcxl);
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_buttons),this), lcxl);
 	}
 	if (first_selected_stripable()->solo_control()) {
 		first_selected_stripable()->solo_control()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_buttons,this), lcxl);
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_buttons),this), lcxl);
 	}
 	if (first_selected_stripable()->rec_enable_control()) {
 		first_selected_stripable()->rec_enable_control()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_buttons,this), lcxl);
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_buttons),this), lcxl);
 	}
 #ifdef MIXBUS
-	if (first_selected_stripable()->eq_enable_controllable()) {
-		first_selected_stripable()->eq_enable_controllable()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_knobs_and_buttons,this), lcxl);
+	if (first_selected_stripable()->mapped_control(EQ_Enable)) {
+		first_selected_stripable()->mapped_control(EQ_Enable)->Changed.connect (stripable_connections,
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_knobs_and_buttons),this), lcxl);
 	}
-	if (first_selected_stripable()->eq_shape_controllable(0)) {
-		first_selected_stripable()->eq_shape_controllable(0)->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_buttons,this), lcxl);
+	if (first_selected_stripable()->mapped_control (EQ_BandShape, 0)) {
+		first_selected_stripable()->mapped_control (EQ_BandShape, 0)->Changed.connect (stripable_connections,
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_buttons),this), lcxl);
 	}
-	if (first_selected_stripable()->eq_shape_controllable(3)) {
-		first_selected_stripable()->eq_shape_controllable(3)->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_buttons,this), lcxl);
+	if (first_selected_stripable()->mapped_control (EQ_BandShape, 3)) {
+		first_selected_stripable()->mapped_control (EQ_BandShape, 3)->Changed.connect (stripable_connections,
+				MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_buttons),this), lcxl);
 	}
 
-	if (first_selected_stripable()->comp_enable_controllable()) {
-		first_selected_stripable()->comp_enable_controllable()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_knobs_and_buttons,this), lcxl);
+	if (first_selected_stripable()->mapped_control (Comp_Enable)) {
+		first_selected_stripable()->mapped_control (Comp_Enable)->Changed.connect (stripable_connections,
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_knobs_and_buttons),this), lcxl);
 	}
-	if (first_selected_stripable()->filter_enable_controllable(true)) { // only handle one case, as Mixbus only has one
-		first_selected_stripable()->filter_enable_controllable(true)->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_knobs_and_buttons, this), lcxl);
+	if (first_selected_stripable()->mapped_control (HPF_Enable)) { // only handle one case, as Mixbus only has one
+		first_selected_stripable()->mapped_control (HPF_Enable)->Changed.connect (stripable_connections,
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_knobs_and_buttons), this), lcxl);
 	}
 	if (first_selected_stripable()->master_send_enable_controllable()) {
 		first_selected_stripable()->master_send_enable_controllable()->Changed.connect (stripable_connections,
-		MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_knobs_and_buttons, this), lcxl);
+		MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_knobs_and_buttons), this), lcxl);
 	}
 
 	for (uint8_t se = 0; se < 12 ; ++se) {
 		if (first_selected_stripable()->send_enable_controllable(se)) {
 			first_selected_stripable()->send_enable_controllable(se)->Changed.connect (stripable_connections,
-			MISSING_INVALIDATOR, boost::bind (&LaunchControlXL::init_knobs_and_buttons, this), lcxl);
+			MISSING_INVALIDATOR, std::bind (static_cast<void (LaunchControlXL::*)(void)>(&LaunchControlXL::init_knobs_and_buttons), this), lcxl);
 		}
 	}
 #endif
 }
 
 
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 void
 LaunchControlXL::store_fss_type()
 {
@@ -1254,7 +1234,7 @@ LaunchControlXL::init_device_mode()
 	DEBUG_TRACE (DEBUG::LaunchControlXL, "Initializing device mode\n");
 	init_knobs();
 	init_buttons(false);
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 	set_ctrllowersends(false);
 	store_fss_type();
 #endif
@@ -1301,7 +1281,7 @@ void LaunchControlXL::set_track_mode (TrackMode mode) {
 	}
 
 	for ( size_t n = 0 ; n < sizeof (trk_cntrl_btns) / sizeof (trk_cntrl_btns[0]); ++n) {
-		boost::shared_ptr<TrackButton> b = boost::dynamic_pointer_cast<TrackButton> (id_note_button_map[trk_cntrl_btns[n]]);
+		std::shared_ptr<TrackButton> b = std::dynamic_pointer_cast<TrackButton> (id_note_button_map[trk_cntrl_btns[n]]);
 		if (b) {
 			b->set_color_enabled(color_on);
 			b->set_color_disabled(color_off);
@@ -1314,14 +1294,14 @@ LaunchControlXL::set_device_mode (bool yn)
 {
 	_device_mode = yn;
 	reset(template_number());
-	boost::shared_ptr<TrackStateButton> db =  boost::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
+	std::shared_ptr<TrackStateButton> db =  std::dynamic_pointer_cast<TrackStateButton>(id_note_button_map[Device]);
 	write(db->state_msg(_device_mode));
 	set_send_bank(0);
 	build_maps();
 	if (device_mode()) {
 		init_device_mode();
 	} else {
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 		set_ctrllowersends(ctrllowersends());
 #endif
 		switch_bank (bank_start);
@@ -1347,7 +1327,7 @@ LaunchControlXL::set_fader8master (bool yn)
 	switch_bank (bank_start);
 }
 
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 void
 LaunchControlXL::set_ctrllowersends (bool yn)
 {
@@ -1372,7 +1352,7 @@ LaunchControlXL::set_send_bank (int offset)
 
 	int lowersendsoffset = 0;
 
-#ifdef MIXBUS32C
+#ifdef MIXBUS
 	if (ctrllowersends() && !device_mode()) {
 		lowersendsoffset = 6;
 	}
@@ -1384,8 +1364,8 @@ LaunchControlXL::set_send_bank (int offset)
 	DEBUG_TRACE (DEBUG::LaunchControlXL, string_compose ("set_send_bank - _send_bank_base: %1 \n", send_bank_base()));
 	DEBUG_TRACE (DEBUG::LaunchControlXL, string_compose ("set_send_bank - applying offset %1 \n", offset));
 
-	boost::shared_ptr<SelectButton> sbu = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectUp]);
-	boost::shared_ptr<SelectButton> sbd = boost::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectDown]);
+	std::shared_ptr<SelectButton> sbu = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectUp]);
+	std::shared_ptr<SelectButton> sbd = std::dynamic_pointer_cast<SelectButton>(id_controller_button_map[SelectDown]);
 
 	if (!sbu || !sbd ) {
 		return;

@@ -23,14 +23,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_automation_time_axis_h__
-#define __ardour_gtk_automation_time_axis_h__
+#pragma once
 
 #include <list>
+#include <memory>
 #include <string>
 #include <utility>
-
-#include <boost/shared_ptr.hpp>
 
 #include "ardour/types.h"
 #include "ardour/automatable.h"
@@ -41,6 +39,7 @@
 #include "widgets/ardour_button.h"
 #include "widgets/ardour_dropdown.h"
 
+#include "line_merger.h"
 #include "time_axis_view.h"
 #include "automation_controller.h"
 
@@ -55,19 +54,20 @@ class TimeSelection;
 class RegionSelection;
 class PointSelection;
 class AutomationLine;
+class EditorAutomationLine;
 class Selection;
 class Selectable;
 class AutomationStreamView;
 class AutomationController;
 class ItemCounts;
 
-class AutomationTimeAxisView : public TimeAxisView
+class AutomationTimeAxisView : public TimeAxisView, public LineMerger
 {
 public:
 	AutomationTimeAxisView (ARDOUR::Session*,
-	                        boost::shared_ptr<ARDOUR::Stripable>,
-	                        boost::shared_ptr<ARDOUR::Automatable>,
-	                        boost::shared_ptr<ARDOUR::AutomationControl>,
+	                        std::shared_ptr<ARDOUR::Stripable>,
+	                        std::shared_ptr<ARDOUR::Automatable>,
+	                        std::shared_ptr<ARDOUR::AutomationControl>,
 	                        Evoral::Parameter,
 	                        PublicEditor&,
 	                        TimeAxisView& parent,
@@ -84,23 +84,23 @@ public:
 	Gdk::Color color () const;
 	void update_name_from_param ();
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable() const;
+	std::shared_ptr<ARDOUR::Stripable> stripable() const;
 	ARDOUR::PresentationInfo const & presentation_info () const;
 
 	void add_automation_event (GdkEvent *, Temporal::timepos_t const &, double, bool with_guard_points);
 
 	void clear_lines ();
 
-	/** @return Our AutomationLine, if this view has one, or 0 if it uses AutomationRegionViews */
-	boost::shared_ptr<AutomationLine> line() { return _line; }
+	/** @return Our EditorAutomationLine, if this view has one, or 0 if it uses AutomationRegionViews */
+	std::shared_ptr<EditorAutomationLine> line() { return _line; }
 
-	/** @return All AutomationLines associated with this view */
-	std::list<boost::shared_ptr<AutomationLine> > lines () const;
+	/** @return All EditorAutomationLines associated with this view */
+	std::list<std::shared_ptr<AutomationLine> > lines () const;
 
 	AutomationStreamView* automation_view() const { return _view; }
 
 	void set_selected_points (PointSelection&);
-	void get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double top, double bot, std::list<Selectable *>&, bool within = false);
+	void _get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double top, double bot, std::list<Selectable *>&, bool within);
 	void get_inverted_selectables (Selection&, std::list<Selectable*>& results);
 
 	void show_timestretch (Temporal::timepos_t const &/*start*/, Temporal::timepos_t const & /*end*/, int /*layers*/, int /*layer*/) {}
@@ -116,19 +116,19 @@ public:
 	std::string state_id() const;
 	static bool parse_state_id (std::string const &, PBD::ID &, bool &, Evoral::Parameter &);
 
-	boost::shared_ptr<ARDOUR::AutomationControl> control() const   { return _control; }
-	boost::shared_ptr<AutomationController>      controller() const { return _controller; }
+	std::shared_ptr<ARDOUR::AutomationControl> control() const   { return _control; }
+	std::shared_ptr<AutomationController>      controller() const { return _controller; }
 	Evoral::Parameter parameter () const {
 		return _parameter;
 	}
 
-	ArdourCanvas::Item* base_item () const {
-		return _base_rect;
+	ArdourCanvas::Rectangle& base_item () const {
+		return *_base_rect;
 	}
 
 	bool has_automation () const;
 
-	boost::shared_ptr<ARDOUR::Stripable> parent_stripable () {
+	std::shared_ptr<ARDOUR::Stripable> parent_stripable () {
 		return _stripable;
 	}
 
@@ -138,23 +138,35 @@ public:
 
 	void set_automation_state (ARDOUR::AutoState);
 
+	enum VelocityMode {
+		VelocityModeLollipops,
+		VelocityModeLine
+	};
+
+	VelocityMode velocity_mode () const { return _velocity_mode; }
+	void set_velocity_mode (VelocityMode, bool force = false);
+
+	void set_selected_regionviews (RegionSelection&);
+
+	MergeableLine* make_merger ();
+
 protected:
 	/* Note that for MIDI controller "automation" (in regions), all of these
 	 * may be set.  In this case, _automatable is likely _route so the
 	 * controller will send immediate events out the route's MIDI port. */
 
 	/** parent strip */
-	boost::shared_ptr<ARDOUR::Stripable> _stripable;
+	std::shared_ptr<ARDOUR::Stripable> _stripable;
 	/** control */
-	boost::shared_ptr<ARDOUR::AutomationControl> _control;
+	std::shared_ptr<ARDOUR::AutomationControl> _control;
 	/** control owner; may be _stripable, something else (e.g. a pan control), or NULL */
-	boost::shared_ptr<ARDOUR::Automatable> _automatable;
+	std::shared_ptr<ARDOUR::Automatable> _automatable;
 	/** controller owner */
-	boost::shared_ptr<AutomationController> _controller;
+	std::shared_ptr<AutomationController> _controller;
 	Evoral::Parameter _parameter;
 
 	ArdourCanvas::Rectangle* _base_rect;
-	boost::shared_ptr<AutomationLine> _line;
+	std::shared_ptr<EditorAutomationLine> _line;
 
 	std::string _name;
 
@@ -181,7 +193,7 @@ protected:
 
 	bool _show_regions;
 
-	void add_line (boost::shared_ptr<AutomationLine>);
+	void add_line (std::shared_ptr<EditorAutomationLine>);
 
 	void clear_clicked ();
 	void hide_clicked ();
@@ -202,6 +214,7 @@ protected:
 	void automation_state_changed ();
 
 	void set_interpolation (ARDOUR::AutomationList::InterpolationStyle);
+
 	void interpolation_changed (ARDOUR::AutomationList::InterpolationStyle);
 
 	PBD::ScopedConnectionList _list_connections;
@@ -218,8 +231,13 @@ protected:
 
 	std::string automation_state_off_string () const;
 
+	virtual void add_contents (bool show_regions);
+
+	VelocityMode _velocity_mode;
+
+	bool show_automation_controls () const;
+
 private:
 	int set_state_2X (const XMLNode &, int);
 };
 
-#endif /* __ardour_gtk_automation_time_axis_h__ */

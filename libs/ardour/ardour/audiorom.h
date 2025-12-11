@@ -16,8 +16,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_audio_rom_h__
-#define __ardour_audio_rom_h__
+#pragma once
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/readable.h"
@@ -30,7 +29,7 @@ class Session;
 class LIBARDOUR_API AudioRom : public AudioReadable
 {
 public:
-	static boost::shared_ptr<AudioRom> new_rom (Sample*, size_t);
+	static std::shared_ptr<AudioRom> new_rom (Sample*, size_t);
 	~AudioRom();
 
 	samplecnt_t read (Sample*, samplepos_t pos, samplecnt_t cnt, int channel) const;
@@ -47,4 +46,3 @@ private:
 
 }
 
-#endif /* __ardour_readable_h__ */

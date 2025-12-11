@@ -20,9 +20,9 @@
 #include "gtk2ardour-config.h"
 #endif
 
-#include <gtkmm.h>
-#include <gtk/gtk.h>
-#include <gdk/gdkquartz.h>
+#include <ytkmm/ytkmm.h>
+#include <ytk/ytk.h>
+#include <ydk/gdkquartz.h>
 
 #include "pbd/convert.h"
 #include "pbd/error.h"
@@ -43,15 +43,15 @@ using namespace ARDOUR;
 using namespace Steinberg;
 
 VST3PluginUI*
-create_mac_vst3_gui (boost::shared_ptr<PlugInsertBase> pib, Gtk::VBox** box)
+create_mac_vst3_gui (std::shared_ptr<PlugInsertBase> pib, Gtk::VBox** box)
 {
-	VST3NSViewPluginUI* v = new VST3NSViewPluginUI (pib, boost::dynamic_pointer_cast<VST3Plugin> (pib->plugin()));
+	VST3NSViewPluginUI* v = new VST3NSViewPluginUI (pib, std::dynamic_pointer_cast<VST3Plugin> (pib->plugin()));
 	*box = v;
 	return v;
 }
 
 
-VST3NSViewPluginUI::VST3NSViewPluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::shared_ptr<VST3Plugin> vst3)
+VST3NSViewPluginUI::VST3NSViewPluginUI (std::shared_ptr<PlugInsertBase> pib, std::shared_ptr<VST3Plugin> vst3)
 	: VST3PluginUI (pib, vst3)
 {
 	pack_start (_gui_widget, true, true);
@@ -65,7 +65,7 @@ VST3NSViewPluginUI::VST3NSViewPluginUI (boost::shared_ptr<PlugInsertBase> pib, b
 	_gui_widget.signal_unmap ().connect (mem_fun (this, &VST3NSViewPluginUI::view_unmap));
 	_gui_widget.signal_scroll_event ().connect (sigc::mem_fun (*this, &VST3NSViewPluginUI::forward_scroll_event), false);
 
-	//vst->LoadPresetProgram.connect (_program_connection, invalidator (*this), boost::bind (&VST3NSViewPluginUI::set_program, this), gui_context());
+	//vst->LoadPresetProgram.connect (_program_connection, invalidator (*this), std::bind (&VST3NSViewPluginUI::set_program, this), gui_context());
 
 	_ns_view = [[NSView new] retain];
 

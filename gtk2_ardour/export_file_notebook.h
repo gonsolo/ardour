@@ -21,17 +21,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __export_file_notebook_h__
-#define __export_file_notebook_h__
+#pragma once
 
 #include <sigc++/signal.h>
 
-#include <gtkmm/alignment.h>
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/checkbutton.h>
-#include <gtkmm/label.h>
-#include <gtkmm/notebook.h>
+#include <ytkmm/alignment.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/checkbutton.h>
+#include <ytkmm/label.h>
+#include <ytkmm/notebook.h>
 
 #include "ardour/export_profile_manager.h"
 #include "ardour/session_handle.h"
@@ -46,19 +45,19 @@ public:
 
 	ExportFileNotebook ();
 
-	void set_session_and_manager (ARDOUR::Session * s, boost::shared_ptr<ARDOUR::ExportProfileManager> manager);
+	void set_session_and_manager (ARDOUR::Session * s, std::shared_ptr<ARDOUR::ExportProfileManager> manager);
 	void sync_with_manager ();
 	void update_example_filenames();
 
-	boost::shared_ptr<SoundcloudExportSelector> soundcloud_export_selector;
+	std::shared_ptr<SoundcloudExportSelector> soundcloud_export_selector;
 
 	sigc::signal<void> CriticalSelectionChanged;
 
 private:
 
-	typedef boost::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
-	typedef boost::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
-	typedef boost::shared_ptr<ARDOUR::ExportFilename> FilenamePtr;
+	typedef std::shared_ptr<ARDOUR::ExportProfileManager> ManagerPtr;
+	typedef std::shared_ptr<ARDOUR::ExportFormatSpecification> FormatPtr;
+	typedef std::shared_ptr<ARDOUR::ExportFilename> FilenamePtr;
 	class FilePage;
 
 	ManagerPtr        profile_manager;
@@ -143,4 +142,3 @@ private:
 	};
 };
 
-#endif

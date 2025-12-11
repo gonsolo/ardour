@@ -62,7 +62,7 @@ class LIBCONTROLCP_API BasicUI {
 	void loop_toggle ();
 	void loop_location (Temporal::timepos_t const & start, Temporal::timepos_t const & end);
 	void access_action ( std::string action_path );
-	static PBD::Signal2<void,std::string,std::string> AccessAction;
+	static PBD::Signal<void(std::string,std::string)> AccessAction;
 	void goto_zero ();
 	void goto_start (bool and_roll = false);
 	void goto_end ();
@@ -194,7 +194,7 @@ class LIBCONTROLCP_API BasicUI {
 	void unbang_trigger_at (int x, int y);
 
 	/* it would be nice to use TriggerPtr here but that implies including ardour/triggerbox.h */
-	boost::shared_ptr<ARDOUR::Trigger> find_trigger (int x, int y);
+	std::shared_ptr<ARDOUR::Trigger> find_trigger (int x, int y);
 
   protected:
 	BasicUI ();

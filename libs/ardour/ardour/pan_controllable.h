@@ -17,12 +17,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __libardour_pan_controllable_h__
-#define __libardour_pan_controllable_h__
+#pragma once
 
+#include <memory>
 #include <string>
-
-#include <boost/shared_ptr.hpp>
 
 #include "evoral/Parameter.h"
 
@@ -37,11 +35,11 @@ class Pannable;
 class LIBARDOUR_API PanControllable : public AutomationControl
 {
   public:
-	PanControllable (Session& s, std::string name, Pannable* o, Evoral::Parameter param, Temporal::TimeDomain td)
+	PanControllable (Session& s, std::string name, Pannable* o, Evoral::Parameter param, Temporal::TimeDomainProvider const & tdp)
 		: AutomationControl (s,
 		                     param,
 		                     ParameterDescriptor(param),
-		                     boost::shared_ptr<AutomationList>(new AutomationList(param, td)),
+		                     std::shared_ptr<AutomationList>(new AutomationList(param, tdp)),
 		                     name)
 		, owner (o)
 	{}
@@ -55,4 +53,3 @@ class LIBARDOUR_API PanControllable : public AutomationControl
 
 } // namespace
 
-#endif /* __libardour_pan_controllable_h__ */

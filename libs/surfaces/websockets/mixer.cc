@@ -16,8 +16,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <boost/lexical_cast.hpp>
-
 #include "ardour/dB.h"
 #include "ardour/meter.h"
 #include "ardour/plugin_insert.h"
@@ -29,7 +27,7 @@
 using namespace ARDOUR;
 using namespace ArdourSurface;
 
-ArdourMixerPlugin::ArdourMixerPlugin (boost::shared_ptr<ARDOUR::PluginInsert> insert)
+ArdourMixerPlugin::ArdourMixerPlugin (std::shared_ptr<ARDOUR::PluginInsert> insert)
 	: _insert (insert)
 {}
 
@@ -38,7 +36,7 @@ ArdourMixerPlugin::~ArdourMixerPlugin ()
 	drop_connections ();
 }
 
-boost::shared_ptr<ARDOUR::PluginInsert>
+std::shared_ptr<ARDOUR::PluginInsert>
 ArdourMixerPlugin::insert () const
 {
 	return _insert;
@@ -71,7 +69,7 @@ ArdourMixerPlugin::param_value (uint32_t param_id)
 void
 ArdourMixerPlugin::set_param_value (uint32_t param_id, TypedValue value)
 {
-	boost::shared_ptr<AutomationControl> control = param_control (param_id);
+	std::shared_ptr<AutomationControl> control = param_control (param_id);
 	ParameterDescriptor pd = control->desc ();
 	double              dbl_val;
 
@@ -86,23 +84,23 @@ ArdourMixerPlugin::set_param_value (uint32_t param_id, TypedValue value)
 	control->set_value (dbl_val, PBD::Controllable::NoGroup);
 }
 
-boost::shared_ptr<ARDOUR::AutomationControl>
+std::shared_ptr<ARDOUR::AutomationControl>
 ArdourMixerPlugin::param_control (uint32_t param_id) const
 {
 	bool                      ok         = false;
-	boost::shared_ptr<Plugin> plugin     = _insert->plugin ();
+	std::shared_ptr<Plugin> plugin     = _insert->plugin ();
 	uint32_t                  control_id = plugin->nth_parameter (param_id, ok);
 
 	if (!ok || !plugin->parameter_is_input (control_id)) {
 		throw ArdourMixerNotFoundException ("invalid automation control for param id = "
-			+ boost::lexical_cast<std::string>(param_id));
+			+ std::to_string(param_id));
 	}
 
 	return _insert->automation_control (Evoral::Parameter (PluginAutomation, 0, control_id));
 }
 
 TypedValue
-ArdourMixerPlugin::param_value (boost::shared_ptr<ARDOUR::AutomationControl> control)
+ArdourMixerPlugin::param_value (std::shared_ptr<ARDOUR::AutomationControl> control)
 {
 	ParameterDescriptor pd    = control->desc ();
 	TypedValue          value = TypedValue ();
@@ -118,28 +116,28 @@ ArdourMixerPlugin::param_value (boost::shared_ptr<ARDOUR::AutomationControl> con
 	return value;
 }
 
-ArdourMixerStrip::ArdourMixerStrip (boost::shared_ptr<ARDOUR::Stripable> stripable, PBD::EventLoop* event_loop)
+ArdourMixerStrip::ArdourMixerStrip (std::shared_ptr<ARDOUR::Stripable> stripable, PBD::EventLoop* event_loop)
 	: _stripable (stripable)
 {
-	boost::shared_ptr<Route> route = boost::dynamic_pointer_cast<Route> (_stripable);
+	std::shared_ptr<Route> route = std::dynamic_pointer_cast<Route> (_stripable);
 
 	if (!route) {
 		return;
 	}
 
 	for (uint32_t plugin_id = 0;; ++plugin_id) {
-		boost::shared_ptr<Processor> processor = route->nth_plugin (plugin_id);
+		std::shared_ptr<Processor> processor = route->nth_plugin (plugin_id);
 
 		if (!processor) {
 			break;
 		}
 
-		boost::shared_ptr<PluginInsert> insert = boost::static_pointer_cast<PluginInsert> (processor);
+		std::shared_ptr<PluginInsert> insert = std::static_pointer_cast<PluginInsert> (processor);
 
 		if (insert) {
-			_plugins[plugin_id] = boost::shared_ptr<ArdourMixerPlugin> (new ArdourMixerPlugin (insert));
+			_plugins[plugin_id] = std::shared_ptr<ArdourMixerPlugin> (new ArdourMixerPlugin (insert));
 			insert->DropReferences.connect (*_plugins[plugin_id], MISSING_INVALIDATOR,
-			                                boost::bind (&ArdourMixerStrip::on_drop_plugin, this, plugin_id), event_loop);
+			                                std::bind (&ArdourMixerStrip::on_drop_plugin, this, plugin_id), event_loop);
 		}
 	}
 }
@@ -149,7 +147,7 @@ ArdourMixerStrip::~ArdourMixerStrip ()
 	drop_connections ();
 }
 
-boost::shared_ptr<ARDOUR::Stripable>
+std::shared_ptr<ARDOUR::Stripable>
 ArdourMixerStrip::stripable () const
 {
 	return _stripable;
@@ -159,7 +157,7 @@ ArdourMixerPlugin&
 ArdourMixerStrip::plugin (uint32_t plugin_id)
 {
 	if (_plugins.find (plugin_id) == _plugins.end ()) {
-		throw ArdourMixerNotFoundException ("plugin id = " + boost::lexical_cast<std::string>(plugin_id) + " not found");
+		throw ArdourMixerNotFoundException ("plugin id = " + std::to_string(plugin_id) + " not found");
 	}
 
 	return *_plugins[plugin_id];
@@ -194,7 +192,7 @@ ArdourMixerStrip::has_pan () const
 double
 ArdourMixerStrip::pan () const
 {
-	boost::shared_ptr<AutomationControl> ac = _stripable->pan_azimuth_control ();
+	std::shared_ptr<AutomationControl> ac = _stripable->pan_azimuth_control ();
 	
 	if (!ac) {
 		throw ArdourMixerNotFoundException ("strip has no panner");
@@ -206,7 +204,7 @@ ArdourMixerStrip::pan () const
 void
 ArdourMixerStrip::set_pan (double value)
 {
-	boost::shared_ptr<AutomationControl> ac = _stripable->pan_azimuth_control ();
+	std::shared_ptr<AutomationControl> ac = _stripable->pan_azimuth_control ();
 
 	if (!ac) {
 		return;
@@ -230,7 +228,7 @@ ArdourMixerStrip::set_mute (bool mute)
 float
 ArdourMixerStrip::meter_level_db () const
 {
-	boost::shared_ptr<PeakMeter> meter = _stripable->peak_meter ();
+	std::shared_ptr<PeakMeter> meter = _stripable->peak_meter ();
 	return meter ? meter->meter_level (0, MeterMCP) : -193;
 }
 
@@ -297,9 +295,9 @@ ArdourMixer::start ()
 	uint32_t strip_id = 0;
 
 	for (StripableList::iterator it = strips.begin (); it != strips.end (); ++it) {
-		_strips[strip_id] = boost::shared_ptr<ArdourMixerStrip> (new ArdourMixerStrip (*it, event_loop ()));
+		_strips[strip_id] = std::shared_ptr<ArdourMixerStrip> (new ArdourMixerStrip (*it, event_loop ()));
 		(*it)->DropReferences.connect (*_strips[strip_id], MISSING_INVALIDATOR,
-		                               boost::bind (&ArdourMixer::on_drop_strip, this, strip_id), event_loop ());
+		                               std::bind (&ArdourMixer::on_drop_strip, this, strip_id), event_loop ());
 		strip_id++;
 	}
 
@@ -325,7 +323,7 @@ ArdourMixerStrip&
 ArdourMixer::strip (uint32_t strip_id)
 {
 	if (_strips.find (strip_id) == _strips.end ()) {
-		throw ArdourMixerNotFoundException ("strip id = " + boost::lexical_cast<std::string>(strip_id) + " not found");
+		throw ArdourMixerNotFoundException ("strip id = " + std::to_string(strip_id) + " not found");
 	}
 
 	return *_strips[strip_id];

@@ -19,21 +19,24 @@
 #ifndef _ardour_monitor_port_h_
 #define _ardour_monitor_port_h_
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <set>
 
 #include "zita-resampler/vmresampler.h"
 
 #include "pbd/rcu.h"
+#include <pbd/signals.h>
 
 #include "ardour/audio_buffer.h"
 #include "ardour/port_engine.h"
 
 namespace ARDOUR {
 
-class LIBARDOUR_API MonitorPort : public boost::noncopyable
+class LIBARDOUR_API MonitorPort
 {
 public:
+	MonitorPort (const MonitorPort&) = delete;
+	MonitorPort& operator= (const MonitorPort&) = delete;
 	~MonitorPort ();
 
 	void set_buffer_size (pframes_t);
@@ -47,7 +50,7 @@ public:
 	void set_active_monitors (std::list <std::string> const&);
 	void clear_ports (bool instantly);
 
-	PBD::Signal2<void, std::string, bool> MonitorInputChanged;
+	PBD::Signal<void(std::string, bool)> MonitorInputChanged;
 
 protected:
 	friend class PortManager;
@@ -66,10 +69,10 @@ private:
 		bool  remove;
 	};
 
-	void collect (boost::shared_ptr<MonitorInfo>, Sample*, pframes_t, std::string const&);
+	void collect (std::shared_ptr<MonitorInfo>, Sample*, pframes_t, std::string const&);
 	void finalize (pframes_t);
 
-	typedef std::map<std::string, boost::shared_ptr<MonitorInfo> > MonitorPorts;
+	typedef std::map<std::string, std::shared_ptr<MonitorInfo> > MonitorPorts;
 	SerializedRCUManager<MonitorPorts> _monitor_ports;
 
 	AudioBuffer*            _buffer;

@@ -20,13 +20,13 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <unistd.h>
 #include <cstdio> /* for snprintf, grrr */
 
 #include <glib.h>
 #include "pbd/gstdio_compat.h"
 #include <glibmm/miscutils.h>
 
+#include "pbd/convert.h"
 #include "pbd/xml++.h"
 #include "pbd/file_utils.h"
 #include "pbd/replace_all.h"
@@ -69,12 +69,29 @@ RCConfiguration::RCConfiguration ()
 #undef  CONFIG_VARIABLE_SPECIAL
 #define CONFIG_VARIABLE(Type,var,name,value) var (name,value),
 #define CONFIG_VARIABLE_SPECIAL(Type,var,name,value,mutator) var (name,value,mutator),
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 	_control_protocol_state (0)
       , _transport_master_state (0)
 {
+
+/* Uncomment the following to get a list of all config variables */
+
+#if 0
+#undef  CONFIG_VARIABLE
+#undef  CONFIG_VARIABLE_SPECIAL
+#define CONFIG_VARIABLE(Type,var,name,value) _my_variables.insert (std::make_pair ((name), &(var)));
+#define CONFIG_VARIABLE_SPECIAL(Type,var,name,value,mutator) _my_variables.insert (std::make_pair ((name), &(var)));
+#include "ardour/rc_configuration_vars.inc.h"
+#undef  CONFIG_VARIABLE
+#undef  CONFIG_VARIABLE_SPECIAL
+
+	for (auto const & s : _my_variables) {
+		std::cerr << s.first << std::endl;
+	}
+#endif
+
 }
 
 RCConfiguration::~RCConfiguration ()
@@ -195,7 +212,7 @@ RCConfiguration::get_state () const
 
 	root = new XMLNode("Ardour");
 
-	root->add_child_nocopy (get_variables ());
+	root->add_child_nocopy (get_variables (X_("Config")));
 
 	root->add_child_nocopy (SessionMetadata::Metadata()->get_user_state());
 
@@ -213,19 +230,21 @@ RCConfiguration::get_state () const
 }
 
 XMLNode&
-RCConfiguration::get_variables () const
+RCConfiguration::get_variables (std::string const & node_name) const
 {
 	XMLNode* node;
 
-	node = new XMLNode ("Config");
+	node = new XMLNode (node_name);
 
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
+/* due to special case of PBD::ConfigVariable<std::string> we cannot use PBD::to_string<type> (value),
+ * but have to construct a ConfigVariable */
 #define CONFIG_VARIABLE(type,var,Name,value) \
-	var.add_to_node (*node);
+	var.add_to_node_if_modified (*node, ConfigVariable<type> (Name, value).get_as_string ());
 #define CONFIG_VARIABLE_SPECIAL(type,var,Name,value,mutator) \
 	var.add_to_node (*node);
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 
@@ -281,19 +300,19 @@ RCConfiguration::set_variables (const XMLNode& node)
     ParameterChanged (name);                                 \
   }
 
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 
 }
 void
-RCConfiguration::map_parameters (boost::function<void (std::string)>& functor)
+RCConfiguration::map_parameters (std::function<void (std::string)>& functor)
 {
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 #define CONFIG_VARIABLE(type,var,name,value)                 functor (name);
 #define CONFIG_VARIABLE_SPECIAL(type,var,name,value,mutator) functor (name);
-#include "ardour/rc_configuration_vars.h"
+#include "ardour/rc_configuration_vars.inc.h"
 #undef  CONFIG_VARIABLE
 #undef  CONFIG_VARIABLE_SPECIAL
 }

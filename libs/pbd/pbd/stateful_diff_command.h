@@ -17,11 +17,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_stateful_diff_command_h__
-#define __pbd_stateful_diff_command_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
-#include <boost/weak_ptr.hpp>
+#include <memory>
 
 #include "pbd/command.h"
 #include "pbd/libpbd_visibility.h"
@@ -34,11 +32,11 @@ class PropertyList;
 /** A Command which stores its action as the differences between the before and after
  *  state of a Stateful object.
  */
-class LIBPBD_API StatefulDiffCommand : public Command
+class LIBPBD_API StatefulDiffCommand : public PBD::Command
 {
 public:
-	StatefulDiffCommand (boost::shared_ptr<StatefulDestructible>);
-	StatefulDiffCommand (boost::shared_ptr<StatefulDestructible>, XMLNode const&);
+	StatefulDiffCommand (std::shared_ptr<StatefulDestructible>);
+	StatefulDiffCommand (std::shared_ptr<StatefulDestructible>, XMLNode const&);
 	~StatefulDiffCommand ();
 
 	void operator() ();
@@ -49,10 +47,9 @@ public:
 	bool empty () const;
 
 private:
-	boost::weak_ptr<Stateful> _object;  ///< the object in question
+	std::weak_ptr<Stateful> _object;  ///< the object in question
 	PBD::PropertyList*        _changes; ///< property changes to execute this command
 };
 
 }; // namespace PBD
 
-#endif /* __pbd_stateful_diff_command_h__ */

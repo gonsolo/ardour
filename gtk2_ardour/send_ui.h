@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_send_ui_h__
-#define __ardour_gtk_send_ui_h__
+#pragma once
 
 #include "widgets/ardour_button.h"
 
@@ -39,7 +38,7 @@ class IOSelector;
 class SendUI : public Gtk::HBox
 {
 public:
-	SendUI (Gtk::Window*, ARDOUR::Session*, boost::shared_ptr<ARDOUR::Send>);
+	SendUI (Gtk::Window*, ARDOUR::Session*, std::shared_ptr<ARDOUR::Send>);
 	~SendUI ();
 
 private:
@@ -49,7 +48,7 @@ private:
 	bool invert_press (GdkEventButton* ev);
 	bool invert_release (GdkEventButton* ev);
 
-	boost::shared_ptr<ARDOUR::Send> _send;
+	std::shared_ptr<ARDOUR::Send> _send;
 
 	ArdourWidgets::ArdourButton _invert_button;
 	GainMeter                   _gpm;
@@ -64,10 +63,10 @@ private:
 class SendUIWindow : public ArdourWindow
 {
 public:
-	SendUIWindow (Gtk::Window&, ARDOUR::Session*, boost::shared_ptr<ARDOUR::Send>);
+	SendUIWindow (Gtk::Window&, ARDOUR::Session*, std::shared_ptr<ARDOUR::Send>);
+	SendUIWindow (ARDOUR::Session*, std::shared_ptr<ARDOUR::Send>);
 
 private:
 	SendUI _ui;
 };
 
-#endif /* __ardour_gtk_send_ui_h__ */

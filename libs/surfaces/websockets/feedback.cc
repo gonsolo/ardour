@@ -20,7 +20,7 @@
 #include "ardour/session.h"
 #include "ardour/tempo.h"
 
-#include "pbd/abstract_ui.cc" // instantiate template
+#include "pbd/abstract_ui.inc.cc" // instantiate template
 
 #include "feedback.h"
 #include "transport.h"
@@ -86,9 +86,9 @@ struct PluginBypassObserver {
 
 struct PluginParamValueObserver {
 	void operator() (ArdourFeedback* p, uint32_t strip_id, uint32_t plugin_id,
-	                 uint32_t param_id, boost::weak_ptr<AutomationControl> ctrl)
+	                 uint32_t param_id, std::weak_ptr<AutomationControl> ctrl)
 	{
-		boost::shared_ptr<AutomationControl> control = ctrl.lock ();
+		std::shared_ptr<AutomationControl> control = ctrl.lock ();
 
 		if (!control) {
 			return;
@@ -102,10 +102,10 @@ struct PluginParamValueObserver {
 FeedbackHelperUI::FeedbackHelperUI()
 	: AbstractUI<BaseUI::BaseRequestObject> ("WS_FeedbackHelperUI")
 {
-	char name[64];
-	snprintf (name, 64, "WS-%p", (void*)DEBUG_THREAD_SELF);
- 	pthread_set_name (name);
-	set_event_loop_for_thread (this);
+}
+
+FeedbackHelperUI::~FeedbackHelperUI ()
+{
 }
 
 void
@@ -227,11 +227,11 @@ ArdourFeedback::observe_transport ()
 {
 	ARDOUR::Session& sess = session ();
 	sess.TransportStateChange.connect (_transport_connections, MISSING_INVALIDATOR,
-	                                   boost::bind<void> (TransportObserver (), this), event_loop ());
+	                                   std::bind<void> (TransportObserver (), this), event_loop ());
 	sess.RecordStateChanged.connect (_transport_connections, MISSING_INVALIDATOR,
-	                                 boost::bind<void> (RecordStateObserver (), this), event_loop ());
+	                                 std::bind<void> (RecordStateObserver (), this), event_loop ());
 
-	Temporal::TempoMap::MapChanged.connect (_transport_connections, MISSING_INVALIDATOR, boost::bind<void> (TempoObserver (), this), event_loop ());
+	Temporal::TempoMap::MapChanged.connect (_transport_connections, MISSING_INVALIDATOR, std::bind<void> (TempoObserver (), this), event_loop ());
 }
 
 void
@@ -239,20 +239,20 @@ ArdourFeedback::observe_mixer ()
 {
 	for (ArdourMixer::StripMap::iterator it = mixer().strips().begin(); it != mixer().strips().end(); ++it) {
 		uint32_t strip_id                         = it->first;
-		boost::shared_ptr<ArdourMixerStrip> strip = it->second;
+		std::shared_ptr<ArdourMixerStrip> strip = it->second;
 
-		boost::shared_ptr<Stripable> stripable = strip->stripable ();
+		std::shared_ptr<Stripable> stripable = strip->stripable ();
 
 		stripable->gain_control ()->Changed.connect (*it->second, MISSING_INVALIDATOR,
-		                                         boost::bind<void> (StripGainObserver (), this, strip_id), event_loop ());
+		                                         std::bind<void> (StripGainObserver (), this, strip_id), event_loop ());
 
 		if (stripable->pan_azimuth_control ()) {
 			stripable->pan_azimuth_control ()->Changed.connect (*it->second, MISSING_INVALIDATOR,
-			                                                boost::bind<void> (StripPanObserver (), this, strip_id), event_loop ());
+			                                                std::bind<void> (StripPanObserver (), this, strip_id), event_loop ());
 		}
 
 		stripable->mute_control ()->Changed.connect (*it->second, MISSING_INVALIDATOR,
-		                                         boost::bind<void> (StripMuteObserver (), this, strip_id), event_loop ());
+		                                         std::bind<void> (StripMuteObserver (), this, strip_id), event_loop ());
 
 		observe_strip_plugins (strip_id, strip->plugins ());
 	}
@@ -263,24 +263,24 @@ ArdourFeedback::observe_strip_plugins (uint32_t strip_id, ArdourMixerStrip::Plug
 {
 	for (ArdourMixerStrip::PluginMap::iterator it = plugins.begin(); it != plugins.end(); ++it) {
 		uint32_t                             plugin_id = it->first;
-		boost::shared_ptr<ArdourMixerPlugin> plugin    = it->second;
-		boost::shared_ptr<PluginInsert>      insert    = plugin->insert ();
+		std::shared_ptr<ArdourMixerPlugin> plugin    = it->second;
+		std::shared_ptr<PluginInsert>      insert    = plugin->insert ();
 		uint32_t                             bypass    = insert->plugin ()->designated_bypass_port ();
 		Evoral::Parameter                    param     = Evoral::Parameter (PluginAutomation, 0, bypass);
-		boost::shared_ptr<AutomationControl> control   = insert->automation_control (param);
+		std::shared_ptr<AutomationControl> control   = insert->automation_control (param);
 
 		if (control) {
 			control->Changed.connect (*plugin, MISSING_INVALIDATOR,
-			                          boost::bind<void> (PluginBypassObserver (), this, strip_id, plugin_id), event_loop ());
+			                          std::bind<void> (PluginBypassObserver (), this, strip_id, plugin_id), event_loop ());
 		}
 
 		for (uint32_t param_id = 0; param_id < plugin->param_count (); ++param_id) {
 			try {
-				boost::shared_ptr<AutomationControl> control = plugin->param_control (param_id);
+				std::shared_ptr<AutomationControl> control = plugin->param_control (param_id);
 
 				control->Changed.connect (*plugin, MISSING_INVALIDATOR,
-				                          boost::bind<void> (PluginParamValueObserver (), this, strip_id, plugin_id, param_id,
-				                                             boost::weak_ptr<AutomationControl>(control)),
+				                          std::bind<void> (PluginParamValueObserver (), this, strip_id, plugin_id, param_id,
+				                                             std::weak_ptr<AutomationControl>(control)),
 				                          event_loop ());
 			} catch (ArdourMixerNotFoundException& e) {
 				/* ignore */

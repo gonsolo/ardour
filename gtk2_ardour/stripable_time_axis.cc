@@ -16,8 +16,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/menu.h>
-#include <gtkmm/menuitem.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/menuitem.h>
 
 #include "ardour/parameter_descriptor.h"
 #include "ardour/parameter_types.h"
@@ -25,7 +25,7 @@
 
 #include "public_editor.h"
 #include "stripable_time_axis.h"
-#include "automation_line.h"
+#include "editor_automation_line.h"
 
 #include "pbd/i18n.h"
 
@@ -48,7 +48,7 @@ StripableTimeAxisView::~StripableTimeAxisView ()
 }
 
 void
-StripableTimeAxisView::set_stripable (boost::shared_ptr<ARDOUR::Stripable> s)
+StripableTimeAxisView::set_stripable (std::shared_ptr<ARDOUR::Stripable> s)
 {
 	_stripable = s;
 	_editor.ZoomChanged.connect (sigc::mem_fun(*this, &StripableTimeAxisView::reset_samples_per_pixel));
@@ -68,7 +68,7 @@ StripableTimeAxisView::set_samples_per_pixel (double fpp)
 
 
 void
-StripableTimeAxisView::add_automation_child (Evoral::Parameter param, boost::shared_ptr<AutomationTimeAxisView> track, bool show)
+StripableTimeAxisView::add_automation_child (Evoral::Parameter param, std::shared_ptr<AutomationTimeAxisView> track, bool show)
 {
 	using namespace Menu_Helpers;
 
@@ -163,7 +163,7 @@ StripableTimeAxisView::automation_child_menu_item (Evoral::Parameter param)
 void
 StripableTimeAxisView::automation_track_hidden (Evoral::Parameter param)
 {
-	boost::shared_ptr<AutomationTimeAxisView> track = automation_child (param);
+	std::shared_ptr<AutomationTimeAxisView> track = automation_child (param);
 
 	if (!track) {
 		return;
@@ -180,7 +180,7 @@ StripableTimeAxisView::automation_track_hidden (Evoral::Parameter param)
 	}
 }
 
-boost::shared_ptr<AutomationTimeAxisView>
+std::shared_ptr<AutomationTimeAxisView>
 StripableTimeAxisView::automation_child(Evoral::Parameter param, PBD::ID)
 {
 	assert (param.type() != PluginAutomation);
@@ -188,23 +188,22 @@ StripableTimeAxisView::automation_child(Evoral::Parameter param, PBD::ID)
 	if (i != _automation_tracks.end()) {
 		return i->second;
 	} else {
-		return boost::shared_ptr<AutomationTimeAxisView>();
+		return std::shared_ptr<AutomationTimeAxisView>();
 	}
 }
 
-boost::shared_ptr<AutomationLine>
+std::shared_ptr<AutomationLine>
 StripableTimeAxisView::automation_child_by_alist_id (PBD::ID alist_id)
 {
 	for (AutomationTracks::iterator i = _automation_tracks.begin(); i != _automation_tracks.end(); ++i) {
-		boost::shared_ptr<AutomationTimeAxisView> atv (i->second);
-		std::list<boost::shared_ptr<AutomationLine> > lines = atv->lines();
-		for (std::list<boost::shared_ptr<AutomationLine> >::const_iterator li = lines.begin(); li != lines.end(); ++li) {
-			if ((*li)->the_list()->id() == alist_id) {
-				return *li;
+		std::shared_ptr<AutomationTimeAxisView> atv (i->second);
+		for (auto & line : atv->lines()) {
+			if (line->the_list()->id() == alist_id) {
+				return line;;
 			}
 		}
 	}
-	return boost::shared_ptr<AutomationLine> ();
+	return std::shared_ptr<EditorAutomationLine> ();
 }
 
 void

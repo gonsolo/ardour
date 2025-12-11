@@ -17,12 +17,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_panner_interface_h__
-#define __gtk_ardour_panner_interface_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
-#include <gtkmm/drawingarea.h>
-#include <gtkmm/label.h>
+#include <memory>
+
+#include <ytkmm/drawingarea.h>
+#include <ytkmm/label.h>
 #include "gtkmm2ext/persistent_tooltip.h"
 
 #include "pbd/destructible.h"
@@ -56,10 +56,10 @@ private:
 class PannerInterface : public Gtk::DrawingArea, public PBD::Destructible
 {
 public:
-	PannerInterface (boost::shared_ptr<ARDOUR::Panner>);
+	PannerInterface (std::shared_ptr<ARDOUR::Panner>);
 	virtual ~PannerInterface ();
 
-	boost::shared_ptr<ARDOUR::Panner> panner () {
+	std::shared_ptr<ARDOUR::Panner> panner () {
 		return _panner;
 	}
 
@@ -68,7 +68,7 @@ public:
 
 protected:
 	virtual void set_tooltip () = 0;
-	virtual boost::weak_ptr<PBD::Controllable> proxy_controllable () const = 0;
+	virtual std::weak_ptr<PBD::Controllable> proxy_controllable () const = 0;
 
 	void value_change ();
 
@@ -78,7 +78,7 @@ protected:
 	bool on_button_press_event (GdkEventButton*);
 	bool on_button_release_event (GdkEventButton*);
 
-	boost::shared_ptr<ARDOUR::Panner> _panner;
+	std::shared_ptr<ARDOUR::Panner> _panner;
 	PannerPersistentTooltip _tooltip;
 
 	bool _send_mode;
@@ -88,4 +88,3 @@ private:
 	PannerEditor* _editor;
 };
 
-#endif

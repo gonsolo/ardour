@@ -18,6 +18,8 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+
+#include <cassert>
 #include <cmath>
 
 #include "pbd/basename.h"
@@ -45,7 +47,7 @@ Quantize::Quantize (bool snap_start, bool snap_end,
 	, _start_grid(start_grid)
 	, _end_grid(end_grid)
 	, _strength (strength/100.0)
-	, _swing (swing/100.0)
+	, _swing (swing)
 	, _threshold (threshold)
 {
 }
@@ -79,8 +81,8 @@ swing_position (Temporal::Beats pos, Temporal::Beats grid, double swing_strength
 
 	using namespace Temporal;
 
-	const bool swing_quantize_grid_position = pos > Beats() && ((pos/grid) % Beats (2, 0)) != Beats();
-	const bool swing_previous_grid_position = pos > grid && (((pos-grid)/grid) % Beats (2, 0)) != Beats();
+	const bool swing_quantize_grid_position = pos > Beats() && ((pos/grid) % Beats (0, 2)) != Beats();
+	const bool swing_previous_grid_position = pos > grid && (((pos-grid)/grid) % Beats (0, 2)) != Beats();
 
 	/* one of these will not be subject to swing */
 
@@ -93,7 +95,7 @@ swing_position (Temporal::Beats pos, Temporal::Beats grid, double swing_strength
 		swung_previous_grid_position = Beats();
 	}
 
-	const ratio_t r (2 * swing_strength, 3);
+	const ratio_t r (swing_strength, 300);
 
 	if (swing_previous_grid_position) {
 		swung_previous_grid_position = swung_previous_grid_position + (grid * r);
@@ -103,21 +105,21 @@ swing_position (Temporal::Beats pos, Temporal::Beats grid, double swing_strength
 		swung_pos = swung_pos + (grid * r);
 	}
 
-	/* now correct for start-of-model offset */
-
-	pos += offset;
-
 	if ((pos - swung_pos).abs() > (pos - swung_previous_grid_position).abs()) {
 		pos = swung_previous_grid_position;
 	} else {
 		pos = swung_pos;
 	}
 
+	/* now correct for start-of-model offset */
+
+	pos += offset;
+
 	return pos;
 }
 
-Command*
-Quantize::operator () (boost::shared_ptr<MidiModel> model,
+PBD::Command*
+Quantize::operator () (std::shared_ptr<MidiModel> model,
                        Temporal::Beats position,
                        std::vector<Evoral::Sequence<Temporal::Beats>::Notes>& seqs)
 {
@@ -162,7 +164,6 @@ Quantize::operator () (boost::shared_ptr<MidiModel> model,
 				if (_snap_start) {
 					/* this is here because Beats intentionally does not have operator* (double) */
 					delta = Temporal::Beats::ticks (llrintf (delta.to_ticks()) * _strength);
-					std::cerr << "new start " << (*i)->time() + delta << " shift was " << delta << std::endl;
 					cmd->change ((*i), MidiModel::NoteDiffCommand::StartTime, (*i)->time() + delta);
 				}
 			}

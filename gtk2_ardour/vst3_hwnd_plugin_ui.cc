@@ -30,13 +30,13 @@
 
 #include "vst3_hwnd_plugin_ui.h"
 
-#include <gdk/gdkwin32.h>
+#include <ydk/gdkwin32.h>
 
 using namespace ARDOUR;
 using namespace Steinberg;
 
 
-VST3HWNDPluginUI::VST3HWNDPluginUI (boost::shared_ptr<PlugInsertBase> pib, boost::shared_ptr<VST3Plugin> vst3)
+VST3HWNDPluginUI::VST3HWNDPluginUI (std::shared_ptr<PlugInsertBase> pib, std::shared_ptr<VST3Plugin> vst3)
 	: VST3PluginUI (pib, vst3)
 {
 	/* TODO register window class, implement wndproc etc */

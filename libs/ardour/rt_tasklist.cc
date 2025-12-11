@@ -21,14 +21,14 @@
 
 using namespace ARDOUR;
 
-RTTaskList::RTTaskList (boost::shared_ptr<Graph> process_graph)
+RTTaskList::RTTaskList (std::shared_ptr<Graph> process_graph)
 	: _graph (process_graph)
 {
 	_tasks.reserve (256);
 }
 
 void
-RTTaskList::push_back (boost::function<void ()> fn)
+RTTaskList::push_back (std::function<void ()> fn)
 {
 	_tasks.push_back (RTTask (_graph.get(), fn));
 }

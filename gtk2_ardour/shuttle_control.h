@@ -20,7 +20,7 @@
 #ifndef __gtk2_ardour_shuttle_control_h__
 #define __gtk2_ardour_shuttle_control_h__
 
-#include <gtkmm/drawingarea.h>
+#include <ytkmm/drawingarea.h>
 
 #include "pbd/controllable.h"
 
@@ -85,7 +85,7 @@ public:
 		ShuttleControl& sc;
 	};
 
-	boost::shared_ptr<ShuttleControllable> controllable () const
+	std::shared_ptr<ShuttleControllable> controllable () const
 	{
 		return _controllable;
 	}
@@ -111,15 +111,17 @@ protected:
 	bool                                   _hovering;
 	float                                  shuttle_max_speed;
 	float                                  last_speed_displayed;
+	float                                  last_shuttle_fract;
 	bool                                   shuttle_grabbed;
 	double                                 shuttle_speed_on_grab;
 	double                                 requested_speed;
 	float                                  shuttle_fract;
-	boost::shared_ptr<ShuttleControllable> _controllable;
+	std::shared_ptr<ShuttleControllable> _controllable;
 	cairo_pattern_t*                       pattern;
 	cairo_pattern_t*                       shine_pattern;
 	PBD::microseconds_t                    last_shuttle_request;
 	PBD::ScopedConnection                  parameter_connection;
+	PBD::ScopedConnection                  port_connection;
 	ShuttleInfoButton                      _info_button;
 	Gtk::Menu*                             shuttle_context_menu;
 	ArdourWidgets::BindingProxy            binding_proxy;

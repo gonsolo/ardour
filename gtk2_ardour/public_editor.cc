@@ -29,14 +29,13 @@ const int PublicEditor::container_border_width = 12;
 const int PublicEditor::vertical_spacing = 6;
 const int PublicEditor::horizontal_spacing = 6;
 
-sigc::signal<void> PublicEditor::DropDownKeys;
-
 ARDOUR::DataType PublicEditor::pbdid_dragged_dt = ARDOUR::DataType::NIL;
 
-PublicEditor::PublicEditor (Gtk::Widget& content)
-	: Tabbable (content, _("Editor"), X_("editor"))
+PublicEditor::PublicEditor ()
+	: EditingContext (X_("Editor"))
+	, Tabbable (_("Editor"), X_("editor"), NULL, true, Tabbable::PaneLayout (Tabbable::AttLeft | Tabbable::AttBottom | Tabbable::PaneRight))
 {
-	g_atomic_int_set (&_suspend_route_redisplay_counter, 0);
+	_suspend_route_redisplay_counter.store (0);
 }
 
 PublicEditor::~PublicEditor()

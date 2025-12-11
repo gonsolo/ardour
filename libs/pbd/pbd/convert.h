@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __pbd_convert_h__
-#define __pbd_convert_h__
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -43,6 +42,7 @@ LIBPBD_API std::string url_decode (std::string const &);
 LIBPBD_API std::string capitalize (const std::string&);
 LIBPBD_API std::string downcase (const std::string&);
 LIBPBD_API const char* downcase (const char*);
+LIBPBD_API std::vector<std::string> upcase (char const *[]);
 
 // std::string length2string (const int32_t samples, const float sample_rate);
 LIBPBD_API std::string length2string (const int64_t samples, const double sample_rate);
@@ -54,4 +54,3 @@ LIBPBD_API const char* sgettext (const char *, const char *);
 
 } //namespace PBD
 
-#endif /* __pbd_convert_h__ */

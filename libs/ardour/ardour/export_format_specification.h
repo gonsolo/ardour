@@ -21,8 +21,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_format_specification_h__
-#define __ardour_export_format_specification_h__
+#pragma once
 
 #include <string>
 
@@ -78,8 +77,9 @@ class LIBARDOUR_API ExportFormatSpecification : public ExportFormatBase {
 
 	/* Modifying functions */
 
-	void set_format (boost::shared_ptr<ExportFormat> format);
-	bool is_format (boost::shared_ptr<ExportFormat> format) const;
+	void set_format (std::shared_ptr<ExportFormat> format);
+	bool is_format (std::shared_ptr<ExportFormat> format) const;
+	bool operator== (ExportFormatSpecification const&) const;
 
 	void set_name (std::string const & name) { _name = name; }
 
@@ -264,4 +264,3 @@ class LIBARDOUR_API ExportFormatSpecification : public ExportFormatBase {
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_format_specification_h__ */

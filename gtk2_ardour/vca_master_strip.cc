@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/stock.h>
+#include <ytkmm/stock.h>
 
 #include "pbd/string_convert.h"
 
@@ -49,9 +49,11 @@ using namespace Gtk;
 using namespace PBD;
 using std::string;
 
-PBD::Signal1<void,VCAMasterStrip*> VCAMasterStrip::CatchDeletion;
+PBD::Signal<void(VCAMasterStrip*)> VCAMasterStrip::CatchDeletion;
 
-VCAMasterStrip::VCAMasterStrip (Session* s, boost::shared_ptr<VCA> v)
+static bool no_propagate (GdkEventButton*) { return false; }
+
+VCAMasterStrip::VCAMasterStrip (Session* s, std::shared_ptr<VCA> v)
 	: SessionHandlePtr (s)
 	, _vca (v)
 	, gain_meter (s, 254) /* magic number, don't adjust blindly */
@@ -62,14 +64,21 @@ VCAMasterStrip::VCAMasterStrip (Session* s, boost::shared_ptr<VCA> v)
 	/* set color for the VCA, if not already done. */
 
 	if (!_vca->presentation_info().color_set()) {
-		_vca->presentation_info().set_color (Gtkmm2ext::gdk_color_to_rgba (unique_random_color()));
+		if (UIConfiguration::instance().get_use_palette_for_new_vca ()) {
+			_vca->presentation_info().set_color (Gtkmm2ext::gdk_color_to_rgba (AxisView::round_robin_palette_color ()));
+		} else {
+			string cp = UIConfiguration::instance().get_stripable_color_palette ();
+			Gdk::ArrayHandle_Color gc = ColorSelection::palette_from_string (cp);
+			std::vector<Gdk::Color> c (gc);
+			_vca->presentation_info().set_color (gdk_color_to_rgba (c[0]));
+		}
 	}
 
-	control_slave_ui.set_stripable (boost::dynamic_pointer_cast<Stripable> (v));
+	control_slave_ui.set_stripable (std::dynamic_pointer_cast<Stripable> (v));
 
-	gain_meter.set_controls (boost::shared_ptr<Route>(),
-	                         boost::shared_ptr<PeakMeter>(),
-	                         boost::shared_ptr<Amp>(),
+	gain_meter.set_controls (std::shared_ptr<Route>(),
+	                         std::shared_ptr<PeakMeter>(),
+	                         std::shared_ptr<Amp>(),
 	                         _vca->gain_control());
 
 	solo_button.set_name ("solo button");
@@ -100,16 +109,16 @@ VCAMasterStrip::VCAMasterStrip (Session* s, boost::shared_ptr<VCA> v)
 	number_label.set_alignment (.5, .5);
 	number_label.set_fallthrough_to_parent (true);
 	number_label.set_inactive_color (_vca->presentation_info().color ());
-	number_label.signal_button_release_event().connect (sigc::mem_fun (*this, &VCAMasterStrip::number_button_press), false);
-
-	update_bottom_padding ();
+	number_label.signal_button_press_event().connect (sigc::mem_fun (*this, &VCAMasterStrip::number_button_press), false);
 
 	//Glib::RefPtr<Pango::Layout> layout = vertical_button.get_layout ();
 	// layout->set_justify (JUSTIFY_CENTER);
 	/* horizontally centered, with a little space (5%) at the top */
 	vertical_button.set_angle (90);
 	vertical_button.set_layout_font (UIConfiguration::instance().get_NormalBoldFont());
-	vertical_button.signal_button_release_event().connect (sigc::mem_fun (*this, &VCAMasterStrip::vertical_button_press));
+	vertical_button.signal_button_press_event().connect (sigc::ptr_fun (&no_propagate), false);
+	vertical_button.signal_button_press_event().connect (sigc::mem_fun (*this, &VCAMasterStrip::vertical_button_press), false);
+	vertical_button.signal_button_release_event().connect (sigc::mem_fun (*this, &VCAMasterStrip::vertical_button_release), false);
 	vertical_button.set_fallthrough_to_parent (true);
 	vertical_button.set_active_color (_vca->presentation_info().color ());
 	set_tooltip (vertical_button, _("Click to show assigned channels only")); /* tooltip updated dynamically */
@@ -151,29 +160,31 @@ VCAMasterStrip::VCAMasterStrip (Session* s, boost::shared_ptr<VCA> v)
 	update_vca_name ();
 	solo_changed ();
 	mute_changed ();
-	spill_change (boost::shared_ptr<VCA>());
+	spill_change (std::shared_ptr<VCA>());
 
 	Mixer_UI::instance()->show_spill_change.connect (sigc::mem_fun (*this, &VCAMasterStrip::spill_change));
 
-	_vca->PropertyChanged.connect (vca_connections, invalidator (*this), boost::bind (&VCAMasterStrip::vca_property_changed, this, _1), gui_context());
-	_vca->presentation_info().PropertyChanged.connect (vca_connections, invalidator (*this), boost::bind (&VCAMasterStrip::vca_property_changed, this, _1), gui_context());
-	_vca->DropReferences.connect (vca_connections, invalidator (*this), boost::bind (&VCAMasterStrip::self_delete, this), gui_context());
+	_vca->PropertyChanged.connect (vca_connections, invalidator (*this), std::bind (&VCAMasterStrip::vca_property_changed, this, _1), gui_context());
+	_vca->presentation_info().PropertyChanged.connect (vca_connections, invalidator (*this), std::bind (&VCAMasterStrip::vca_property_changed, this, _1), gui_context());
+	_vca->DropReferences.connect (vca_connections, invalidator (*this), std::bind (&VCAMasterStrip::self_delete, this), gui_context());
 
-	_vca->solo_control()->Changed.connect (vca_connections, invalidator (*this), boost::bind (&VCAMasterStrip::solo_changed, this), gui_context());
-	_vca->mute_control()->Changed.connect (vca_connections, invalidator (*this), boost::bind (&VCAMasterStrip::mute_changed, this), gui_context());
+	_vca->solo_control()->Changed.connect (vca_connections, invalidator (*this), std::bind (&VCAMasterStrip::solo_changed, this), gui_context());
+	_vca->mute_control()->Changed.connect (vca_connections, invalidator (*this), std::bind (&VCAMasterStrip::mute_changed, this), gui_context());
 
-	_session->MonitorBusAddedOrRemoved.connect (*this, invalidator (*this), boost::bind (&VCAMasterStrip::set_button_names, this), gui_context());
+	_session->MonitorBusAddedOrRemoved.connect (*this, invalidator (*this), std::bind (&VCAMasterStrip::set_button_names, this), gui_context());
 
-	s->config.ParameterChanged.connect (*this, invalidator (*this), boost::bind (&VCAMasterStrip::parameter_changed, this, _1), gui_context());
-	Config->ParameterChanged.connect (*this, invalidator (*this), boost::bind (&VCAMasterStrip::parameter_changed, this, _1), gui_context());
+	s->config.ParameterChanged.connect (*this, invalidator (*this), std::bind (&VCAMasterStrip::parameter_changed, this, _1), gui_context());
+	Config->ParameterChanged.connect (*this, invalidator (*this), std::bind (&VCAMasterStrip::parameter_changed, this, _1), gui_context());
 	UIConfiguration::instance().ParameterChanged.connect (sigc::mem_fun (*this, &VCAMasterStrip::parameter_changed));
+	UIConfiguration::instance().DPIReset.connect (sigc::mem_fun (*this, &VCAMasterStrip::dpi_reset));
+	gain_meter.gain_automation_state_button.signal_size_allocate().connect ([&] (Allocation&) { update_bottom_padding (); });
 }
 
 VCAMasterStrip::~VCAMasterStrip ()
 {
 	if ((_session && !_session->deletion_in_progress()) && Mixer_UI::instance()->showing_spill_for (_vca)) {
 		/* cancel spill for this VCA */
-		Mixer_UI::instance()->show_spill (boost::shared_ptr<Stripable>());
+		Mixer_UI::instance()->show_spill (std::shared_ptr<Stripable>());
 	}
 
 	delete delete_dialog;
@@ -187,15 +198,21 @@ VCAMasterStrip::self_delete ()
 {
 	if ((_session && !_session->deletion_in_progress()) && Mixer_UI::instance()->showing_spill_for (_vca)) {
 		/* cancel spill for this VCA */
-		Mixer_UI::instance()->show_spill (boost::shared_ptr<Stripable>());
+		Mixer_UI::instance()->show_spill (std::shared_ptr<Stripable>());
 	}
 	/* Drop reference immediately, delete self when idle */
 	_vca.reset ();
-	gain_meter.set_controls (boost::shared_ptr<Route>(),
-	                         boost::shared_ptr<PeakMeter>(),
-	                         boost::shared_ptr<Amp>(),
-	                         boost::shared_ptr<GainControl>());
+	gain_meter.set_controls (std::shared_ptr<Route>(),
+	                         std::shared_ptr<PeakMeter>(),
+	                         std::shared_ptr<Amp>(),
+	                         std::shared_ptr<GainControl>());
 	delete_when_idle (this);
+}
+
+void
+VCAMasterStrip::dpi_reset ()
+{
+	update_bottom_padding ();
 }
 
 void
@@ -245,7 +262,8 @@ VCAMasterStrip::update_bottom_padding ()
 		control_slave_ui.show ();
 	}
 
-	int h = 0;
+	int h =  gain_meter.gain_automation_state_button.get_height() + 2; /* group / rta */
+
 	if (viz.find ("Output") != std::string::npos) {
 		Gtk::Window window (WINDOW_TOPLEVEL);
 		window.add (output_button);
@@ -258,6 +276,7 @@ VCAMasterStrip::update_bottom_padding ()
 		Gtk::Requisition requisition(comment_button.size_request ());
 		h += requisition.height + 2;
 	}
+
 	if (h <= 0) {
 		bottom_padding.set_size_request (-1, 1);
 		bottom_padding.hide ();
@@ -325,7 +344,7 @@ VCAMasterStrip::solo_release (GdkEventButton*)
 	   is redundant, but clear.
 	*/
 	_vca->solo_control()->set_value (_vca->solo_control()->self_soloed() ? 0.0 : 1.0, Controllable::NoGroup);
-	return true;
+	return false;
 }
 
 bool
@@ -335,7 +354,7 @@ VCAMasterStrip::mute_release (GdkEventButton*)
 	   is redundant, but clear.
 	*/
 	_vca->mute_control()->set_value (_vca->mute_control()->muted_by_self() ? 0.0 : 1.0, Controllable::NoGroup);
-	return true;
+	return false;
 }
 
 void
@@ -381,35 +400,43 @@ VCAMasterStrip::solo_changed ()
 
 bool
 VCAMasterStrip::vertical_button_press (GdkEventButton* ev)
-{
-	if (ev->button == 1 && ev->type == GDK_2BUTTON_PRESS) {
-		start_name_edit ();
-		return true;
-	}
+{	
 
 	if (Keyboard::is_context_menu_event (ev)) {
 		if (!context_menu) {
 			build_context_menu ();
 		}
-		context_menu->popup (1, ev->time);
+		context_menu->popup (ev->time, ev->time);
 		return true;
 	}
+
+	return false;
+}
+
+bool
+VCAMasterStrip::vertical_button_release (GdkEventButton* ev)
+{
 
 	if (ev->button == 1) {
 		spill ();
 	}
 
-	return true;
+	return false;
 }
 
 bool
 VCAMasterStrip::number_button_press (GdkEventButton* ev)
 {
+	if (ev->type == GDK_2BUTTON_PRESS) {
+		start_color_edit ();
+		return true;
+	}
+
 	if (Keyboard::is_context_menu_event (ev)) {
 		if (!context_menu) {
 			build_context_menu ();
 		}
-		context_menu->popup (1, ev->time);
+		context_menu->popup (ev->time, ev->time);
 		return true;
 	}
 	return false;
@@ -475,14 +502,14 @@ void
 VCAMasterStrip::spill ()
 {
 	if (Mixer_UI::instance()->showing_spill_for (_vca)) {
-		Mixer_UI::instance()->show_spill (boost::shared_ptr<Stripable>());
+		Mixer_UI::instance()->show_spill (std::shared_ptr<Stripable>());
 	} else {
 		Mixer_UI::instance()->show_spill (_vca);
 	}
 }
 
 void
-VCAMasterStrip::spill_change (boost::shared_ptr<Stripable> vca)
+VCAMasterStrip::spill_change (std::shared_ptr<Stripable> vca)
 {
 	if (vca != _vca) {
 		vertical_button.set_active_state (Gtkmm2ext::Off);
@@ -516,7 +543,7 @@ VCAMasterStrip::remove ()
 
 	checker.set_name (X_("RemoveVcaDialog"));
 	checker.set_wmclass (X_("ardour_vca_remove"), PROGRAM_NAME);
-	checker.set_position (Gtk::WIN_POS_MOUSE);
+	checker.set_position (UIConfiguration::instance().get_default_window_position());
 
 	switch (checker.run()) {
 	case RESPONSE_ACCEPT:
@@ -547,7 +574,7 @@ VCAMasterStrip::drop_all_slaves ()
 	_vca->Drop (); /* EMIT SIGNAL */
 
 	if (Mixer_UI::instance()->showing_spill_for (_vca)) {
-		Mixer_UI::instance()->show_spill (boost::shared_ptr<Stripable>());
+		Mixer_UI::instance()->show_spill (std::shared_ptr<Stripable>());
 	}
 }
 
@@ -566,7 +593,7 @@ VCAMasterStrip::state_id () const
 void
 VCAMasterStrip::start_color_edit ()
 {
-	_color_picker.popup (_vca);
+	_color_picker.popup (_vca, dynamic_cast<Gtk::Window*> (get_toplevel()));
 }
 
 bool
@@ -591,7 +618,7 @@ VCAMasterStrip::presentation_info () const
 	return _vca->presentation_info();
 }
 
-boost::shared_ptr<Stripable>
+std::shared_ptr<Stripable>
 VCAMasterStrip::stripable () const
 {
 	return _vca;

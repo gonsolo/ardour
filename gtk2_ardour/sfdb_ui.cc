@@ -38,16 +38,15 @@
 #include <cerrno>
 #include <sstream>
 
-#include <unistd.h>
 #include <limits.h>
 
 #include <glib.h>
 #include "pbd/gstdio_compat.h"
 #include <glibmm/fileutils.h>
 
-#include <gtkmm/box.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/box.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/stock.h>
 
 #include "ardour/debug.h"
 
@@ -111,6 +110,8 @@ string2miditracknamesource (string const & str)
 		return SMFTrackNumber;
 	} else if (str == _("by track name")) {
 		return SMFTrackName;
+	} else if (str == _("by file and track name")) {
+		return SMFFileAndTrackName;
 	} else if (str == _("by instrument name")) {
 		return SMFInstrumentName;
 	}
@@ -277,17 +278,18 @@ SoundFileBox::set_session(Session* s)
 {
 	SessionHandlePtr::set_session (s);
 
-	length_clock.set_session (s);
-	timecode_clock.set_session (s);
-
 	if (!_session) {
 		play_btn.set_sensitive (false);
 		stop_btn.set_sensitive (false);
 		auditioner_connections.drop_connections();
 	} else {
+		length_clock.set_session (s);
+		timecode_clock.set_session (s);
 		auditioner_connections.drop_connections();
-		_session->AuditionActive.connect(auditioner_connections, invalidator (*this), boost::bind (&SoundFileBox::audition_active, this, _1), gui_context());
-		_session->the_auditioner()->AuditionProgress.connect(auditioner_connections, invalidator (*this), boost::bind (&SoundFileBox::audition_progress, this, _1, _2), gui_context());
+		if (_session->the_auditioner()) {
+			_session->AuditionActive.connect(auditioner_connections, invalidator (*this), std::bind (&SoundFileBox::audition_active, this, _1), gui_context());
+			_session->the_auditioner()->AuditionProgress.connect(auditioner_connections, invalidator (*this), std::bind (&SoundFileBox::audition_progress, this, _1, _2), gui_context());
+		}
 	}
 }
 
@@ -310,15 +312,19 @@ SoundFileBox::audition_progress(ARDOUR::samplecnt_t pos, ARDOUR::samplecnt_t len
 }
 
 bool
-SoundFileBox::seek_button_press(GdkEventButton*) {
+SoundFileBox::seek_button_press (GdkEventButton*)
+{
 	_seeking = true;
 	return false; // pass on to slider
 }
 
 bool
-SoundFileBox::seek_button_release(GdkEventButton*) {
+SoundFileBox::seek_button_release (GdkEventButton*)
+{
 	_seeking = false;
-	_session->the_auditioner()->seek_to_percent(seek_slider.get_value() / 10.0);
+	if (_session->the_auditioner()) {
+		_session->the_auditioner()->seek_to_percent(seek_slider.get_value() / 10.0);
+	}
 	seek_slider.set_sensitive (false);
 	return false; // pass on to slider
 }
@@ -344,11 +350,15 @@ SoundFileBox::setup_labels (const string& filename)
 			err = true;
 		}
 
-		preview_label.set_markup (_("<b>Midi File Information</b>"));
+		preview_label.set_markup (_("<b>MIDI File Information</b>"));
 
 		samplerate_value.set_text ("-");
+		samplerate_value.set_name ("NewSessionSR2Label");
+		samplerate.set_text (_("Sample Rate:"));
+		samplerate.set_name ("NewSessionSR2Label");
 		tags_entry.get_buffer()->set_text ("");
 		timecode_clock.set (timepos_t ());
+		length_clock.set_duration (timecnt_t (0));
 		tags_entry.set_sensitive (false);
 
 		if (!err) {
@@ -358,7 +368,6 @@ SoundFileBox::setup_labels (const string& filename)
 				format_text.set_text (string_compose("%1 (%2 Tracks)", smf.smf_format()==2 ? "MIDI Type 2" : "MIDI Type 1", smf.num_tracks()));
 			}
 			channels_value.set_text (ARDOUR_UI_UTILS::midi_channels_as_string (smf.used_channels()));
-			length_clock.set_duration (timecnt_t (0));
 			switch (smf.num_tempos()) {
 			case 0:
 				tempomap_value.set_text (_("No tempo data"));
@@ -366,7 +375,7 @@ SoundFileBox::setup_labels (const string& filename)
 			case 1: {
 				Evoral::SMF::Tempo* t = smf.nth_tempo (0);
 				assert (t);
-				tempomap_value.set_text (string_compose (_("%1/%2 \u2669 = %3"),
+				tempomap_value.set_text (string_compose (_(u8"%1/%2 \u2669 = %3"),
 				                                         t->numerator,
 				                                         t->denominator,
 				                                         t->tempo ()));
@@ -379,7 +388,6 @@ SoundFileBox::setup_labels (const string& filename)
 			}
 		} else {
 			channels_value.set_text ("");
-			length_clock.set_duration (timecnt_t());
 			tempomap_value.set_text (_("No tempo data"));
 		}
 
@@ -393,6 +401,29 @@ SoundFileBox::setup_labels (const string& filename)
 	}
 
 	if(!AudioFileSource::get_soundfile_info (filename, sf_info, error_msg)) {
+
+		preview_label.set_markup (_("<b>File Information</b>"));
+		format_text.set_text ("");
+		channels_value.set_text ("");
+		samplerate_value.set_text ("");
+		tags_entry.get_buffer()->set_text ("");
+
+		length_clock.set_duration (timecnt_t());
+		timecode_clock.set (timepos_t());
+
+		tags_entry.set_sensitive (false);
+		play_btn.set_sensitive (false);
+
+		return false;
+	}
+
+	try {
+
+		preview_label.set_markup (string_compose ("<b>%1</b>", Glib::Markup::escape_text (Glib::path_get_basename (filename))));
+
+	} catch (Glib::ConvertError& err) {
+
+		error << string_compose (_("Could not use confusing filename [%1] (%2)"), filename, err.what()) << endmsg;
 
 		preview_label.set_markup (_("<b>Sound File Information</b>"));
 		format_text.set_text ("");
@@ -409,7 +440,6 @@ SoundFileBox::setup_labels (const string& filename)
 		return false;
 	}
 
-	preview_label.set_markup (string_compose ("<b>%1</b>", Glib::Markup::escape_text (Glib::path_get_basename (filename))));
 	std::string n = sf_info.format_name;
 	if (n.substr (0, 8) == X_("Format: ")) {
 		n = n.substr (8);
@@ -499,12 +529,12 @@ SoundFileBox::audition ()
 		return;
 	}
 
-	boost::shared_ptr<Region> r;
+	std::shared_ptr<Region> r;
 
 	if (SMFSource::valid_midi_file (path)) {
 
-		boost::shared_ptr<SMFSource> ms =
-			boost::dynamic_pointer_cast<SMFSource> (
+		std::shared_ptr<SMFSource> ms =
+			std::dynamic_pointer_cast<SMFSource> (
 					SourceFactory::createExternal (DataType::MIDI, *_session,
 											 path, 0, Source::Flag (0), false));
 
@@ -517,13 +547,13 @@ SoundFileBox::audition ()
 		plist.add (ARDOUR::Properties::name, rname);
 		plist.add (ARDOUR::Properties::layer, 0);
 
-		r = boost::dynamic_pointer_cast<MidiRegion> (RegionFactory::create (boost::dynamic_pointer_cast<Source>(ms), plist, false));
+		r = std::dynamic_pointer_cast<MidiRegion> (RegionFactory::create (std::dynamic_pointer_cast<Source>(ms), plist, false));
 		assert(r);
 
 	} else {
 
 		SourceList srclist;
-		boost::shared_ptr<AudioFileSource> afs;
+		std::shared_ptr<AudioFileSource> afs;
 		bool old_sbp = AudioSource::get_build_peakfiles ();
 
 		/* don't even think of building peakfiles for these files */
@@ -532,12 +562,12 @@ SoundFileBox::audition ()
 
 		for (int n = 0; n < sf_info.channels; ++n) {
 			try {
-				afs = boost::dynamic_pointer_cast<AudioFileSource> (
+				afs = std::dynamic_pointer_cast<AudioFileSource> (
 					SourceFactory::createExternal (DataType::AUDIO, *_session,
 											 path, n,
 											 Source::Flag (ARDOUR::AudioFileSource::NoPeakFile), false));
 				if (afs->sample_rate() != _session->nominal_sample_rate()) {
-					boost::shared_ptr<SrcFileSource> sfs (new SrcFileSource(*_session, afs, _src_quality));
+					std::shared_ptr<SrcFileSource> sfs (new SrcFileSource(*_session, afs, _src_quality));
 					srclist.push_back(sfs);
 				} else {
 					srclist.push_back(afs);
@@ -556,7 +586,7 @@ SoundFileBox::audition ()
 			return;
 		}
 
-		afs = boost::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
+		afs = std::dynamic_pointer_cast<AudioFileSource> (srclist[0]);
 		string rname = region_name_from_path (afs->path(), false);
 
 		PropertyList plist;
@@ -566,7 +596,7 @@ SoundFileBox::audition ()
 		plist.add (ARDOUR::Properties::name, rname);
 		plist.add (ARDOUR::Properties::layer, 0);
 
-		r = boost::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
+		r = std::dynamic_pointer_cast<AudioRegion> (RegionFactory::create (srclist, plist, false));
 	}
 
 	timepos_t audition_position;
@@ -666,11 +696,13 @@ SoundFileBrowser::SoundFileBrowser (string title, ARDOUR::Session* s, bool persi
 
 	chooser.set_border_width (12);
 
-	audio_and_midi_filter.add_custom (FILE_FILTER_FILENAME, sigc::mem_fun (*this, &SoundFileBrowser::on_audio_and_midi_filter));
-	audio_and_midi_filter.set_name (_("Audio and MIDI files"));
-
 	audio_filter.add_custom (FILE_FILTER_FILENAME, sigc::mem_fun(*this, &SoundFileBrowser::on_audio_filter));
 	audio_filter.set_name (_("Audio files"));
+	chooser.add_filter (audio_filter);
+
+#ifndef LIVETRAX
+	audio_and_midi_filter.add_custom (FILE_FILTER_FILENAME, sigc::mem_fun (*this, &SoundFileBrowser::on_audio_and_midi_filter));
+	audio_and_midi_filter.set_name (_("Audio and MIDI files"));
 
 	midi_filter.add_custom (FILE_FILTER_FILENAME, sigc::mem_fun(*this, &SoundFileBrowser::on_midi_filter));
 	midi_filter.set_name (_("MIDI files"));
@@ -679,9 +711,9 @@ SoundFileBrowser::SoundFileBrowser (string title, ARDOUR::Session* s, bool persi
 	matchall_filter.set_name (_("All files"));
 
 	chooser.add_filter (audio_and_midi_filter);
-	chooser.add_filter (audio_filter);
 	chooser.add_filter (midi_filter);
 	chooser.add_filter (matchall_filter);
+#endif
 	chooser.set_select_multiple (true);
 	chooser.signal_update_preview().connect(sigc::mem_fun(*this, &SoundFileBrowser::update_preview));
 	chooser.signal_file_activated().connect (sigc::mem_fun (*this, &SoundFileBrowser::chooser_file_activated));
@@ -706,6 +738,7 @@ SoundFileBrowser::SoundFileBrowser (string title, ARDOUR::Session* s, bool persi
 
 	add (vpacker);
 
+#ifndef LIVETRAX
 	//add tag search
 
 	VBox* vbox;
@@ -840,6 +873,7 @@ SoundFileBrowser::SoundFileBrowser (string title, ARDOUR::Session* s, bool persi
 	freesound_more_btn.signal_clicked().connect(sigc::mem_fun(*this, &SoundFileBrowser::freesound_more_clicked));
 	freesound_similar_btn.signal_clicked().connect(sigc::mem_fun(*this, &SoundFileBrowser::freesound_similar_clicked));
 	notebook.append_page (*vbox, _("Search Freesound"));
+#endif
 
 	notebook.set_size_request (500, -1);
 	notebook.signal_switch_page().connect (sigc::hide_return (sigc::hide (sigc::hide (sigc::mem_fun (*this, &SoundFileBrowser::reset_options)))));
@@ -953,9 +987,9 @@ void
 SoundFileBrowser::set_session (Session* s)
 {
 	ArdourWindow::set_session (s);
-	preview.set_session (s);
 
 	if (_session) {
+		preview.set_session (s);
 		add_gain_meter ();
 	} else {
 		remove_gain_meter ();
@@ -967,18 +1001,20 @@ SoundFileBrowser::add_gain_meter ()
 {
 	delete gm;
 
-	gm = new GainMeter (_session, 250);
+	std::shared_ptr<Route> r = _session->the_auditioner ();
 
-	boost::shared_ptr<Route> r = _session->the_auditioner ();
+	if (r) {
+		gm = new GainMeter (_session, 250);
 
-	gm->set_controls (r, r->shared_peak_meter(), r->amp(), r->gain_control());
-	gm->set_fader_name (X_("GainFader"));
+		gm->set_controls (r, r->shared_peak_meter(), r->amp(), r->gain_control());
+		gm->set_fader_name (X_("GainFader"));
 
-	meter_packer.set_border_width (12);
-	meter_packer.pack_start (*gm, false, true);
-	hpacker.pack_end (meter_packer, false, false);
-	meter_packer.show_all ();
-	start_metering ();
+		meter_packer.set_border_width (12);
+		meter_packer.pack_start (*gm, false, true);
+		hpacker.pack_end (meter_packer, false, false);
+		meter_packer.show_all ();
+		start_metering ();
+	}
 }
 
 void
@@ -1363,18 +1399,18 @@ SoundFileBrowser::handle_freesound_results(std::string theString) {
 
 			double duration_seconds = atof (duration);
 			double h, m, s;
-			char duration_hhmmss[16];
+			char duration_hhmmss[32];
 			if (duration_seconds > 99 * 60 * 60) {
 				strcpy(duration_hhmmss, ">99h");
 			} else {
 				s = modf(duration_seconds/60, &m) * 60;
 				m = modf(m/60, &h) * 60;
 				if (h > 0) {
-					sprintf(duration_hhmmss, "%2.fh:%02.fm:%04.1fs", h, m, s);
+					snprintf(duration_hhmmss, sizeof (duration), "%2.fh:%02.fm:%04.1fs", h, m, s);
 				} else if (m > 0) {
-					sprintf(duration_hhmmss, "%2.fm:%04.1fs", m, s);
+					snprintf(duration_hhmmss, sizeof (duration), "%2.fm:%04.1fs", m, s);
 				} else {
-					sprintf(duration_hhmmss, "%4.1fs", s);
+					snprintf(duration_hhmmss, sizeof (duration), "%4.1fs", s);
 				}
 			}
 
@@ -1855,7 +1891,7 @@ SoundFileOmega::SoundFileOmega (string title, ARDOUR::Session* s,
 				Editing::ImportMode mode_hint)
 	: SoundFileBrowser (title, s, persistent)
 	, instrument_combo (InstrumentSelector::ForTrackSelector)
-	, copy_files_btn ( _("Copy files to session"))
+	, copy_files_btn ( _("Copy audio files to session"))
 	, smf_tempo_btn (_("Use MIDI Tempo Map"))
 	, smf_marker_btn (_("Import MIDI markers"))
 	, selected_audio_track_cnt (selected_audio_tracks)
@@ -1866,6 +1902,10 @@ SoundFileOmega::SoundFileOmega (string title, ARDOUR::Session* s,
 	vector<string> str;
 
 	set_size_request (-1, 550);
+
+	options.set_row_spacings(8);
+	options.set_col_spacings(0);
+	options.set_border_width(6);
 
 	str.clear ();
 	str.push_back (_("file timestamp"));
@@ -1880,54 +1920,68 @@ SoundFileOmega::SoundFileOmega (string title, ARDOUR::Session* s,
 	instrument_combo.signal_changed().connect(sigc::mem_fun(*this, &SoundFileOmega::instrument_combo_changed) );
 
 	Label* l = manage (new Label);
-	l->set_markup (_("<b>Add files ...</b>"));
-	options.attach (*l, 0, 1, 0, 1, FILL, SHRINK, 8, 0);
-	options.attach (action_combo, 0, 1, 1, 2, FILL, SHRINK, 8, 0);
+	l->set_markup (_("<b>Add files:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 0, 1, 0, 1, FILL, SHRINK, 4, 0);
+	options.attach (action_combo, 1, 2, 0, 1, FILL, SHRINK, 2, 0);
 
 	l = manage (new Label);
-	l->set_markup (_("<b>Insert at</b>"));
-	options.attach (*l, 0, 1, 2, 3, FILL, SHRINK, 8, 0);
-	options.attach (where_combo, 0, 1, 3, 4, FILL, SHRINK, 8, 0);
+	l->set_markup (_("<b>Insert at:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 0, 1, 1, 2, FILL, SHRINK, 4, 0);
+	options.attach (where_combo, 1, 2, 1, 2, FILL, SHRINK, 2, 0);
 
 	l = manage (new Label);
-	l->set_markup (_("<b>Mapping</b>"));
-	options.attach (*l, 0, 1, 4, 5, FILL, SHRINK, 8, 0);
-	options.attach (channel_combo, 0, 1, 5, 6, FILL, SHRINK, 8, 0);
-
-	/* 2nd col */
-	l = manage (new Label);
-	l->set_markup (_("<b>Sort order</b>"));
-	options.attach (*l, 1, 2, 0, 1, FILL, SHRINK, 8, 0);
-	options.attach (sort_combo, 1, 2, 1, 2, FILL, SHRINK, 8, 0);
+	l->set_markup (_("<b>Mapping:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 0, 1, 2, 3, FILL, SHRINK, 4, 0);
+	options.attach (channel_combo, 1, 2, 2, 3, FILL, SHRINK, 2, 0);
 
 	l = manage (new Label);
-	l->set_markup (_("<b>Conversion quality</b>"));
-	options.attach (*l, 1, 2, 2, 3, FILL, SHRINK, 8, 0);
-	options.attach (src_combo, 1, 2, 3, 4, FILL, SHRINK, 8, 0);
+	l->set_markup (_("<b>Sort order:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 0, 1, 3, 4, FILL, SHRINK, 4, 0);
+	options.attach (sort_combo, 1, 2, 3, 4, FILL, SHRINK, 2, 0);
 
-	options.attach (copy_files_btn, 1, 2, 5, 6, FILL, SHRINK, 8, 0);
-
-	/* 3rd, 4th col: MIDI */
-	l = manage (new Label);
-	l->set_markup (_("<b>Instrument</b>"));
-	options.attach (*l, 2, 4, 0, 1, FILL, SHRINK, 8, 0);
-	options.attach (instrument_combo, 2, 4, 1, 2, FILL, SHRINK, 8, 0);
-
-	l = manage (new Label);
-	l->set_markup (_("<b>MIDI Track Names</b>"));
-	options.attach (*l, 2, 4, 2, 3, FILL, SHRINK, 8, 0);
-	options.attach (midi_track_name_combo, 2, 4, 3, 4, FILL, SHRINK, 8, 0);
-
-	options.attach (smf_tempo_btn, 2, 3, 5, 6, FILL, SHRINK, 8, 0);
-	options.attach (smf_marker_btn, 3, 4, 5, 6, FILL, SHRINK, 8, 0);
+	/* 2nd col: MIDI */
 
 	Alignment *vspace = manage (new Alignment ());
-	vspace->set_size_request (2, 2);
-	options.attach (*vspace, 0, 4, 6, 7, EXPAND, SHRINK, 0, 0);
+	vspace->set_size_request (16, 2);
+	options.attach (*vspace, 2, 3, 6, 7, SHRINK, SHRINK, 0, 0);
+
+#ifndef LIVETRAX
+	l = manage (new Label);
+	l->set_markup (_("<b>MIDI Instrument:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 3, 4, 0, 1, FILL, SHRINK, 4, 0);
+	options.attach (instrument_combo, 4, 5, 0, 1, FILL, SHRINK, 2, 0);
+
+	l = manage (new Label);
+	l->set_markup (_("<b>MIDI Track Names:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 3, 4, 1, 2, FILL, SHRINK, 4, 0);
+	options.attach (midi_track_name_combo, 4, 5, 1, 2, FILL, SHRINK, 2, 0);
+#endif
+	options.attach (smf_tempo_btn, 4, 5, 2, 3, FILL, SHRINK, 2, 0);
+	options.attach (smf_marker_btn, 4, 5, 3, 4, FILL, SHRINK, 2, 0);
+
+	/* 3rd col (Audio-only) */
+	vspace = manage (new Alignment ());
+	vspace->set_size_request (16, 2);
+	options.attach (*vspace, 5, 6, 6, 7, SHRINK, SHRINK, 0, 0);
+
+	l = manage (new Label);
+	l->set_markup (_("<b>Audio conversion quality:</b>"));
+	l->set_alignment(Gtk::ALIGN_END, Gtk::ALIGN_CENTER);
+	options.attach (*l, 6, 7, 0, 1, FILL, SHRINK, 4, 0);
+	options.attach (src_combo, 7, 8, 0, 1, FILL, SHRINK, 2, 0);
+
+	options.attach (copy_files_btn, 7, 8, 1, 2, FILL, SHRINK, 2, 0);
 
 	str.clear ();
 	str.push_back (_("by track number"));
 	str.push_back (_("by track name"));
+	str.push_back (_("by file and track name"));
 	str.push_back (_("by instrument name"));
 	set_popdown_strings (midi_track_name_combo, str);
 	midi_track_name_combo.set_active_text (str.front());
@@ -2086,7 +2140,9 @@ SoundFileOmega::where_combo_changed()
 void
 SoundFileOmega::instrument_combo_changed()
 {
-	_session->the_auditioner()->set_audition_synth_info( instrument_combo.selected_instrument() );
+	if (_session->the_auditioner()) {
+		_session->the_auditioner()->set_audition_synth_info( instrument_combo.selected_instrument() );
+	}
 }
 
 MidiTrackNameSource
@@ -2206,7 +2262,7 @@ SoundFileOmega::do_something (int action)
 	_import_active = true;
 
 	if (copy_files_btn.get_active()) {
-		PublicEditor::instance().do_import (paths, chns, mode, quality, mts, mtd, where, instrument, boost::shared_ptr<Track>(), with_midi_markers);
+		PublicEditor::instance().do_import (paths, chns, mode, quality, mts, mtd, where, instrument, std::shared_ptr<Track>(), with_midi_markers);
 	} else {
 		PublicEditor::instance().do_embed (paths, chns, mode, where, instrument);
 	}

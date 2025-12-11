@@ -18,15 +18,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/entry.h>
-#include <gtkmm/checkbutton.h>
+#include <ytkmm/entry.h>
+#include <ytkmm/checkbutton.h>
 #include "ardour/plugin.h"
 #include "ardour_dialog.h"
 
 class NewPluginPresetDialog : public ArdourDialog
 {
 public:
-	NewPluginPresetDialog (boost::shared_ptr<ARDOUR::Plugin>, std::string, bool fav = false);
+	NewPluginPresetDialog (std::shared_ptr<ARDOUR::Plugin>, std::string, bool fav = false);
 
 	std::string name () const;
 	bool replace () const;

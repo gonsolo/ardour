@@ -16,13 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtkardour_plugin_utils_h__
-#define __gtkardour_plugin_utils_h__
+#pragma once
 
 #include <list>
 #include <string>
 
-#include <boost/tokenizer.hpp>
+#include "pbd/match.h"
 
 #include "ardour/plugin.h"
 #include "ardour/plugin_manager.h"
@@ -35,21 +34,6 @@ inline static void
 setup_search_string (std::string& searchstr)
 {
 	transform (searchstr.begin (), searchstr.end (), searchstr.begin (), ::toupper);
-}
-
-inline static bool
-match_search_strings (std::string const& haystack, std::string const& needle)
-{
-	boost::char_separator<char> sep (" ");
-	typedef boost::tokenizer<boost::char_separator<char> > tokenizer;
-	tokenizer t (needle, sep);
-
-	for (tokenizer::iterator ti = t.begin (); ti != t.end (); ++ti) {
-		if (haystack.find (*ti) == std::string::npos) {
-			return false;
-		}
-	}
-	return true;
 }
 
 struct PluginUIOrderSorter {
@@ -154,4 +138,3 @@ private:
 };
 
 } // namespace ARDOUR_PLUGIN_UTILS
-#endif

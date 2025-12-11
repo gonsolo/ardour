@@ -18,8 +18,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <gtkmm/menu.h>
-#include <gtkmm/stock.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/stock.h>
 
 #include "gtkmm2ext/utils.h"
 #include "gtkmm2ext/doi.h"
@@ -64,7 +64,7 @@ RouteGroupMenu::build (WeakRouteList const & s)
 	/* FInd all the route groups that our subjects are members of */
 	std::set<RouteGroup*> groups;
 	for (WeakRouteList::const_iterator i = _subject.begin (); i != _subject.end(); ++i) {
-		boost::shared_ptr<Route> r = i->lock ();
+		std::shared_ptr<Route> r = i->lock ();
 		if (r) {
 			groups.insert (r->route_group ());
 		}
@@ -145,7 +145,7 @@ RouteGroupMenu::set_group (Gtk::RadioMenuItem* e, RouteGroup* g)
 	}
 
 	for (WeakRouteList::const_iterator i = _subject.begin(); i != _subject.end(); ++i) {
-		boost::shared_ptr<Route> r = i->lock ();
+		std::shared_ptr<Route> r = i->lock ();
 		if (!r || r->route_group () == g) {
 			/* lock of weak_ptr failed, or the group for this route is already right */
 			continue;

@@ -20,17 +20,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_panner_ui_h__
-#define __ardour_gtk_panner_ui_h__
+#pragma once
 
 #include <vector>
 
-#include <gtkmm/box.h>
-#include <gtkmm/adjustment.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/arrow.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/button.h>
+#include <ytkmm/box.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/arrow.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/button.h>
 
 #include "ardour/session_handle.h"
 
@@ -50,6 +49,7 @@ namespace ARDOUR {
 }
 
 namespace Gtk {
+	class CheckMenuItem;
 	class Menu;
 	class Menuitem;
 }
@@ -60,7 +60,7 @@ public:
 	PannerUI (ARDOUR::Session*);
 	~PannerUI ();
 
-	virtual void set_panner (boost::shared_ptr<ARDOUR::PannerShell>, boost::shared_ptr<ARDOUR::Panner>);
+	virtual void set_panner (std::shared_ptr<ARDOUR::PannerShell>, std::shared_ptr<ARDOUR::Panner>);
 
 	void panshell_changed ();
 
@@ -85,8 +85,8 @@ private:
 	friend class TriggerStrip;
 	friend class SendUI;
 
-	boost::shared_ptr<ARDOUR::PannerShell> _panshell;
-	boost::shared_ptr<ARDOUR::Panner> _panner;
+	std::shared_ptr<ARDOUR::PannerShell> _panshell;
+	std::shared_ptr<ARDOUR::Panner> _panner;
 	PBD::ScopedConnectionList connections;
 	PBD::ScopedConnectionList _pan_control_connections;
 
@@ -146,12 +146,11 @@ private:
 	void pan_automation_state_changed();
 	gint pan_automation_state_button_event (GdkEventButton *);
 
-	void start_touch (boost::weak_ptr<ARDOUR::AutomationControl>);
-	void stop_touch (boost::weak_ptr<ARDOUR::AutomationControl>);
+	void start_touch (std::weak_ptr<ARDOUR::AutomationControl>);
+	void stop_touch (std::weak_ptr<ARDOUR::AutomationControl>);
 
 	std::map<std::string,std::string> _panner_list;
 	bool _suspend_menu_callbacks;
 };
 
-#endif /* __ardour_gtk_panner_ui_h__ */
 

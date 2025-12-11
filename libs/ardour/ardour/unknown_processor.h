@@ -18,8 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_unknown_processor_h__
-#define __ardour_unknown_processor_h__
+#pragma once
 
 #include "ardour/libardour_visibility.h"
 #include "ardour/processor.h"
@@ -62,9 +61,8 @@ private:
 	ChanCount* saved_output;
 
 	void add_sidechain_from_xml (const XMLNode& node, int version);
-	boost::shared_ptr<SideChain> _sidechain;
+	std::shared_ptr<SideChain> _sidechain;
 };
 
 }
 
-#endif

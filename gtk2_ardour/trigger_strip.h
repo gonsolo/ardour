@@ -19,9 +19,9 @@
 #ifndef __ardour_trigger_strip__
 #define __ardour_trigger_strip__
 
-#include <gtkmm/box.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/frame.h>
+#include <ytkmm/box.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/frame.h>
 
 #include "pbd/stateful.h"
 
@@ -33,6 +33,7 @@
 #include "automation_controller.h"
 #include "axis_view.h"
 #include "fitted_canvas_widget.h"
+#include "io_button.h"
 #include "level_meter.h"
 #include "panner_ui.h"
 #include "processor_box.h"
@@ -46,14 +47,14 @@ class TriggerMaster;
 class TriggerStrip : public AxisView, public RouteUI, public Gtk::EventBox
 {
 public:
-	TriggerStrip (ARDOUR::Session*, boost::shared_ptr<ARDOUR::Route>);
+	TriggerStrip (ARDOUR::Session*, std::shared_ptr<ARDOUR::Route>);
 	~TriggerStrip ();
 
 	/* AxisView */
 	std::string name () const;
 	Gdk::Color  color () const;
 
-	boost::shared_ptr<ARDOUR::Stripable> stripable () const
+	std::shared_ptr<ARDOUR::Stripable> stripable () const
 	{
 		return RouteUI::stripable ();
 	}
@@ -63,7 +64,9 @@ public:
 
 	void fast_update ();
 
-	static PBD::Signal1<void, TriggerStrip*> CatchDeletion;
+	TriggerBoxWidget & triggerbox_widget() { return _trigger_display; }
+
+	static PBD::Signal<void(TriggerStrip*)> CatchDeletion;
 
 protected:
 	void self_delete ();
@@ -85,7 +88,7 @@ private:
 	void init ();
 
 	/* RouteUI */
-	void set_route (boost::shared_ptr<ARDOUR::Route>);
+	void set_route (std::shared_ptr<ARDOUR::Route>);
 	void route_property_changed (const PBD::PropertyChange&);
 	void route_color_changed ();
 	void update_sensitivity ();
@@ -105,7 +108,7 @@ private:
 
 	/* Plugin related */
 	PluginSelector* plugin_selector ();
-	void            hide_processor_editor (boost::weak_ptr<ARDOUR::Processor>);
+	void            hide_processor_editor (std::weak_ptr<ARDOUR::Processor>);
 
 	/* Panner */
 	void connect_to_pan ();
@@ -121,18 +124,25 @@ private:
 	Gtk::Table mute_solo_table;
 	Gtk::Table volume_table;
 
+	ArdourWidgets::ArdourButton* rec_toggle_button;
+	bool rec_toggle_press (GdkEventButton* ev);
+
 	/* Widgets */
 	FittedCanvasWidget _tmaster_widget;
 	TriggerMaster*     _tmaster;
 
+	IOButton                                input_button;
+	IOButton                                output_button;
 	ArdourWidgets::ArdourButton             _name_button;
 	ProcessorBox                            _processor_box;
 	TriggerBoxWidget                        _trigger_display;
 	PannerUI                                _panners;
 	LevelMeterVBox                          _level_meter;
-	boost::shared_ptr<AutomationController> _gain_control;
+	std::shared_ptr<AutomationController> _gain_control;
 
 	Gtk::Menu* _route_ops_menu;
+
+	void box_rec_enable_change ();
 };
 
 #endif /* __ardour_trigger_strip__ */

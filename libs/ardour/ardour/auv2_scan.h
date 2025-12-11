@@ -19,9 +19,9 @@
 #ifndef _ardour_auv2_scan_h_
 #define _ardour_auv2_scan_h_
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/xml++.h"
 
@@ -84,7 +84,7 @@ LIBARDOUR_API extern std::string
 auv2_valid_cache_file (CAComponentDescription const&, bool verbose = false, bool* is_new = NULL);
 
 LIBARDOUR_API extern bool
-auv2_scan_and_cache (CAComponentDescription&, boost::function<void (CAComponentDescription const&, AUv2Info const&)> cb, bool verbose = false);
+auv2_scan_and_cache (CAComponentDescription&, std::function<void (CAComponentDescription const&, AUv2Info const&)> cb, bool verbose = false);
 
 LIBARDOUR_API extern void
 auv2_list_plugins (std::vector<AUv2DescStr>& rv);

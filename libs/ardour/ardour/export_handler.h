@@ -21,15 +21,15 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_export_handler_h__
-#define __ardour_export_handler_h__
+#pragma once
 
 #include <map>
+#include <memory>
 
 #include <boost/operators.hpp>
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/gstdio_compat.h"
+#include "pbd/pthread_utils.h"
 
 #include "ardour/export_pointers.h"
 #include "ardour/session.h"
@@ -98,7 +98,7 @@ class LIBARDOUR_API ExportHandler : public ExportElementFactory, public sigc::tr
 	 * This ensures that it doesn't go out of scope before finalize_audio_export is called
 	 */
 
-	friend boost::shared_ptr<ExportHandler> Session::get_export_handler();
+	friend std::shared_ptr<ExportHandler> Session::get_export_handler();
 	ExportHandler (Session & session);
 
 	void command_output(std::string output, size_t size);
@@ -116,7 +116,7 @@ class LIBARDOUR_API ExportHandler : public ExportElementFactory, public sigc::tr
 	/** signal emitted when soundcloud export reports progress updates during upload.
 	 * The parameters are total and current bytes downloaded, and the current filename
 	 */
-	PBD::Signal3<void, double, double, std::string> SoundcloudProgress;
+	PBD::Signal<void(double, double, std::string)> SoundcloudProgress;
 
 	/* upload credentials & preferences */
 	std::string soundcloud_username;
@@ -133,7 +133,7 @@ class LIBARDOUR_API ExportHandler : public ExportElementFactory, public sigc::tr
 	int process (samplecnt_t samples);
 
 	Session &          session;
-	boost::shared_ptr<ExportGraphBuilder> graph_builder;
+	std::shared_ptr<ExportGraphBuilder> graph_builder;
 	ExportStatusPtr    export_status;
 
 	/* The timespan and corresponding file specifications that we are exporting;
@@ -146,7 +146,13 @@ class LIBARDOUR_API ExportHandler : public ExportElementFactory, public sigc::tr
 
 	/* Timespan management */
 
-	static void* start_timespan_bg (void*);
+	void timespan_thread_wakeup ();
+
+	static void*     _timespan_thread_run (void*);
+	PBD::Thread*     _timespan_thread;
+	std::atomic<int> _timespan_thread_active;
+	pthread_mutex_t  _timespan_mutex;
+	pthread_cond_t   _timespan_cond;
 
 	int  start_timespan ();
 	int  process_timespan (samplecnt_t samples);
@@ -230,4 +236,3 @@ class LIBARDOUR_API ExportHandler : public ExportElementFactory, public sigc::tr
 
 } // namespace ARDOUR
 
-#endif /* __ardour_export_handler_h__ */

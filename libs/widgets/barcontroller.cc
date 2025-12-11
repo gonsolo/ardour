@@ -41,7 +41,7 @@ using namespace Gtkmm2ext;
 using namespace ArdourWidgets;
 
 BarController::BarController (Gtk::Adjustment& adj,
-		boost::shared_ptr<PBD::Controllable> mc)
+		std::shared_ptr<PBD::Controllable> mc)
 	: _slider (&adj, mc, 60, 16)
 	, _switching (false)
 	, _switch_on_release (false)
@@ -87,7 +87,7 @@ BarController::on_button_press_event (GdkEventButton* ev)
 	} else {
 		_switch_on_release = false;
 	}
-	return false;
+	return 1 == ev->button;
 }
 
 bool

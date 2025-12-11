@@ -17,8 +17,7 @@
 
 */
 
-#ifndef __ardour_beatbox_h__
-#define __ardour_beatbox_h__
+#pragma once
 
 #include <algorithm>
 #include <vector>
@@ -31,7 +30,7 @@
 #include "pbd/ringbuffer.h"
 
 #include "temporal/bbt_time.h"
-#include "temporal/superclock.h
+#include "temporal/superclock.h"
 
 #include "ardour/midi_state_tracker.h"
 #include "ardour/processor.h"
@@ -58,17 +57,16 @@ class BeatBox : public ARDOUR::Processor {
 	XMLNode& state() const;
 	XMLNode& get_state () const;
 
-	bool fill_source (boost::shared_ptr<Source>);
+	bool fill_source (std::shared_ptr<Source>);
 
   private:
 	StepSequencer* _sequencer;
 
 	ARDOUR::MidiNoteTracker inbound_tracker;
 
-	bool fill_midi_source (boost::shared_ptr<SMFSource>);
+	bool fill_midi_source (std::shared_ptr<SMFSource>);
 
 };
 
 } /* namespace */
 
-#endif /* __ardour_beatbox_h__ */

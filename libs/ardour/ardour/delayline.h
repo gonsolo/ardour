@@ -16,11 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_delayline_h__
-#define __ardour_delayline_h__
+#pragma once
 
-#include <boost/shared_ptr.hpp>
-#include <boost/shared_array.hpp>
+#include <memory>
 
 #include "ardour/types.h"
 #include "ardour/processor.h"
@@ -67,11 +65,11 @@ private:
 	sampleoffset_t _roff, _woff;
 	bool           _pending_flush;
 
-	typedef std::vector<boost::shared_array<Sample> > AudioDlyBuf;
-	typedef std::vector<boost::shared_array<MidiBuffer> > MidiDlyBuf;
+	typedef std::vector<std::shared_ptr<Sample[]>>   AudioDlyBuf;
+	typedef std::vector<std::shared_ptr<MidiBuffer>> MidiDlyBuf;
 
 	AudioDlyBuf _buf;
-	boost::shared_ptr<MidiBuffer> _midi_buf;
+	MidiDlyBuf  _midi_buf;
 
 #ifndef NDEBUG
 	Glib::Threads::Mutex _set_delay_mutex;
@@ -80,4 +78,3 @@ private:
 
 } // namespace ARDOUR
 
-#endif // __ardour_meter_h__

@@ -16,8 +16,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <boost/assign.hpp>
-
 #include "ardour/plugin_insert.h"
 
 #include "ardour_websockets.h"
@@ -27,18 +25,19 @@
 using namespace ARDOUR;
 using namespace ArdourSurface;
 
-#define NODE_METHOD_PAIR(x) (Node::x, &WebsocketsDispatcher::x##_handler)
+#define NODE_METHOD_PAIR(x) {Node::x, &WebsocketsDispatcher::x##_handler}
 
 WebsocketsDispatcher::NodeMethodMap
-	WebsocketsDispatcher::_node_to_method = boost::assign::map_list_of
-		NODE_METHOD_PAIR (transport_tempo)
-		NODE_METHOD_PAIR (transport_roll)
-		NODE_METHOD_PAIR (transport_record)
-		NODE_METHOD_PAIR (strip_gain)
-		NODE_METHOD_PAIR (strip_pan)
-		NODE_METHOD_PAIR (strip_mute)
-		NODE_METHOD_PAIR (strip_plugin_enable)
-		NODE_METHOD_PAIR (strip_plugin_param_value);
+	WebsocketsDispatcher::_node_to_method {
+		NODE_METHOD_PAIR (transport_tempo),
+		NODE_METHOD_PAIR (transport_roll),
+		NODE_METHOD_PAIR (transport_record),
+		NODE_METHOD_PAIR (strip_gain),
+		NODE_METHOD_PAIR (strip_pan),
+		NODE_METHOD_PAIR (strip_mute),
+		NODE_METHOD_PAIR (strip_plugin_enable),
+		NODE_METHOD_PAIR (strip_plugin_param_value)
+	};
 
 void
 WebsocketsDispatcher::dispatch (Client client, const NodeStateMessage& msg)
@@ -78,8 +77,8 @@ WebsocketsDispatcher::update_all_nodes (Client client)
 
 		for (ArdourMixerStrip::PluginMap::iterator it = strip.plugins ().begin (); it != strip.plugins ().end (); ++it) {
 			uint32_t plugin_id                     = it->first;
-			boost::shared_ptr<PluginInsert> insert = it->second->insert ();
-			boost::shared_ptr<Plugin> plugin       = insert->plugin ();
+			std::shared_ptr<PluginInsert> insert = it->second->insert ();
+			std::shared_ptr<Plugin> plugin       = insert->plugin ();
 
 			update (client, Node::strip_plugin_description, strip_id, plugin_id,
 			        static_cast<std::string> (plugin->name ()));
@@ -88,7 +87,7 @@ WebsocketsDispatcher::update_all_nodes (Client client)
 			        strip.plugin (plugin_id).enabled ());
 
 			for (uint32_t param_id = 0; param_id < plugin->parameter_count (); ++param_id) {
-				boost::shared_ptr<AutomationControl> a_ctrl;
+				std::shared_ptr<AutomationControl> a_ctrl;
 
 				try {
 				    a_ctrl = strip.plugin (plugin_id).param_control (param_id);

@@ -22,12 +22,12 @@
 
 #include <algorithm>
 #include <sstream>
-#include <gtkmm/separator.h>
-#include <gtkmm/box.h>
-#include <gtkmm/label.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/radiobutton.h>
-#include <gtkmm/table.h>
+#include <ytkmm/separator.h>
+#include <ytkmm/box.h>
+#include <ytkmm/label.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/radiobutton.h>
+#include <ytkmm/table.h>
 
 #include "pbd/compose.h"
 #include "pbd/ffs.h"
@@ -327,7 +327,7 @@ MidiMultipleChannelSelector::invert_selection(void)
 
 /*-----------------------------------------*/
 
-MidiChannelSelectorWindow::MidiChannelSelectorWindow (boost::shared_ptr<MidiTrack> mt)
+MidiChannelSelectorWindow::MidiChannelSelectorWindow (std::shared_ptr<MidiTrack> mt)
 	: ArdourWindow (_("MIDI Channel Control"))
 	, track (mt)
 	, playback_all_button (playback_button_group, _("Playback all channels"))
@@ -347,10 +347,10 @@ MidiChannelSelectorWindow::MidiChannelSelectorWindow (boost::shared_ptr<MidiTrac
 	playback_mask_changed ();
 	capture_mask_changed ();
 
-	track->playback_filter().ChannelMaskChanged.connect (*this, MISSING_INVALIDATOR, boost::bind (&MidiChannelSelectorWindow::playback_mask_changed, this), gui_context());
-	track->playback_filter().ChannelModeChanged.connect (*this, MISSING_INVALIDATOR, boost::bind (&MidiChannelSelectorWindow::playback_mode_changed, this), gui_context());
-	track->capture_filter().ChannelMaskChanged.connect (*this, MISSING_INVALIDATOR, boost::bind (&MidiChannelSelectorWindow::capture_mask_changed, this), gui_context());
-	track->capture_filter().ChannelModeChanged.connect (*this, MISSING_INVALIDATOR, boost::bind (&MidiChannelSelectorWindow::capture_mode_changed, this), gui_context());
+	track->playback_filter().ChannelMaskChanged.connect (*this, MISSING_INVALIDATOR, std::bind (&MidiChannelSelectorWindow::playback_mask_changed, this), gui_context());
+	track->playback_filter().ChannelModeChanged.connect (*this, MISSING_INVALIDATOR, std::bind (&MidiChannelSelectorWindow::playback_mode_changed, this), gui_context());
+	track->capture_filter().ChannelMaskChanged.connect (*this, MISSING_INVALIDATOR, std::bind (&MidiChannelSelectorWindow::capture_mask_changed, this), gui_context());
+	track->capture_filter().ChannelModeChanged.connect (*this, MISSING_INVALIDATOR, std::bind (&MidiChannelSelectorWindow::capture_mode_changed, this), gui_context());
 }
 
 MidiChannelSelectorWindow::~MidiChannelSelectorWindow()

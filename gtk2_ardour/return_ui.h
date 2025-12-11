@@ -18,8 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_return_ui_h__
-#define __ardour_gtk_return_ui_h__
+#pragma once
 
 #include "gain_meter.h"
 #include "panner_ui.h"
@@ -35,7 +34,7 @@ class IOSelector;
 class ReturnUI : public Gtk::HBox
 {
 public:
-	ReturnUI (Gtk::Window *,boost::shared_ptr<ARDOUR::Return>, ARDOUR::Session*);
+	ReturnUI (Gtk::Window *,std::shared_ptr<ARDOUR::Return>, ARDOUR::Session*);
 	~ReturnUI();
 
 	void update ();
@@ -43,10 +42,10 @@ public:
 
 	IOSelector* io;
 
-	boost::shared_ptr<ARDOUR::Return>& retrn() { return _return; }
+	std::shared_ptr<ARDOUR::Return>& retrn() { return _return; }
 
 private:
-	boost::shared_ptr<ARDOUR::Return> _return;
+	std::shared_ptr<ARDOUR::Return> _return;
 	GainMeter                         _gpm;
 	Gtk::VBox                         _vbox;
 	Gtk::VBox                         _hbox;
@@ -61,7 +60,7 @@ private:
 class ReturnUIWindow : public ArdourWindow
 {
   public:
-	ReturnUIWindow(boost::shared_ptr<ARDOUR::Return>, ARDOUR::Session*);
+	ReturnUIWindow(std::shared_ptr<ARDOUR::Return>, ARDOUR::Session*);
 	~ReturnUIWindow();
 
 	ReturnUI* ui;
@@ -72,5 +71,4 @@ class ReturnUIWindow : public ArdourWindow
 	PBD::ScopedConnection going_away_connection;
 };
 
-#endif /* __ardour_gtk_return_ui_h__ */
 

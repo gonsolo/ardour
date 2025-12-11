@@ -44,12 +44,12 @@ MIDISceneChanger::MIDISceneChanger (Session& s)
 
 {
 	/* catch any add/remove/clear etc. for all Locations */
-	_session.locations()->changed.connect_same_thread (*this, boost::bind (&MIDISceneChanger::locations_changed, this));
-	_session.locations()->added.connect_same_thread (*this, boost::bind (&MIDISceneChanger::locations_changed, this));
-	_session.locations()->removed.connect_same_thread (*this, boost::bind (&MIDISceneChanger::locations_changed, this));
+	_session.locations()->changed.connect_same_thread (*this, std::bind (&MIDISceneChanger::locations_changed, this));
+	_session.locations()->added.connect_same_thread (*this, std::bind (&MIDISceneChanger::locations_changed, this));
+	_session.locations()->removed.connect_same_thread (*this, std::bind (&MIDISceneChanger::locations_changed, this));
 
 	/* catch class-based signal that notifies of us changes in the scene change state of any Location */
-	Location::scene_changed.connect_same_thread (*this, boost::bind (&MIDISceneChanger::locations_changed, this));
+	Location::scene_changed.connect_same_thread (*this, std::bind (&MIDISceneChanger::locations_changed, this));
 }
 
 MIDISceneChanger::~MIDISceneChanger ()
@@ -69,7 +69,7 @@ MIDISceneChanger::locations_changed ()
 void
 MIDISceneChanger::gather (const Locations::LocationList& locations)
 {
-	boost::shared_ptr<SceneChange> sc;
+	std::shared_ptr<SceneChange> sc;
 
 	Glib::Threads::RWLock::WriterLock lm (scene_lock);
 
@@ -79,7 +79,7 @@ MIDISceneChanger::gather (const Locations::LocationList& locations)
 
 		if ((sc = (*l)->scene_change()) != 0) {
 
-			boost::shared_ptr<MIDISceneChange> msc = boost::dynamic_pointer_cast<MIDISceneChange> (sc);
+			std::shared_ptr<MIDISceneChange> msc = std::dynamic_pointer_cast<MIDISceneChange> (sc);
 
 			if (msc) {
 
@@ -94,7 +94,7 @@ MIDISceneChanger::gather (const Locations::LocationList& locations)
 }
 
 void
-MIDISceneChanger::rt_deliver (MidiBuffer& mbuf, samplepos_t when, boost::shared_ptr<MIDISceneChange> msc)
+MIDISceneChanger::rt_deliver (MidiBuffer& mbuf, samplepos_t when, std::shared_ptr<MIDISceneChange> msc)
 {
         if (!msc->active()) {
                 return;
@@ -102,14 +102,23 @@ MIDISceneChanger::rt_deliver (MidiBuffer& mbuf, samplepos_t when, boost::shared_
 
 	uint8_t buf[4];
 	size_t cnt;
+	std::shared_ptr<AsyncMIDIPort> aport = std::dynamic_pointer_cast<AsyncMIDIPort>(output_port);
+	MIDI::Parser* parser (aport ? aport->parser() : output_port->trace_parser().get());
 
 	MIDIOutputActivity (); /* EMIT SIGNAL */
 
 	if ((cnt = msc->get_bank_msb_message (buf, sizeof (buf))) > 0) {
 		mbuf.push_back (when, Evoral::MIDI_EVENT, cnt, buf);
 
+		for (size_t n = 0; parser && n < cnt; ++n) {
+			parser->scanner (buf[n]);
+		}
+
 		if ((cnt = msc->get_bank_lsb_message (buf, sizeof (buf))) > 0) {
 			mbuf.push_back (when, Evoral::MIDI_EVENT, cnt, buf);
+			for (size_t n = 0; parser && n < cnt; ++n) {
+				parser->scanner (buf[n]);
+			}
 		}
 
 		last_delivered_bank = msc->bank();
@@ -117,13 +126,15 @@ MIDISceneChanger::rt_deliver (MidiBuffer& mbuf, samplepos_t when, boost::shared_
 
 	if ((cnt = msc->get_program_message (buf, sizeof (buf))) > 0) {
 		mbuf.push_back (when, Evoral::MIDI_EVENT, cnt, buf);
-
+		for (size_t n = 0; parser && n < cnt; ++n) {
+			parser->scanner (buf[n]);
+		}
 		last_delivered_program = msc->program();
 	}
 }
 
 void
-MIDISceneChanger::non_rt_deliver (boost::shared_ptr<MIDISceneChange> msc)
+MIDISceneChanger::non_rt_deliver (std::shared_ptr<MIDISceneChange> msc)
 {
         if (!msc->active()) {
                 return;
@@ -131,7 +142,7 @@ MIDISceneChanger::non_rt_deliver (boost::shared_ptr<MIDISceneChange> msc)
 
 	uint8_t buf[4];
 	size_t cnt;
-	boost::shared_ptr<AsyncMIDIPort> aport = boost::dynamic_pointer_cast<AsyncMIDIPort>(output_port);
+	std::shared_ptr<AsyncMIDIPort> aport = std::dynamic_pointer_cast<AsyncMIDIPort>(output_port);
 
 	/* We use zero as the timestamp for these messages because we are in a
 	   non-RT/process context. Using zero means "deliver them as early as
@@ -189,7 +200,7 @@ MIDISceneChanger::run (samplepos_t start, samplepos_t end)
 void
 MIDISceneChanger::locate (samplepos_t pos)
 {
-	boost::shared_ptr<MIDISceneChange> msc;
+	std::shared_ptr<MIDISceneChange> msc;
 
 	{
 		Glib::Threads::RWLock::ReaderLock lm (scene_lock);
@@ -226,12 +237,12 @@ MIDISceneChanger::locate (samplepos_t pos)
 }
 
 void
-MIDISceneChanger::set_input_port (boost::shared_ptr<MidiPort> mp)
+MIDISceneChanger::set_input_port (std::shared_ptr<MidiPort> mp)
 {
 	incoming_connections.drop_connections();
 	input_port.reset ();
 
-	boost::shared_ptr<AsyncMIDIPort> async = boost::dynamic_pointer_cast<AsyncMIDIPort> (mp);
+	std::shared_ptr<AsyncMIDIPort> async = std::dynamic_pointer_cast<AsyncMIDIPort> (mp);
 
 	if (async) {
 
@@ -243,14 +254,14 @@ MIDISceneChanger::set_input_port (boost::shared_ptr<MidiPort> mp)
 		 */
 
 		for (int channel = 0; channel < 16; ++channel) {
-			async->parser()->channel_bank_change[channel].connect_same_thread (incoming_connections, boost::bind (&MIDISceneChanger::bank_change_input, this, _1, _2, channel));
-			async->parser()->channel_program_change[channel].connect_same_thread (incoming_connections, boost::bind (&MIDISceneChanger::program_change_input, this, _1, _2, channel));
+			async->parser()->channel_bank_change[channel].connect_same_thread (incoming_connections, std::bind (&MIDISceneChanger::bank_change_input, this, _1, _2, channel));
+			async->parser()->channel_program_change[channel].connect_same_thread (incoming_connections, std::bind (&MIDISceneChanger::program_change_input, this, _1, _2, channel));
 		}
 	}
 }
 
 void
-MIDISceneChanger::set_output_port (boost::shared_ptr<MidiPort> mp)
+MIDISceneChanger::set_output_port (std::shared_ptr<MidiPort> mp)
 {
 	output_port = mp;
 }
@@ -283,16 +294,22 @@ MIDISceneChanger::program_change_input (MIDI::Parser& parser, MIDI::byte program
 
 	last_program_message_time = time;
 
-	if (!recording()) {
+	if (!recording ()) {
+		if (Config->get_locate_to_pgm_change ()) {
+			MIDIInputActivity (); /* EMIT SIGNAL */
 
-		MIDIInputActivity (); /* EMIT SIGNAL */
+			int bank = -1;
+			if (have_seen_bank_changes) {
+				bank = std::dynamic_pointer_cast<AsyncMIDIPort>(input_port)->channel (channel)->bank();
+			}
 
-		int bank = -1;
-		if (have_seen_bank_changes) {
-			bank = boost::dynamic_pointer_cast<AsyncMIDIPort>(input_port)->channel (channel)->bank();
+			jump_to (bank, program);
+			return;
 		}
+	}
 
-		jump_to (bank, program);
+	/* we are recording,  do we need to create a marker */
+	if (!Config->get_mark_at_pgm_change ()) {
 		return;
 	}
 
@@ -318,19 +335,19 @@ MIDISceneChanger::program_change_input (MIDI::Parser& parser, MIDI::byte program
 		new_mark = true;
 	}
 
-	int bank = -1;
+	int bank = 0;
 	if (have_seen_bank_changes) {
-		bank = boost::dynamic_pointer_cast<AsyncMIDIPort>(input_port)->channel (channel)->bank();
+		bank = std::dynamic_pointer_cast<AsyncMIDIPort>(input_port)->channel (channel)->bank();
 	}
 
-	MIDISceneChange* msc =new MIDISceneChange (channel, bank, program & 0x7f);
+	std::shared_ptr<MIDISceneChange> msc (new MIDISceneChange (channel, bank, program & 0x7f));
 
 	/* check for identical scene change so we can re-use color, if any */
 
 	Locations::LocationList copy (locations->list());
 
 	for (Locations::LocationList::const_iterator l = copy.begin(); l != copy.end(); ++l) {
-		boost::shared_ptr<MIDISceneChange> sc = boost::dynamic_pointer_cast<MIDISceneChange>((*l)->scene_change());
+		std::shared_ptr<MIDISceneChange> sc = std::dynamic_pointer_cast<MIDISceneChange>((*l)->scene_change());
 
 		if (sc && (*sc.get()) == *msc) {
 			msc->set_color (sc->color ());
@@ -338,7 +355,8 @@ MIDISceneChanger::program_change_input (MIDI::Parser& parser, MIDI::byte program
 		}
 	}
 
-	loc->set_scene_change (boost::shared_ptr<MIDISceneChange> (msc));
+	loc->set_scene_change (msc);
+	loc->set_name (string_compose(_("scene [%1]"), 1 + ((bank*128)+(program & 0x7f))));
 
 	/* this will generate a "changed" signal to be emitted by locations,
 	   and we will call ::gather() to update our list of MIDI events.
@@ -355,14 +373,14 @@ void
 MIDISceneChanger::jump_to (int bank, int program)
 {
 	const Locations::LocationList& locations (_session.locations()->list());
-	boost::shared_ptr<SceneChange> sc;
+	std::shared_ptr<SceneChange> sc;
 	timepos_t where = timepos_t::max (Temporal::AudioTime);
 
 	for (Locations::LocationList::const_iterator l = locations.begin(); l != locations.end(); ++l) {
 
 		if ((sc = (*l)->scene_change()) != 0) {
 
-			boost::shared_ptr<MIDISceneChange> msc = boost::dynamic_pointer_cast<MIDISceneChange> (sc);
+			std::shared_ptr<MIDISceneChange> msc = std::dynamic_pointer_cast<MIDISceneChange> (sc);
 
 			if (msc->bank() == bank && msc->program() == program && (*l)->start() < where) {
 				where = (*l)->start();

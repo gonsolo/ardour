@@ -21,8 +21,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __gtk_ardour_region_view_h__
-#define __gtk_ardour_region_view_h__
+#pragma once
 
 #ifdef interface
 #undef interface
@@ -36,12 +35,12 @@
 #include "canvas/fwd.h"
 
 #include "time_axis_view_item.h"
-#include "automation_line.h"
+#include "editor_automation_line.h"
 #include "enums.h"
 #include "marker.h"
 
 class TimeAxisView;
-class RegionEditor;
+class ArdourWindow;
 class GhostRegion;
 class AutomationTimeAxisView;
 class AutomationRegionView;
@@ -56,21 +55,21 @@ class RegionView : public TimeAxisViewItem
 public:
 	RegionView (ArdourCanvas::Container*          parent,
 	            TimeAxisView&                     time_view,
-	            const boost::shared_ptr<ARDOUR::Region>& region,
+	            const std::shared_ptr<ARDOUR::Region>& region,
 	            double                            samples_per_pixel,
 	            uint32_t                          base_color,
 	            bool                              automation = false);
 
 	RegionView (const RegionView& other);
-	RegionView (const RegionView& other, const boost::shared_ptr<ARDOUR::Region>& other_region);
+	RegionView (const RegionView& other, const std::shared_ptr<ARDOUR::Region>& other_region);
 
 	~RegionView ();
 
-	void set_selected (bool yn);
+	virtual void set_selected (bool yn);
 
 	virtual void init (bool what_changed);
 
-	boost::shared_ptr<ARDOUR::Region> region() const { return _region; }
+	std::shared_ptr<ARDOUR::Region> region() const { return _region; }
 
 	bool is_valid() const    { return valid; }
 
@@ -82,13 +81,14 @@ public:
 
 	void move (double xdelta, double ydelta);
 
+	void visual_layer_on_top();
 	void raise_to_top ();
 	void lower_to_bottom ();
 
 	bool set_position(Temporal::timepos_t const & pos, void* src, double* delta = 0);
 
 	virtual void show_region_editor ();
-	void hide_region_editor ();
+	virtual void hide_region_editor ();
 
 	virtual void region_changed (const PBD::PropertyChange&);
 
@@ -100,12 +100,13 @@ public:
 	virtual void exited () {}
 
 	bool display_enabled() const;
-	void redisplay (bool view_only = true) {
-		_redisplay (view_only);
+	virtual void redisplay (bool) = 0;
+	void redisplay () {
+		redisplay (true);
 	}
 
 	virtual void tempo_map_changed () {
-		_redisplay (true);
+		redisplay (true);
 	}
 
 	struct DisplaySuspender {
@@ -126,7 +127,7 @@ public:
 
 	virtual void update_coverage_frame (LayerDisplay);
 
-	static PBD::Signal1<void,RegionView*> RegionViewGoingAway;
+	static PBD::Signal<void(RegionView*)> RegionViewGoingAway;
 
 	/** Called when a front trim is about to begin */
 	virtual void trim_front_starting () {}
@@ -157,6 +158,8 @@ public:
 	ARDOUR::CueMarker find_model_cue_marker (ArdourMarker*);
 	void drop_cue_marker (ArdourMarker*);
 
+	virtual void color_handler() { set_colors(); }
+
 protected:
 
 	/** Allows derived types to specify their visibility requirements
@@ -164,7 +167,7 @@ protected:
 	 */
 	RegionView (ArdourCanvas::Container *,
 	            TimeAxisView&,
-	            const boost::shared_ptr<ARDOUR::Region>&,
+	            const std::shared_ptr<ARDOUR::Region>&,
 	            double samples_per_pixel,
 	            uint32_t basic_color,
 	            bool recording,
@@ -188,19 +191,18 @@ protected:
 	virtual void set_sync_mark_color ();
 	virtual void reset_width_dependent_items (double pixel_width);
 
-	virtual void color_handler () {}
 	virtual void parameter_changed (std::string const&);
 
 	void maybe_raise_cue_markers ();
 
 	Temporal::timecnt_t region_relative_distance (Temporal::timecnt_t const &, Temporal::TimeDomain desired_time_domain);
 
-	boost::shared_ptr<ARDOUR::Region> _region;
+	std::shared_ptr<ARDOUR::Region> _region;
 
 	ArdourCanvas::Polygon* sync_mark; ///< polygon for sync position
 	ArdourCanvas::Line* sync_line; ///< polygon for sync position
 
-	RegionEditor* editor;
+	ArdourWindow* _editor;
 
 	std::vector<ControlPoint *> control_points;
 	double current_visible_sync_position;
@@ -236,6 +238,8 @@ private:
 
 	void update_cue_markers ();
 
+	void clear_coverage_frame ();
+
 	struct ViewCueMarker {
 		ArdourMarker* view_marker;
 		ARDOUR::CueMarker     model_marker;
@@ -247,13 +251,11 @@ private:
 	typedef std::list<ViewCueMarker*> ViewCueMarkers;
 	ViewCueMarkers _cue_markers;
 	bool _cue_markers_visible;
-	virtual void _redisplay (bool) = 0;
 
   private:
-	friend class DisplaySuspender;
+	friend struct DisplaySuspender;
 	void enable_display (bool view_only);
 	void disable_display();
 
 };
 
-#endif /* __gtk_ardour_region_view_h__ */

@@ -32,10 +32,10 @@
 using namespace PBD;
 using namespace std;
 
-PBD::Signal1<bool, boost::weak_ptr<PBD::Controllable> > Controllable::StartLearning;
-PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > Controllable::StopLearning;
-PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > Controllable::GUIFocusChanged;
-PBD::Signal1<void, boost::weak_ptr<PBD::Controllable> > Controllable::ControlTouched;
+PBD::Signal<bool(std::weak_ptr<PBD::Controllable> )> Controllable::StartLearning;
+PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> Controllable::StopLearning;
+PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> Controllable::GUIFocusChanged;
+PBD::Signal<void(std::weak_ptr<PBD::Controllable> )> Controllable::ControlTouched;
 
 Glib::Threads::RWLock Controllable::registry_lock;
 Controllable::Controllables Controllable::registry;
@@ -118,8 +118,8 @@ Controllable::add (Controllable& ctl)
 {
 	Glib::Threads::RWLock::WriterLock lm (registry_lock);
 	registry.insert (&ctl);
-	ctl.DropReferences.connect_same_thread (registry_connections, boost::bind (&Controllable::remove, &ctl));
-	ctl.Destroyed.connect_same_thread (registry_connections, boost::bind (&Controllable::remove, &ctl));
+	ctl.DropReferences.connect_same_thread (registry_connections, std::bind (&Controllable::remove, &ctl));
+	ctl.Destroyed.connect_same_thread (registry_connections, std::bind (&Controllable::remove, &ctl));
 }
 
 void
@@ -132,7 +132,7 @@ Controllable::remove (Controllable* ctl)
 	}
 }
 
-boost::shared_ptr<Controllable>
+std::shared_ptr<Controllable>
 Controllable::by_id (const ID& id)
 {
 	Glib::Threads::RWLock::ReaderLock lm (registry_lock);
@@ -142,7 +142,7 @@ Controllable::by_id (const ID& id)
 			return (*i)->shared_from_this ();
 		}
 	}
-	return boost::shared_ptr<Controllable>();
+	return std::shared_ptr<Controllable>();
 }
 
 ControllableSet

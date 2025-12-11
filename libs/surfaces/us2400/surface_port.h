@@ -21,6 +21,7 @@
 #include <midi++/types.h>
 
 #include "pbd/signals.h"
+#include "pbd/xml++.h"
 
 
 #include "midi_byte_array.h"
@@ -79,8 +80,8 @@ class SurfacePort
 	US2400::Surface*   _surface;
 	MIDI::Port* _input_port;
 	MIDI::Port* _output_port;
-	boost::shared_ptr<ARDOUR::Port> _async_in;
-	boost::shared_ptr<ARDOUR::Port> _async_out;
+	std::shared_ptr<ARDOUR::Port> _async_in;
+	std::shared_ptr<ARDOUR::Port> _async_out;
 };
 
 std::ostream& operator <<  (std::ostream& , const SurfacePort& port);

@@ -20,12 +20,12 @@
 #ifndef _libardour_port_engine_shared_h_
 #define _libardour_port_engine_shared_h_
 
+#include <atomic>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
-
-#include <boost/shared_ptr.hpp>
 
 #include "pbd/natsort.h"
 #include "pbd/rcu.h"
@@ -41,8 +41,8 @@ class PortManager;
 
 class BackendPort;
 
-typedef boost::shared_ptr<BackendPort> BackendPortPtr;
-typedef boost::shared_ptr<BackendPort> const & BackendPortHandle;
+typedef std::shared_ptr<BackendPort> BackendPortPtr;
+typedef std::shared_ptr<BackendPort> const & BackendPortHandle;
 
 class LIBARDOUR_API BackendPort : public ProtoPort
 {
@@ -194,7 +194,7 @@ protected:
 	std::vector<PortConnectData *> _port_connection_queue;
 	pthread_mutex_t _port_callback_mutex;
 
-	GATOMIC_QUAL gint _port_change_flag; /* atomic */
+	std::atomic<int> _port_change_flag; /* atomic */
 
 	void port_connect_callback (const std::string& a, const std::string& b, bool conn) {
 		pthread_mutex_lock (&_port_callback_mutex);
@@ -202,8 +202,10 @@ protected:
 		pthread_mutex_unlock (&_port_callback_mutex);
 	}
 
+	void process_connection_queue_locked (PortManager& mgr);
+
 	void port_connect_add_remove_callback () {
-		g_atomic_int_set (&_port_change_flag, 1);
+		_port_change_flag.store (1);
 	}
 
 	virtual void update_system_port_latencies ();
@@ -228,13 +230,13 @@ protected:
 	SerializedRCUManager<PortRegistry> _portregistry;
 
 	bool valid_port (BackendPortHandle port) const {
-		boost::shared_ptr<PortRegistry> p = _portregistry.reader ();
+		std::shared_ptr<PortRegistry const> p = _portregistry.reader ();
 		return p->find (port) != p->end ();
 	}
 
 	BackendPortPtr find_port (const std::string& port_name) const {
-		boost::shared_ptr<PortMap> p  = _portmap.reader ();
-		PortMap::const_iterator    it = p->find (port_name);
+		std::shared_ptr<PortMap const> p  = _portmap.reader ();
+		PortMap::const_iterator        it = p->find (port_name);
 		if (it == p->end ()) {
 			return BackendPortPtr();
 		}
@@ -242,6 +244,9 @@ protected:
 	}
 
 	virtual BackendPort* port_factory (std::string const& name, ARDOUR::DataType dt, ARDOUR::PortFlags flags) = 0;
+
+	XMLNode* get_state () const;
+	int      set_state (XMLNode const&, int version);
 
 #ifndef NDEBUG
 	void list_ports () const;

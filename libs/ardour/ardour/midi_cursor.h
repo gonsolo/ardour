@@ -16,12 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_midi_cursor_h__
-#define __ardour_midi_cursor_h__
+#pragma once
 
 #include <set>
-
-#include <boost/utility.hpp>
 
 
 
@@ -34,12 +31,14 @@
 
 namespace ARDOUR {
 
-struct MidiCursor : public boost::noncopyable {
+struct MidiCursor {
 	MidiCursor()  {}
+	MidiCursor(const MidiCursor&) = delete;
+	MidiCursor& operator=(const MidiCursor&) = delete;
 
-	void connect(PBD::Signal1<void, bool>& invalidated) {
+	void connect(PBD::Signal<void(bool)>& invalidated) {
 		connections.drop_connections();
-		invalidated.connect_same_thread (connections, boost::bind(&MidiCursor::invalidate, this, _1));
+		invalidated.connect_same_thread (connections, std::bind(&MidiCursor::invalidate, this, _1));
 	}
 
 
@@ -50,11 +49,10 @@ struct MidiCursor : public boost::noncopyable {
 	}
 
 	Evoral::Sequence<Temporal::Beats>::const_iterator        iter;
-	std::set<Evoral::Sequence<Temporal::Beats>::WeakNotePtr> active_notes;
+	Evoral::Sequence<Temporal::Beats>::WeakActiveNotes       active_notes;
 	timepos_t                                                last_read_end;
  	PBD::ScopedConnectionList                                connections;
 };
 
 }
 
-#endif /* __ardour_midi_cursor_h__ */

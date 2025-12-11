@@ -44,11 +44,11 @@
 #undef NO
 #endif
 
-#include <gtkmm/box.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/combobox.h>
-#include <gtkmm/button.h>
-#include <gtkmm/label.h>
+#include <ytkmm/box.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/combobox.h>
+#include <ytkmm/button.h>
+#include <ytkmm/label.h>
 
 #include "widgets/eventboxext.h"
 
@@ -79,7 +79,7 @@ class AUPluginUI;
 class AUPluginUI : public PlugUIBase, public Gtk::VBox
 {
 public:
-	AUPluginUI (boost::shared_ptr<ARDOUR::PlugInsertBase>);
+	AUPluginUI (std::shared_ptr<ARDOUR::PlugInsertBase>);
 	~AUPluginUI ();
 
 	gint get_preferred_width () { return req_width; }
@@ -115,7 +115,7 @@ public:
 
 private:
 	WindowRef wr;
-	boost::shared_ptr<ARDOUR::AUPlugin> au;
+	std::shared_ptr<ARDOUR::AUPlugin> au;
 	int prefheight;
 	int prefwidth;
 

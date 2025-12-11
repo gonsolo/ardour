@@ -1,3 +1,5 @@
+#include <cassert>
+
 #include "tests/utils.h"
 
 #include "audiographer/general/sr_converter.h"
@@ -118,9 +120,9 @@ class SampleRateConverterTest : public CppUnit::TestFixture
 
 
   private:
-	boost::shared_ptr<SampleRateConverter > converter;
-	boost::shared_ptr<AppendingVectorSink<float> > sink;
-	boost::shared_ptr<ProcessContextGrabber<float> > grabber;
+	std::shared_ptr<SampleRateConverter > converter;
+	std::shared_ptr<AppendingVectorSink<float> > sink;
+	std::shared_ptr<ProcessContextGrabber<float> > grabber;
 
 	float * random_data;
 	samplecnt_t samples;

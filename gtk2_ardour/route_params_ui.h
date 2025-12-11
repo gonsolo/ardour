@@ -20,19 +20,18 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_route_params_ui_h__
-#define __ardour_route_params_ui_h__
+#pragma once
 
 #include <list>
 
-#include <gtkmm/box.h>
-#include <gtkmm/button.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/label.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/treeview.h>
+#include <ytkmm/box.h>
+#include <ytkmm/button.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/label.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/treeview.h>
 
 #include "pbd/stateful.h"
 #include "pbd/signals.h"
@@ -105,11 +104,11 @@ private:
 
 	ProcessorSelection  _p_selection;
 
-	boost::shared_ptr<ARDOUR::Route> _route;
+	std::shared_ptr<ARDOUR::Route> _route;
 	PBD::ScopedConnection _route_processors_connection;
 	PBD::ScopedConnectionList route_connections;
 
-	boost::shared_ptr<ARDOUR::Processor> _processor;
+	std::shared_ptr<ARDOUR::Processor> _processor;
 	PBD::ScopedConnection _processor_going_away_connection;
 
 
@@ -132,7 +131,7 @@ private:
 			add(route);
 		}
 		Gtk::TreeModelColumn<std::string> text;
-		Gtk::TreeModelColumn<boost::shared_ptr<ARDOUR::Route> > route;
+		Gtk::TreeModelColumn<std::shared_ptr<ARDOUR::Route> > route;
 	};
 
 	RouteDisplayModelColumns route_display_columns ;
@@ -140,10 +139,10 @@ private:
 	Glib::RefPtr<Gtk::ListStore> route_display_model;
 
 
-	void add_routes (ARDOUR::RouteList&);
+	void add_routes (ARDOUR::RouteList const&);
 
-	void route_property_changed (const PBD::PropertyChange&, boost::weak_ptr<ARDOUR::Route> route);
-	void route_removed (boost::weak_ptr<ARDOUR::Route> route);
+	void route_property_changed (const PBD::PropertyChange&, std::weak_ptr<ARDOUR::Route> route);
+	void route_removed (std::weak_ptr<ARDOUR::Route> route);
 	void map_frozen ();
 
 
@@ -159,10 +158,10 @@ private:
 	void setup_processor_boxes();
 	void cleanup_processor_boxes();
 
-	void redirect_selected (boost::shared_ptr<ARDOUR::Processor>);
+	void redirect_selected (std::shared_ptr<ARDOUR::Processor>);
 
 	void plugin_going_away (ARDOUR::Placement);
-	void processor_going_away (boost::weak_ptr<ARDOUR::Processor>);
+	void processor_going_away (std::weak_ptr<ARDOUR::Processor>);
 
 	gint edit_input_configuration (GdkEventButton *ev);
 	gint edit_output_configuration (GdkEventButton *ev);
@@ -177,4 +176,3 @@ private:
 };
 
 
-#endif /* __ardour_route_params_ui_h__ */

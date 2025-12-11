@@ -27,11 +27,13 @@
 #endif
 #include <cstdio>
 
+#include "evoral/midi_util.h"
+
 #include "ardour/audioengine.h"
 #include "ardour/debug.h"
 #include "ardour/session.h"
 #include "ardour/tempo.h"
-#include "ardour/plugin_insert.h"
+#include "ardour/plug_insert_base.h"
 #include "ardour/windows_vst_plugin.h"
 #include "ardour/vestige/vestige.h"
 #include "ardour/vst_types.h"
@@ -189,25 +191,25 @@ intptr_t Session::vst_callback (
 			timeinfo->sampleRate = session->sample_rate();
 
 			if (value & (kVstTempoValid)) {
-				const Tempo& t (tmap->metric_at (now).tempo());
+				const Tempo& t (tmap->metric_at (timepos_t (now)).tempo());
 				timeinfo->tempo = t.quarter_notes_per_minute ();
 				newflags |= (kVstTempoValid);
 			}
 			if (value & (kVstTimeSigValid)) {
-				const Meter& ms (tmap->metric_at (now).meter());
+				const Meter& ms (tmap->metric_at (timepos_t (now)).meter());
 				timeinfo->timeSigNumerator = ms.divisions_per_bar ();
 				timeinfo->timeSigDenominator = ms.note_value ();
 				newflags |= (kVstTimeSigValid);
 			}
 			if ((value & (kVstPpqPosValid)) || (value & (kVstBarsValid))) {
-				Temporal::BBT_Time bbt;
+				Temporal::BBT_Argument bbt;
 
 				try {
 					bbt = tmap->bbt_at (timepos_t (now));
 					bbt.beats = 1;
 					bbt.ticks = 0;
 					/* exact quarter note */
-					double ppqBar = DoubleableBeats (tmap->quarters_at (bbt)).to_double ();
+					double ppqBar = DoubleableBeats (tmap->quarters_at (BBT_Argument (bbt))).to_double ();
 					/* quarter note at sample position (not rounded to note subdivision) */
 					double ppqPos = DoubleableBeats (tmap->quarters_at_sample (now)).to_double();
 					if (value & (kVstPpqPosValid)) {
@@ -280,7 +282,7 @@ intptr_t Session::vst_callback (
 
 		} else {
 			timeinfo->samplePos = 0;
-			timeinfo->sampleRate = AudioEngine::instance()->sample_rate();
+			timeinfo->sampleRate = TEMPORAL_SAMPLE_RATE;
 		}
 
 		if ((timeinfo->flags & (kVstTransportPlaying | kVstTransportRecording | kVstTransportCycleActive))
@@ -300,8 +302,14 @@ intptr_t Session::vst_callback (
 			VstEvents* v = (VstEvents*)ptr;
 			for (int n = 0 ; n < v->numEvents; ++n) {
 				VstMidiEvent *vme = (VstMidiEvent*) (v->events[n]->dump);
-				if (vme->type == kVstMidiType) {
-					plug->midi_buffer()->push_back(vme->deltaSamples, Evoral::MIDI_EVENT, 3, (uint8_t*)vme->midiData);
+				int size = Evoral::midi_event_size((uint8_t)vme->midiData[0]);
+				if (vme->type == kVstMidiType && size > 0) {
+					plug->midi_buffer()->push_back(
+						vme->deltaSamples,
+						Evoral::MIDI_EVENT,
+						size,
+						(uint8_t*)vme->midiData
+					);
 				}
 			}
 		}
@@ -317,7 +325,7 @@ intptr_t Session::vst_callback (
 		// returns tempo (in bpm * 10000) at sample sample location passed in <value>
 		if (session) {
 			TempoMap::SharedPtr tmap (TempoMap::fetch());
-			const Tempo& t (tmap->metric_at (value).tempo());
+			const Tempo& t (tmap->metric_at (timepos_t (value)).tempo());
 			return t.quarter_notes_per_minute() * 1000;
 		} else {
 			return 0;
@@ -521,7 +529,7 @@ intptr_t Session::vst_callback (
 		SHOW_CALLBACK ("audioMasterBeginEdit");
 		// begin of automation session (when mouse down), parameter index in <index>
 		if (plug && plug->plugin_insert ()) {
-			boost::shared_ptr<AutomationControl> ac = plug->plugin_insert ()->automation_control (Evoral::Parameter (PluginAutomation, 0, index));
+			std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(plug->plugin_insert ()->control (Evoral::Parameter (PluginAutomation, 0, index)));
 			if (ac) {
 				ac->start_touch (timepos_t (ac->session().transport_sample()));
 			}
@@ -532,7 +540,7 @@ intptr_t Session::vst_callback (
 		SHOW_CALLBACK ("audioMasterEndEdit");
 		// end of automation session (when mouse up),     parameter index in <index>
 		if (plug && plug->plugin_insert ()) {
-			boost::shared_ptr<AutomationControl> ac = plug->plugin_insert ()->automation_control (Evoral::Parameter (PluginAutomation, 0, index));
+			std::shared_ptr<AutomationControl> ac = std::dynamic_pointer_cast<AutomationControl>(plug->plugin_insert ()->control (Evoral::Parameter (PluginAutomation, 0, index)));
 			if (ac) {
 				ac->stop_touch (timepos_t (ac->session().transport_sample()));
 			}

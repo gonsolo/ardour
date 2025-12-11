@@ -22,22 +22,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_mixer_ui_h__
-#define __ardour_mixer_ui_h__
+#pragma once
 
 #include <list>
 
-#include <gtkmm/box.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/eventbox.h>
-#include <gtkmm/label.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/button.h>
-#include <gtkmm/frame.h>
-#include <gtkmm/menu.h>
-#include <gtkmm/treeview.h>
-#include <gtkmm/treestore.h>
-#include <gtkmm/liststore.h>
+#include <ytkmm/box.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/eventbox.h>
+#include <ytkmm/label.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/button.h>
+#include <ytkmm/frame.h>
+#include <ytkmm/menu.h>
+#include <ytkmm/treeview.h>
+#include <ytkmm/treestore.h>
+#include <ytkmm/liststore.h>
 
 #include "pbd/stateful.h"
 #include "pbd/signals.h"
@@ -52,9 +51,13 @@
 #include "gtkmm2ext/dndtreeview.h"
 #include "gtkmm2ext/treeutils.h"
 
+#include "widgets/ardour_dropdown.h"
+#include "widgets/frame.h"
+#include "widgets/metabutton.h"
 #include "widgets/pane.h"
 #include "widgets/tabbable.h"
 
+#include "application_bar.h"
 #include "axis_provider.h"
 #include "enums.h"
 #include "monitor_section.h"
@@ -72,6 +75,7 @@ class MixerStrip;
 class PluginSelector;
 class MixerGroupTabs;
 class MonitorSection;
+class SurroundStrip;
 class VCAMasterStrip;
 
 class PluginTreeStore : public Gtk::TreeStore
@@ -128,13 +132,13 @@ public:
 	void clear_mixer_scene (size_t, bool interactive = true);
 	void rename_mixer_scene (size_t n);
 
-	void do_vca_assign (boost::shared_ptr<ARDOUR::VCA>);
-	void do_vca_unassign (boost::shared_ptr<ARDOUR::VCA>);
-	void show_spill (boost::shared_ptr<ARDOUR::Stripable>);
-	bool showing_spill_for (boost::shared_ptr<ARDOUR::Stripable>) const;
-	void fan_out (boost::weak_ptr<ARDOUR::Route>, bool to_busses, bool group);
+	void do_vca_assign (std::shared_ptr<ARDOUR::VCA>);
+	void do_vca_unassign (std::shared_ptr<ARDOUR::VCA>);
+	void show_spill (std::shared_ptr<ARDOUR::Stripable>);
+	bool showing_spill_for (std::shared_ptr<ARDOUR::Stripable>) const;
+	void fan_out (std::weak_ptr<ARDOUR::Route>, bool to_busses, bool group);
 
-	sigc::signal1<void,boost::shared_ptr<ARDOUR::Stripable> > show_spill_change;
+	sigc::signal1<void,std::shared_ptr<ARDOUR::Stripable> > show_spill_change;
 
 	RouteProcessorSelection& selection() { return _selection; }
 
@@ -142,11 +146,16 @@ public:
 
 	void register_actions ();
 
+	void focus_on_clock();
+
 	void load_bindings ();
 	Gtkmm2ext::Bindings*  bindings;
 
 	void toggle_mixer_list ();
-	void showhide_mixer_list (bool yn);
+	void toggle_mixer_strip ();
+	void toggle_mixer_props ();
+
+	void toggle_surround_master ();
 
 	void toggle_monitor_section ();
 	void showhide_monitor_section (bool);
@@ -173,7 +182,7 @@ protected:
 private:
 	Mixer_UI ();
 	static Mixer_UI*     _instance;
-	Gtk::VBox            _content;
+
 	Gtk::HBox             global_hpacker;
 	Gtk::VBox             global_vpacker;
 	Gtk::ScrolledWindow   scroller;
@@ -186,16 +195,10 @@ private:
 	Gtk::ScrolledWindow   group_display_scroller;
 	Gtk::ScrolledWindow   favorite_plugins_scroller;
 	Gtk::VBox             group_display_vbox;
-	Gtk::Frame            track_display_frame;
-	Gtk::Frame            group_display_frame;
-	Gtk::Frame            favorite_plugins_frame;
 	Gtk::VBox             favorite_plugins_vbox;
 	Gtk::HBox             favorite_plugins_search_hbox;
-	Gtk::ComboBoxText     favorite_plugins_mode_combo;
 	Gtk::Entry            plugin_search_entry;
-	Gtk::Button           plugin_search_clear_button;
-	ArdourWidgets::VPane  rhs_pane1;
-	ArdourWidgets::VPane  rhs_pane2;
+	ArdourWidgets::ArdourButton plugin_search_clear_button;
 	ArdourWidgets::HPane  inner_pane;
 	Gtk::VBox             strip_group_box;
 	Gtk::HBox             strip_packer;
@@ -206,10 +209,13 @@ private:
 	Gtk::Label            vca_label;
 	Gtk::EventBox         vca_scroller_base;
 	Gtk::HBox             out_packer;
-	ArdourWidgets::HPane  list_hpane;
+
+	Gtk::Notebook             _sidebar_notebook;
+	ArdourWidgets::MetaButton _sidebar_pager1;
+	ArdourWidgets::MetaButton _sidebar_pager2;
 
 	Gtk::EventBox         _mixer_scene_spacer;
-	Gtk::Frame            _mixer_scene_frame;
+	ArdourWidgets::Frame  _mixer_scene_frame;
 	Gtk::Table            _mixer_scene_table;
 	Gtk::VBox             _mixer_scene_vbox;
 
@@ -231,32 +237,34 @@ private:
 
 	void scroller_drag_data_received (const Glib::RefPtr<Gdk::DragContext>&, int, int, const Gtk::SelectionData&, guint, guint);
 	bool strip_scroller_button_event (GdkEventButton*);
-	bool masters_scroller_button_release (GdkEventButton*);
 	void scroll_left ();
 	void scroll_right ();
 	void vca_scroll_left ();
 	void vca_scroll_right ();
 	void toggle_midi_input_active (bool flip_others);
 
-	void move_vca_into_view (boost::shared_ptr<ARDOUR::Stripable>);
-	void move_stripable_into_view (boost::shared_ptr<ARDOUR::Stripable>);
+	void move_vca_into_view (std::shared_ptr<ARDOUR::Stripable>);
+	void move_stripable_into_view (std::shared_ptr<ARDOUR::Stripable>);
 
 	void add_stripables (ARDOUR::StripableList&);
 
 	void update_scene_buttons ();
 
+	void add_sidebar_page (std::string const&, std::string const&, Gtk::Widget&);
+
 	void add_routes (ARDOUR::RouteList&);
 	void remove_strip (MixerStrip *);
 	void remove_foldback (FoldbackStrip *);
+	void remove_surround_master (SurroundStrip*);
 	void add_masters (ARDOUR::VCAList&);
 	void remove_master (VCAMasterStrip*);
 	void new_masters_created ();
 
-	MixerStrip* strip_by_route (boost::shared_ptr<ARDOUR::Route>) const;
-	MixerStrip* strip_by_stripable (boost::shared_ptr<ARDOUR::Stripable>) const;
+	MixerStrip* strip_by_route (std::shared_ptr<ARDOUR::Route>) const;
+	MixerStrip* strip_by_stripable (std::shared_ptr<ARDOUR::Stripable>) const;
 
-	AxisView* axis_view_by_stripable (boost::shared_ptr<ARDOUR::Stripable>) const;
-	AxisView* axis_view_by_control (boost::shared_ptr<ARDOUR::AutomationControl>) const;
+	AxisView* axis_view_by_stripable (std::shared_ptr<ARDOUR::Stripable>) const;
+	AxisView* axis_view_by_control (std::shared_ptr<ARDOUR::AutomationControl>) const;
 
 	gint start_updating ();
 	gint stop_updating ();
@@ -269,7 +277,7 @@ private:
 	void track_name_changed (MixerStrip *);
 
 	void redisplay_track_list ();
-	void spill_redisplay (boost::shared_ptr<ARDOUR::Stripable>);
+	void spill_redisplay (std::shared_ptr<ARDOUR::Stripable>);
 	bool no_track_list_redisplay;
 	bool track_display_button_press (GdkEventButton*);
 	void strip_width_changed ();
@@ -331,12 +339,15 @@ private:
 	void track_column_click (gint);
 	void build_track_menu ();
 
+	ApplicationBar _application_bar;
+
 	MonitorSection   _monitor_section;
-	PluginSelector *_plugin_selector;
-	FoldbackStrip * foldback_strip;
+	PluginSelector* _plugin_selector;
+	SurroundStrip*  _surround_strip;
+	FoldbackStrip*  foldback_strip;
 	bool _show_foldback_strip;
 
-	void stripable_property_changed (const PBD::PropertyChange& what_changed, boost::weak_ptr<ARDOUR::Stripable> ws);
+	void stripable_property_changed (const PBD::PropertyChange& what_changed, std::weak_ptr<ARDOUR::Stripable> ws);
 	void route_group_property_changed (ARDOUR::RouteGroup *, const PBD::PropertyChange &);
 
 	/* various treeviews */
@@ -350,7 +361,7 @@ private:
 		}
 		Gtk::TreeModelColumn<bool>         visible;
 		Gtk::TreeModelColumn<std::string>  text;
-		Gtk::TreeModelColumn<boost::shared_ptr<ARDOUR::Stripable> > stripable;
+		Gtk::TreeModelColumn<std::shared_ptr<ARDOUR::Stripable> > stripable;
 		Gtk::TreeModelColumn<AxisView*>    strip;
 	};
 
@@ -432,18 +443,23 @@ private:
 	void monitor_section_attached ();
 	void monitor_section_detached ();
 
+	void sync_surround_action ();
+
 	enum PluginListMode {
 		PLM_Favorite,
 		PLM_Recent,
-		PLM_TopHits
+		PLM_TopHits,
+		PLM_SearchAll
 	};
+	enum PluginListMode plugin_list_mode;
+	void set_plugin_list_mode (PluginListMode plm);
+	void update_sidebar_pagers (guint);
 
 	void refiller (ARDOUR::PluginInfoList& result, const ARDOUR::PluginInfoList& plugs);
 	void refill_favorite_plugins ();
 	void maybe_refill_favorite_plugins (PluginListMode);
 	void store_current_favorite_order();
-	enum PluginListMode plugin_list_mode () const;
-	void plugin_list_mode_changed ();
+
 	void plugin_search_entry_changed ();
 	void plugin_search_clear_button_clicked ();
 	void favorite_plugins_deleted (const Gtk::TreeModel::Path&);
@@ -456,7 +472,7 @@ private:
 
 	bool _strip_selection_change_without_scroll;
 
-	mutable boost::weak_ptr<ARDOUR::Stripable> spilled_strip;
+	mutable std::weak_ptr<ARDOUR::Stripable> spilled_strip;
 
 	void escape ();
 
@@ -466,10 +482,10 @@ private:
 	void spill_nothing ();
 	PBD::ScopedConnection _spill_gone_connection;
 
-	void vca_assign (boost::shared_ptr<ARDOUR::VCA>);
-	void vca_unassign (boost::shared_ptr<ARDOUR::VCA>);
+	void vca_assign (std::shared_ptr<ARDOUR::VCA>);
+	void vca_unassign (std::shared_ptr<ARDOUR::VCA>);
 
-	template<class T> void control_action (boost::shared_ptr<T> (ARDOUR::Stripable::*get_control)() const);
+	template<class T> void control_action (std::shared_ptr<T> (ARDOUR::Stripable::*get_control)() const);
 	void solo_action ();
 	void mute_action ();
 	void rec_enable_action ();
@@ -485,4 +501,3 @@ private:
 	void ab_plugins ();
 };
 
-#endif /* __ardour_mixer_ui_h__ */

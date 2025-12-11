@@ -19,22 +19,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_gtk_midi_tracer_h__
-#define __ardour_gtk_midi_tracer_h__
+#pragma once
 
-#include <gtkmm/textview.h>
-#include <gtkmm/scrolledwindow.h>
-#include <gtkmm/togglebutton.h>
-#include <gtkmm/adjustment.h>
-#include <gtkmm/spinbutton.h>
-#include <gtkmm/label.h>
-#include <gtkmm/comboboxtext.h>
-#include <gtkmm/box.h>
+#include <atomic>
+
+#include <ytkmm/textview.h>
+#include <ytkmm/scrolledwindow.h>
+#include <ytkmm/togglebutton.h>
+#include <ytkmm/adjustment.h>
+#include <ytkmm/spinbutton.h>
+#include <ytkmm/label.h>
+#include <ytkmm/liststore.h>
+#include <ytkmm/comboboxtext.h>
+#include <ytkmm/box.h>
 
 #include "pbd/signals.h"
 #include "pbd/ringbuffer.h"
 #include "pbd/pool.h"
-#include "pbd/g_atomic_compat.h"
 
 #include "midi++/types.h"
 #include "ardour_window.h"
@@ -74,7 +75,7 @@ private:
 	 *  equal to 0 when an update is not queued.  May temporarily be negative if a
 	 *  update is handled before it was noted that it had just been queued.
 	 */
-	GATOMIC_QUAL gint _update_queued;
+	std::atomic<int> _update_queued;
 
 	PBD::RingBuffer<char *> fifo;
 	PBD::Pool buffer_pool;
@@ -87,7 +88,22 @@ private:
 	Gtk::CheckButton base_button;
 	Gtk::CheckButton collect_button;
 	Gtk::CheckButton delta_time_button;
-	Gtk::ComboBoxText _port_combo;
+	Gtk::ComboBox    _midi_port_combo;
+
+	class MidiPortCols : public Gtk::TreeModelColumnRecord
+	{
+		public:
+			MidiPortCols ()
+			{
+				add (pretty_name);
+				add (port_name);
+			}
+			Gtk::TreeModelColumn<std::string> pretty_name;
+			Gtk::TreeModelColumn<std::string> port_name;
+	};
+
+	MidiPortCols                 _midi_port_cols;
+	Glib::RefPtr<Gtk::ListStore> _midi_port_list;
 
 	void base_toggle ();
 	void autoscroll_toggle ();
@@ -99,11 +115,11 @@ private:
 	void disconnect ();
 	PBD::ScopedConnection _parser_connection;
 	PBD::ScopedConnection _manager_connection;
-	MIDI::Parser my_parser;
+	std::shared_ptr<MIDI::Parser> _midi_parser;
 
-	boost::shared_ptr<ARDOUR::MidiPort> traced_port;
+	std::shared_ptr<ARDOUR::MidiPort> tracer_port;
+	std::shared_ptr<ARDOUR::MidiPort> traced_port;
 
 	static unsigned int window_count;
 };
 
-#endif /* __ardour_gtk_midi_tracer_h__ */

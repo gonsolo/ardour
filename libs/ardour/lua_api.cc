@@ -39,6 +39,7 @@
 #include "ardour/region_factory.h"
 #include "ardour/simple_export.h"
 #include "ardour/source_factory.h"
+#include "ardour/uri_map.h"
 
 #include "LuaBridge/LuaBridge.h"
 
@@ -73,23 +74,23 @@ ARDOUR::LuaAPI::datatype_ctor_midi (lua_State *L)
 	return 1;
 }
 
-boost::shared_ptr<Processor>
+std::shared_ptr<Processor>
 ARDOUR::LuaAPI::nil_processor ()
 {
-	return boost::shared_ptr<Processor> ();
+	return std::shared_ptr<Processor> ();
 }
 
-boost::shared_ptr<Processor>
+std::shared_ptr<Processor>
 ARDOUR::LuaAPI::new_luaproc (Session *s, const string& name)
 {
 	return new_luaproc_with_time_domain (s, name, Config->get_default_automation_time_domain());
 }
 
-boost::shared_ptr<Processor>
+std::shared_ptr<Processor>
 ARDOUR::LuaAPI::new_luaproc_with_time_domain (Session *s, const string& name, Temporal::TimeDomain td)
 {
 	if (!s) {
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	LuaScriptInfoPtr spi;
@@ -103,7 +104,7 @@ ARDOUR::LuaAPI::new_luaproc_with_time_domain (Session *s, const string& name, Te
 
 	if (!spi) {
 		warning << _("Script with given name was not found\n");
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	PluginPtr p;
@@ -112,20 +113,21 @@ ARDOUR::LuaAPI::new_luaproc_with_time_domain (Session *s, const string& name, Te
 		p = (lpi->load (*s));
 	} catch (...) {
 		warning << _("Failed to instantiate Lua Processor\n");
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
-	return boost::shared_ptr<Processor> (new PluginInsert (*s, td, p));
+	/* Lua processor takes time domain from session */
+	return std::shared_ptr<Processor> (new PluginInsert (*s, *s, p));
 }
 
-boost::shared_ptr<Processor>
-ARDOUR::LuaAPI::new_send (Session* s, boost::shared_ptr<Route> r, boost::shared_ptr<Processor> before)
+std::shared_ptr<Processor>
+ARDOUR::LuaAPI::new_send (Session* s, std::shared_ptr<Route> r, std::shared_ptr<Processor> before)
 {
 	if (!s) {
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
-	boost::shared_ptr<Send> send (new Send (*s, r->pannable (), r->mute_master ()));
+	std::shared_ptr<Send> send (new Send (*s, r->pannable (), r->mute_master ()));
 
 	/* make an educated guess at the initial number of outputs for the send */
 	ChanCount outs = before ? before->input_streams () : r->n_outputs();
@@ -135,14 +137,14 @@ ARDOUR::LuaAPI::new_send (Session* s, boost::shared_ptr<Route> r, boost::shared_
 		send->output()->ensure_io (outs, false, r.get());
 	} catch (AudioEngine::PortRegistrationFailure& err) {
 		error << string_compose (_("Cannot set up new send: %1"), err.what ()) << endmsg;
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	if (0 == r->add_processor (send, before)) {
 		return send;
 	}
 
-	return boost::shared_ptr<Processor> ();
+	return std::shared_ptr<Processor> ();
 }
 
 std::string
@@ -213,28 +215,28 @@ ARDOUR::LuaAPI::new_plugin_info (const string& name, ARDOUR::PluginType type)
 	return PluginInfoPtr ();
 }
 
-boost::shared_ptr<Processor>
+std::shared_ptr<Processor>
 ARDOUR::LuaAPI::new_plugin (Session *s, const string& name, ARDOUR::PluginType type, const string& preset)
 {
 	return new_plugin_with_time_domain (s, name, type, Config->get_default_automation_time_domain(), preset);
 }
 
-boost::shared_ptr<Processor>
+std::shared_ptr<Processor>
 ARDOUR::LuaAPI::new_plugin_with_time_domain (Session *s, const string& name, ARDOUR::PluginType type, Temporal::TimeDomain td, const string& preset)
 {
 	if (!s) {
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	PluginInfoPtr pip = new_plugin_info (name, type);
 
 	if (!pip) {
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	PluginPtr p = pip->load (*s);
 	if (!p) {
-		return boost::shared_ptr<Processor> ();
+		return std::shared_ptr<Processor> ();
 	}
 
 	if (!preset.empty ()) {
@@ -244,13 +246,14 @@ ARDOUR::LuaAPI::new_plugin_with_time_domain (Session *s, const string& name, ARD
 		}
 	}
 
-	return boost::shared_ptr<Processor> (new PluginInsert (*s, td, p));
+	/* Lua processor takes time domain from session */
+	return std::shared_ptr<Processor> (new PluginInsert (*s, *s, p));
 }
 
 bool
-ARDOUR::LuaAPI::set_plugin_insert_param (boost::shared_ptr<PluginInsert> pi, uint32_t which, float val)
+ARDOUR::LuaAPI::set_plugin_insert_param (std::shared_ptr<PluginInsert> pi, uint32_t which, float val)
 {
-	boost::shared_ptr<Plugin> plugin = pi->plugin ();
+	std::shared_ptr<Plugin> plugin = pi->plugin ();
 	if (!plugin) { return false; }
 
 	bool ok=false;
@@ -262,16 +265,16 @@ ARDOUR::LuaAPI::set_plugin_insert_param (boost::shared_ptr<PluginInsert> pi, uin
 	if (plugin->get_parameter_descriptor (controlid, pd) != 0) { return false; }
 	if (val < pd.lower || val > pd.upper) { return false; }
 
-	boost::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter (PluginAutomation, 0, controlid));
+	std::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter (PluginAutomation, 0, controlid));
 	c->set_value (val, PBD::Controllable::NoGroup);
 	return true;
 }
 
 float
-ARDOUR::LuaAPI::get_plugin_insert_param (boost::shared_ptr<PluginInsert> pi, uint32_t which, bool &ok)
+ARDOUR::LuaAPI::get_plugin_insert_param (std::shared_ptr<PluginInsert> pi, uint32_t which, bool &ok)
 {
 	ok=false;
-	boost::shared_ptr<Plugin> plugin = pi->plugin ();
+	std::shared_ptr<Plugin> plugin = pi->plugin ();
 	if (!plugin) { return 0; }
 	uint32_t controlid = plugin->nth_parameter (which, ok);
 	if (!ok) { return 0; }
@@ -279,26 +282,117 @@ ARDOUR::LuaAPI::get_plugin_insert_param (boost::shared_ptr<PluginInsert> pi, uin
 }
 
 bool
-ARDOUR::LuaAPI::set_processor_param (boost::shared_ptr<Processor> proc, uint32_t which, float val)
+ARDOUR::LuaAPI::set_plugin_insert_property (std::shared_ptr<PluginInsert> pi, std::string const& uri, luabridge::LuaRef value)
 {
-	boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (proc);
+	std::shared_ptr<Plugin> plugin = pi->plugin ();
+	if (!plugin) { return false; }
+	uint32_t key = URIMap::instance ().uri_to_id (uri.c_str ());
+	const ParameterDescriptor& desc = plugin->get_property_descriptor (key);
+	switch (desc.datatype) {
+		case Variant::PATH:
+			plugin->set_property(desc.key, Variant(Variant::PATH, value.cast<string> ()));
+			return true;
+		case Variant::STRING:
+			plugin->set_property(desc.key, Variant(Variant::STRING, value.cast<string> ()));
+			return true;
+		case Variant::URI:
+			plugin->set_property(desc.key, Variant(Variant::URI, value.cast<string> ()));
+			return true;
+		case Variant::BOOL:
+			plugin->set_property(desc.key, Variant(Variant::BOOL, value.cast<bool> ()));
+			return true;
+		case Variant::DOUBLE:
+			plugin->set_property(desc.key, Variant(Variant::DOUBLE, value.cast<double> ()));
+			return true;
+		case Variant::FLOAT:
+			plugin->set_property(desc.key, Variant(Variant::FLOAT, value.cast<float> ()));
+			return true;
+		case Variant::INT:
+			plugin->set_property(desc.key, Variant(Variant::INT, value.cast<int> ()));
+			return true;
+		case Variant::LONG:
+			plugin->set_property(desc.key, Variant(Variant::LONG, value.cast<long> ()));
+			return true;
+		default:
+			printf ("NO VARIANT\n");
+			break;
+	}
+	return false;
+}
+
+int
+ARDOUR::LuaAPI::get_plugin_insert_property (lua_State* L)
+{
+	typedef std::shared_ptr<PluginInsert> T;
+	int top = lua_gettop (L);
+	if (top < 2) {
+		return luaL_argerror (L, 1, "invalid number of arguments, :get_plugin_insert_property (plugin, uri)");
+	}
+
+	T* const    pi  = luabridge::Userdata::get<T> (L, 1, false);
+	std::string uri = luabridge::Stack<std::string>::get (L, 2);
+	if (!pi) {
+		return luaL_error (L, "Invalid pointer to Ardour:PluginInsert");
+	}
+
+	std::shared_ptr<Plugin> plugin = (*pi)->plugin ();
+	if (!plugin) { return 0; }
+	uint32_t key = URIMap::instance ().uri_to_id (uri.c_str ());
+	plugin->announce_property_values ();
+	wait_for_process_callback (1, 0);
+	Variant v = plugin->get_property_value (key);
+	switch (v.type ()) {
+		case Variant::PATH:
+			luabridge::Stack<std::string>::push (L, v.get_path ());
+			return 1;
+		case Variant::STRING:
+			luabridge::Stack<std::string>::push (L, v.get_string ());
+			return 1;
+		case Variant::URI:
+			luabridge::Stack<std::string>::push (L, v.get_uri ());
+			return 1;
+		case Variant::BOOL:
+			luabridge::Stack<bool>::push (L, v.get_bool ());
+			return 1;
+		case Variant::DOUBLE:
+			luabridge::Stack<double>::push (L, v.get_double ());
+			return 1;
+		case Variant::FLOAT:
+			luabridge::Stack<float>::push (L, v.get_float ());
+			return 1;
+		case Variant::INT:
+			luabridge::Stack<int>::push (L, v.get_int ());
+			return 1;
+		case Variant::LONG:
+			luabridge::Stack<long>::push (L, v.get_long ());
+			return 1;
+		default:
+			break;
+	}
+	return 0;
+}
+
+bool
+ARDOUR::LuaAPI::set_processor_param (std::shared_ptr<Processor> proc, uint32_t which, float val)
+{
+	std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (proc);
 	if (!pi) { return false; }
 	return set_plugin_insert_param (pi, which, val);
 }
 
 float
-ARDOUR::LuaAPI::get_processor_param (boost::shared_ptr<Processor> proc, uint32_t which, bool &ok)
+ARDOUR::LuaAPI::get_processor_param (std::shared_ptr<Processor> proc, uint32_t which, bool &ok)
 {
 	ok=false;
-	boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (proc);
+	std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (proc);
 	if (!pi) { ok = false; return 0;}
 	return get_plugin_insert_param (pi, which, ok);
 }
 
 bool
-ARDOUR::LuaAPI::reset_processor_to_default ( boost::shared_ptr<Processor> proc )
+ARDOUR::LuaAPI::reset_processor_to_default ( std::shared_ptr<Processor> proc )
 {
-	boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (proc);
+	std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (proc);
 	if (pi) {
 		pi->reset_parameters_to_default();
 		return true;
@@ -309,7 +403,7 @@ ARDOUR::LuaAPI::reset_processor_to_default ( boost::shared_ptr<Processor> proc )
 int
 ARDOUR::LuaAPI::plugin_automation (lua_State *L)
 {
-	typedef boost::shared_ptr<Processor> T;
+	typedef std::shared_ptr<Processor> T;
 
 	int top = lua_gettop (L);
 	if (top < 2) {
@@ -320,11 +414,11 @@ ARDOUR::LuaAPI::plugin_automation (lua_State *L)
 	if (!p) {
 		return luaL_error (L, "Invalid pointer to Ardour:Processor");
 	}
-	boost::shared_ptr<PluginInsert> pi = boost::dynamic_pointer_cast<PluginInsert> (*p);
+	std::shared_ptr<PluginInsert> pi = std::dynamic_pointer_cast<PluginInsert> (*p);
 	if (!pi) {
 		return luaL_error (L, "Given Processor is not a Plugin Insert");
 	}
-	boost::shared_ptr<Plugin> plugin = pi->plugin ();
+	std::shared_ptr<Plugin> plugin = pi->plugin ();
 	if (!plugin) {
 		return luaL_error (L, "Given Processor is not a Plugin");
 	}
@@ -343,12 +437,42 @@ ARDOUR::LuaAPI::plugin_automation (lua_State *L)
 		return luaL_error (L, "Cannot describe parameter");
 	}
 
-	boost::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter (PluginAutomation, 0, controlid));
+	std::shared_ptr<AutomationControl> c = pi->automation_control (Evoral::Parameter (PluginAutomation, 0, controlid));
 
-	luabridge::Stack<boost::shared_ptr<AutomationList> >::push (L, c->alist ());
-	luabridge::Stack<boost::shared_ptr<Evoral::ControlList> >::push (L, c->list ());
+	luabridge::Stack<std::shared_ptr<AutomationList> >::push (L, c->alist ());
+	luabridge::Stack<std::shared_ptr<Evoral::ControlList> >::push (L, c->list ());
 	luabridge::Stack<ParameterDescriptor>::push (L, pd);
 	return 3;
+}
+
+bool
+ARDOUR::LuaAPI::set_automation_data (std::shared_ptr<AutomationControl> ac, luabridge::LuaRef tbl, double thin)
+{
+	if (!tbl.isTable () || !ac) {
+		return false;
+	}
+
+	std::shared_ptr<ARDOUR::AutomationList> alist = ac->alist ();
+	ParameterDescriptor const& desc = ac->desc ();
+
+	alist->freeze ();
+	alist->clear ();
+	for (luabridge::Iterator i (tbl); !i.isNil (); ++i) {
+		if (!i.key ().isNumber () || !i.value ().isNumber ()) {
+			continue;
+		}
+		samplecnt_t tme = i.key ().cast<int> ();
+		double      val = i.value ().cast<double> ();
+		val = std::min<double> (desc.upper, std::max<double> (desc.lower, val));
+		alist->fast_simple_add (timepos_t (tme), val);
+	}
+	alist->thaw ();
+	if (thin < 0) {
+		alist->thin (Config->get_automation_thinning_factor ());
+	} else {
+		alist->thin (thin);
+	}
+	return true;
 }
 
 int
@@ -523,7 +647,7 @@ ARDOUR::LuaAPI::wait_for_process_callback (size_t n_cycles, int64_t timeout_ms)
 	size_t cnt = 0;
 	ScopedConnection c;
 
-	InternalSend::CycleStart.connect_same_thread (c, boost::bind (&proc_cycle_start, &cnt));
+	InternalSend::CycleStart.connect_same_thread (c, std::bind (&proc_cycle_start, &cnt));
 	while (cnt <= n_cycles) {
 		Glib::usleep (1000);
 		if (timeout_ms > 0) {
@@ -958,7 +1082,7 @@ LuaAPI::Vamp::initialize ()
 }
 
 int
-LuaAPI::Vamp::analyze (boost::shared_ptr<ARDOUR::AudioReadable> r, uint32_t channel, luabridge::LuaRef cb)
+LuaAPI::Vamp::analyze (std::shared_ptr<ARDOUR::AudioReadable> r, uint32_t channel, luabridge::LuaRef cb)
 {
 	if (!_initialized) {
 		if (!initialize ()) {
@@ -1014,16 +1138,16 @@ LuaAPI::Vamp::process (const std::vector<float*>& d, ::Vamp::RealTime rt)
 	return _plugin->process (bufs, rt);
 }
 
-boost::shared_ptr<Evoral::Note<Temporal::Beats> >
+std::shared_ptr<Evoral::Note<Temporal::Beats> >
 LuaAPI::new_noteptr (uint8_t chan, Temporal::Beats beat_time, Temporal::Beats length, uint8_t note, uint8_t velocity)
 {
-	return boost::shared_ptr<Evoral::Note<Temporal::Beats> > (new Evoral::Note<Temporal::Beats>(chan, beat_time, length, note, velocity));
+	return std::shared_ptr<Evoral::Note<Temporal::Beats> > (new Evoral::Note<Temporal::Beats>(chan, beat_time, length, note, velocity));
 }
 
-std::list<boost::shared_ptr<Evoral::Note<Temporal::Beats> > >
-LuaAPI::note_list (boost::shared_ptr<MidiModel> mm)
+std::list<std::shared_ptr<Evoral::Note<Temporal::Beats> > >
+LuaAPI::note_list (std::shared_ptr<MidiModel> mm)
 {
-	typedef boost::shared_ptr<Evoral::Note<Temporal::Beats> > NotePtr;
+	typedef std::shared_ptr<Evoral::Note<Temporal::Beats> > NotePtr;
 
 	std::list<NotePtr> note_ptr_list;
 
@@ -1034,11 +1158,37 @@ LuaAPI::note_list (boost::shared_ptr<MidiModel> mm)
 	return note_ptr_list;
 }
 
+std::list<std::shared_ptr<Evoral::Event<Temporal::Beats> > >
+LuaAPI::sysex_list (std::shared_ptr<MidiModel> mm)
+{
+	typedef std::shared_ptr<Evoral::Event<Temporal::Beats> > SysExPtr;
+
+	std::list<SysExPtr> event_ptr_list;
+
+	for (auto const& i : mm->sysexes ()) {
+		event_ptr_list.push_back (i);
+	}
+	return event_ptr_list;
+}
+
+std::list<std::shared_ptr<Evoral::PatchChange<Temporal::Beats> > >
+LuaAPI::patch_change_list (std::shared_ptr<MidiModel> mm)
+{
+	typedef std::shared_ptr<Evoral::PatchChange<Temporal::Beats> > PatchChangePtr;
+
+	std::list<PatchChangePtr> patch_change_ptr_list;
+
+	for (auto const& i : mm->patch_changes ()) {
+		patch_change_ptr_list.push_back (i);
+	}
+	return patch_change_ptr_list;
+}
+
 /* ****************************************************************************/
 
 const samplecnt_t LuaAPI::Rubberband::_bufsize = 256;
 
-LuaAPI::Rubberband::Rubberband (boost::shared_ptr<AudioRegion> r, bool percussive)
+LuaAPI::Rubberband::Rubberband (std::shared_ptr<AudioRegion> r, bool percussive)
 	: _region (r)
 	, _rbs (r->session().sample_rate(), r->n_channels(),
 	        percussive ? RubberBand::RubberBandStretcher::DefaultOptions : RubberBand::RubberBandStretcher::PercussiveOptions,
@@ -1083,7 +1233,7 @@ LuaAPI::Rubberband::set_mapping (luabridge::LuaRef tbl)
 		}
 		size_t ss = i.key ().cast<double> ();
 		size_t ds = i.value ().cast<double> ();
-		printf ("ADD %ld %ld\n", ss, ds);
+		//printf ("ADD %ld %ld\n", ss, ds);
 		_mapping[ss] = ds;
 	}
 	return !_mapping.empty ();
@@ -1092,18 +1242,18 @@ LuaAPI::Rubberband::set_mapping (luabridge::LuaRef tbl)
 samplecnt_t
 LuaAPI::Rubberband::read (Sample* buf, samplepos_t pos, samplecnt_t cnt, int channel) const
 {
-	return _region->master_read_at (buf, NULL, NULL, _read_offset + pos, cnt, channel);
+	return _region->master_read_at (buf, _read_offset + pos, cnt, channel);
 }
 
 static void null_deleter (LuaAPI::Rubberband*) {}
 
-boost::shared_ptr<AudioReadable>
+std::shared_ptr<AudioReadable>
 LuaAPI::Rubberband::readable ()
 {
 	if (!_self) {
-		_self = boost::shared_ptr<Rubberband> (this, &null_deleter);
+		_self = std::shared_ptr<Rubberband> (this, &null_deleter);
 	}
-	return boost::dynamic_pointer_cast<AudioReadable> (_self);
+	return std::dynamic_pointer_cast<AudioReadable> (_self);
 }
 
 bool
@@ -1180,10 +1330,10 @@ LuaAPI::Rubberband::retrieve (float** buffers)
 	return true;
 }
 
-boost::shared_ptr<AudioRegion>
+std::shared_ptr<AudioRegion>
 LuaAPI::Rubberband::process (luabridge::LuaRef cb)
 {
-	boost::shared_ptr<AudioRegion> rv;
+	std::shared_ptr<AudioRegion> rv;
 	if (cb.type () == LUA_TFUNCTION) {
 		_cb = new luabridge::LuaRef (cb);
 	}
@@ -1208,7 +1358,7 @@ LuaAPI::Rubberband::process (luabridge::LuaRef cb)
 		}
 		try {
 
-			_asrc.push_back (boost::dynamic_pointer_cast<AudioSource> (SourceFactory::createWritable (DataType::AUDIO, session, path, sample_rate)));
+			_asrc.push_back (std::dynamic_pointer_cast<AudioSource> (SourceFactory::createWritable (DataType::AUDIO, session, path, sample_rate)));
 
 		} catch (failed_constructor& err) {
 			cleanup (true);
@@ -1238,7 +1388,7 @@ LuaAPI::Rubberband::process (luabridge::LuaRef cb)
 	return rv;
 }
 
-boost::shared_ptr<AudioRegion>
+std::shared_ptr<AudioRegion>
 LuaAPI::Rubberband::finalize ()
 {
 	time_t     xnow = time (NULL);
@@ -1246,8 +1396,8 @@ LuaAPI::Rubberband::finalize ()
 
 	/* this is the same as RBEffect::finish, Filter::finish */
 	SourceList sl;
-	for (std::vector<boost::shared_ptr<AudioSource> >::iterator i = _asrc.begin (); i != _asrc.end (); ++i) {
-		boost::shared_ptr<AudioFileSource> afs = boost::dynamic_pointer_cast<AudioFileSource> (*i);
+	for (std::vector<std::shared_ptr<AudioSource> >::iterator i = _asrc.begin (); i != _asrc.end (); ++i) {
+		std::shared_ptr<AudioFileSource> afs = std::dynamic_pointer_cast<AudioFileSource> (*i);
 		assert (afs);
 		afs->done_with_peakfile_writes ();
 		afs->update_header (_region->position_sample (), *now, xnow);
@@ -1264,8 +1414,8 @@ LuaAPI::Rubberband::finalize ()
 	plist.add (Properties::name, region_name);
 	plist.add (Properties::whole_file, true);
 
-	boost::shared_ptr<Region>      r  = RegionFactory::create (sl, plist);
-	boost::shared_ptr<AudioRegion> ar = boost::dynamic_pointer_cast<AudioRegion> (r);
+	std::shared_ptr<Region>      r  = RegionFactory::create (sl, plist);
+	std::shared_ptr<AudioRegion> ar = std::dynamic_pointer_cast<AudioRegion> (r);
 
 	ar->set_ancestral_data (timepos_t (_read_start), timecnt_t (_read_len, timepos_t (_read_start)), _stretch_ratio, _pitch_ratio);
 	ar->set_master_sources (_region->master_sources ());
@@ -1287,7 +1437,7 @@ void
 LuaAPI::Rubberband::cleanup (bool abort)
 {
 	if (abort) {
-		for (std::vector<boost::shared_ptr<AudioSource> >::iterator i = _asrc.begin (); i != _asrc.end (); ++i) {
+		for (std::vector<std::shared_ptr<AudioSource> >::iterator i = _asrc.begin (); i != _asrc.end (); ++i) {
 			(*i)->mark_for_remove ();
 		}
 	}

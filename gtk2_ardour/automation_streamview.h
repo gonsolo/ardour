@@ -19,8 +19,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef __ardour_automation_streamview_h__
-#define __ardour_automation_streamview_h__
+#pragma once
 
 #include <list>
 #include <cmath>
@@ -52,7 +51,7 @@ public:
 
 	void redisplay_track ();
 
-	inline double contents_height() const {
+	int contents_height() const {
 		return (_trackview.current_height() - TimeAxisViewItem::NAME_HIGHLIGHT_SIZE - 2);
 	}
 
@@ -63,21 +62,21 @@ public:
 
 	void clear ();
 
-	void get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable*> &, bool within = false);
+	void _get_selectables (Temporal::timepos_t const &, Temporal::timepos_t const &, double, double, std::list<Selectable*> &, bool within);
 	void set_selected_points (PointSelection &);
 
-	std::list<boost::shared_ptr<AutomationLine> > get_lines () const;
+	std::list<std::shared_ptr<AutomationLine> > get_lines () const;
 
 	bool paste (Temporal::timepos_t const &               pos,
 	            unsigned                                  paste_count,
 	            float                                     times,
-	            boost::shared_ptr<ARDOUR::AutomationList> list);
+	            std::shared_ptr<ARDOUR::AutomationList> list);
 
 private:
 	void setup_rec_box ();
 
-	RegionView* add_region_view_internal (boost::shared_ptr<ARDOUR::Region>, bool wait_for_data, bool recording = false);
-	void        display_region(AutomationRegionView* region_view);
+	RegionView* add_region_view_internal (std::shared_ptr<ARDOUR::Region>, bool wait_for_data, bool recording = false);
+	void        display_region (RegionView* region_view);
 
 	void color_handler ();
 
@@ -86,4 +85,3 @@ private:
 	ARDOUR::AutoState _pending_automation_state;
 };
 
-#endif /* __ardour_automation_streamview_h__ */
